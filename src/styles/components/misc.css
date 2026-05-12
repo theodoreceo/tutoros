@@ -1,0 +1,33 @@
+/* Empty state */
+.empty { text-align: center; padding: 40px 20px; color: var(--hint); font-size: 13px; }
+
+/* Page header */
+.ph { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.ph-title { font-size: 15px; font-weight: 600; }
+
+/* Two column layout */
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Progress bar */
+.prog { background: var(--surface2); border-radius: 3px; height: 6px; overflow: hidden; margin-top: 4px; }
+.prog-f { height: 6px; border-radius: 3px; background: var(--accent-mid); }
+
+/* Divider */
+.divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
+/* Risk row */
+.risk-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.risk-row:last-child { border-bottom: none; }
+
+/* Toast notification */
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--text); color: #fff; padding: 10px 16px; border-radius: var(--r); font-size: 13px; z-index: 999; opacity: 0; transform: translateY(8px); transition: all .25s; pointer-events: none; }
+.toast.show { opacity: 1; transform: translateY(0); }
+
+/* Amount colors */
+.amount-pos { color: var(--green); font-weight: 600; }
+.amount-neg { color: var(--red); font-weight: 600; }
+
+/* View toggle */
+.view-toggle { display: flex; gap: 4px; background: var(--surface2); border-radius: 6px; padding: 2px; }
+.view-toggle button { padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; border: none; background: transparent; color: var(--muted); cursor: pointer; transition: all .12s; }
+.view-toggle button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }

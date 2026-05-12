@@ -1,0 +1,15 @@
+/* Student event timeline */
+.timeline { display: flex; flex-direction: column; gap: 0; }
+.tl-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.tl-item:last-child { border-bottom: none; }
+.tl-dot-wrap { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; padding-top: 2px; }
+.tl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-mid); flex-shrink: 0; }
+.tl-dot.tl-green { background: var(--green); }
+.tl-dot.tl-amber { background: var(--amber); }
+.tl-dot.tl-red { background: var(--red); }
+.tl-dot.tl-blue { background: var(--blue); }
+.tl-line { width: 1px; flex: 1; background: var(--border); margin-top: 4px; }
+.tl-body { flex: 1; min-width: 0; }
+.tl-event { font-size: 12px; font-weight: 500; color: var(--text); }
+.tl-meta { font-size: 11px; color: var(--hint); margin-top: 2px; }
+.tl-actor { color: var(--muted); }

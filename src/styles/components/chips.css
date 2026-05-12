@@ -1,0 +1,27 @@
+/* Lesson difficulty chips */
+.chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+.chip-easy { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+.chip-med { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+.chip-hard { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+
+/* Mood chips */
+.mood { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
+.mood-5 { color: #16a34a; }
+.mood-4 { color: #65a30d; }
+.mood-3 { color: #ca8a04; }
+.mood-2 { color: #ea580c; }
+.mood-1 { color: #dc2626; }
+
+/* Homework status chips */
+.hw-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 500; cursor: pointer; transition: opacity .12s; }
+.hw-chip:hover { opacity: .8; }
+.hw-done { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+.hw-partial { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+.hw-miss { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+.hw-none { background: var(--surface2); color: var(--hint); border: 1px solid var(--border); }
+
+/* Attendance chips */
+.att-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+.att-present { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+.att-absent { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+.att-late { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }

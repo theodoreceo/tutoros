@@ -1,0 +1,6 @@
+.alert { padding: 10px 14px; border-radius: var(--r); font-size: 13px; margin-bottom: 10px; border: 1px solid; display: flex; gap: 8px; align-items: flex-start; }
+.alert i { flex-shrink: 0; margin-top: 1px; }
+.alert-a { background: var(--amber-bg); border-color: var(--amber-border); color: var(--amber); }
+.alert-r { background: var(--red-bg); border-color: var(--red-border); color: var(--red); }
+.alert-g { background: var(--green-bg); border-color: var(--green-border); color: var(--green); }
+.alert-b { background: var(--blue-bg); border-color: var(--blue-border); color: var(--blue); }

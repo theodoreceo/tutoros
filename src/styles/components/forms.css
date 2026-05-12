@@ -1,0 +1,6 @@
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 10px; }
+.fg { display: flex; flex-direction: column; gap: 3px; }
+.fg label { font-size: 12px; font-weight: 500; color: var(--muted); }
+.fi { padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--r); font-size: 13px; color: var(--text); background: var(--surface); font-family: inherit; transition: border-color .12s; width: 100%; }
+.fi:focus { outline: none; border-color: var(--accent-mid); }
+textarea.fi { resize: vertical; min-height: 64px; }

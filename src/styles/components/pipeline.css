@@ -1,0 +1,13 @@
+.pipeline-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 12px; min-height: calc(100vh - 160px); }
+.pipeline-board::-webkit-scrollbar { height: 5px; }
+.pipeline-board::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.pipeline-col { flex-shrink: 0; width: 220px; display: flex; flex-direction: column; gap: 0; }
+.pipeline-col-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: var(--r) var(--r) 0 0; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; border: 1px solid var(--border); border-bottom: none; }
+.pipeline-col-body { flex: 1; background: var(--surface); border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--r) var(--r); padding: 8px; display: flex; flex-direction: column; gap: 6px; min-height: 120px; }
+.pipeline-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; cursor: pointer; transition: border-color .12s, box-shadow .12s; }
+.pipeline-card:hover { border-color: var(--accent-mid); box-shadow: 0 2px 8px rgba(5,51,125,.08); }
+.pipeline-card.risk-high { border-left: 3px solid #ef4444; }
+.pipeline-card.risk-med { border-left: 3px solid #f59e0b; }
+.pipeline-card-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pipeline-card-meta { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+.pipeline-empty { text-align: center; padding: 20px 8px; color: var(--hint); font-size: 11px; }

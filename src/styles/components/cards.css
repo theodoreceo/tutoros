@@ -1,0 +1,29 @@
+/* Base card */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--rl); padding: 16px 20px; margin-bottom: 12px; }
+.card.hi { border: 1.5px solid var(--blue-border); }
+.card-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px; }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+
+/* Metric grid */
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.met { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px; }
+.met-label { font-size: 11px; color: var(--muted); font-weight: 500; margin-bottom: 3px; }
+.met-val { font-size: 22px; font-weight: 700; line-height: 1; color: var(--text); }
+.met-sub { font-size: 11px; color: var(--hint); margin-top: 3px; }
+
+/* Dashboard pulse cards */
+.pulse-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--rl); padding: 18px 22px; position: relative; overflow: hidden; }
+.pulse-card .p-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+.pulse-card .p-val { font-size: 28px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
+.pulse-card .p-delta { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; margin-top: 6px; padding: 2px 8px; border-radius: 20px; }
+.pulse-card .p-delta.up { background: #f0fdf4; color: #15803d; }
+.pulse-card .p-delta.down { background: #fef2f2; color: #b91c1c; }
+.pulse-card .p-delta.flat { background: var(--surface2); color: var(--muted); }
+.pulse-card .p-stripe { position: absolute; right: 0; top: 0; bottom: 0; width: 4px; }
+
+/* Mini bar chart */
+.bars { display: flex; align-items: flex-end; gap: 4px; height: 60px; }
+.bar-w { display: flex; flex-direction: column; align-items: center; flex: 1; gap: 2px; }
+.bar-b { width: 100%; border-radius: 2px 2px 0 0; background: var(--accent-light); min-height: 2px; transition: .3s; }
+.bar-b.cur { background: var(--accent-mid); }
+.bar-l { font-size: 9px; color: var(--hint); white-space: nowrap; }
