@@ -1,33 +1,42 @@
-import '/src/styles/index.css';
+import './styles/index.css';
 
-import { initLocalStorage } from './core/store.js';
+import { initLocalStorage, clearDemoData } from './core/store.js';
 import { state } from './core/state.js';
-import { restoreSession, selectRole, applyRoleUI, logout } from './core/auth.js';
+import { restoreSession, selectRole, applyRoleUI, logout, promptSwitchRole, confirmSwitch } from './core/auth.js';
 import { navigate, registerRenderer, setupNav } from './core/router.js';
 import { initSidebar } from './components/sidebar.js';
 import { closeModal } from './components/modal.js';
 import { toast } from './components/toast.js';
 
 import { renderDashboard } from './pages/dashboard.js';
-import { renderHistoryPage, undoHistory } from './pages/history-page.js';
+import { renderHistoryPage, undoHistoryEntry } from './pages/history-page.js';
 import {
-  renderStudents, setCRMView, setCRMStatusFilter,
-  openStudentModal, saveStudent, deleteStudent,
+  renderStudents, renderCRMStudents, renderPipeline, setCRMView, setCRMStatusFilter,
+  openStudentModal, calcLTV, editStudent, saveStudent, deleteStudent,
   openStudentDetail, openStatusDateModal, confirmStatusChange,
-  openPaymentModalFor, savePaymentFor,
+  openTrialFromCalendar, scheduleTrialLesson,
+  openPaymentModalFor, addStudentNote, selectChip,
 } from './pages/students.js';
 import {
-  renderGroups, openGroupModal, saveGroup, deleteGroup,
-  openGroupDetail, closeGroupDetail,
+  renderGroups, openGroupModal, editGroup, saveGroup, deleteGroup,
+  openGroupDetail, closeGroupDetail, renderGroupDetail, renderLessonJournal,
   openLessonModal, saveLesson, deleteLesson,
-  addStudentToGroup, removeStudentFromGroup,
+  setHwStatus as groupsSetHwStatus,
 } from './pages/groups.js';
-import { renderCalendar, setCalView, calNav, calToday, openLessonCard, openLessonFormModal, saveLessonForm, deleteLessonFromCal } from './pages/calendar.js';
+import {
+  setCalView, calNav, calToday, renderCalendar,
+  openLessonFromCalendar, openLessonFormModal, toggleAttendance,
+  setHwStatus as calSetHwStatus,
+  saveLessonForm, openLessonCard, deleteLesson as calDeleteLesson, exportICS,
+} from './pages/calendar.js';
 import { renderIncome, openPaymentModal, savePayment, deletePayment } from './pages/income.js';
-import { renderExpenses, openExpenseModal, saveExpense, deleteExpense, toggleChannelField } from './pages/expenses.js';
+import { renderExpenses, openExpenseModal, toggleChannelField, addExpenseCategory, saveExpense, deleteExpense } from './pages/expenses.js';
 import { renderAnalytics, setAnTab, setAnPeriod } from './pages/analytics.js';
-import { renderAssistantTasks, openAssistantTaskModal, saveAssistantTask, changeTaskStatus, deleteAssistantTask, setTaskFilter } from './pages/tasks.js';
-import { renderAccess, openRoleModal, saveRole, deleteRole } from './pages/access.js';
+import {
+  setTaskFilter, renderAssistantTasks, openAssistantTaskModal, editAssistantTask,
+  saveAssistantTask, changeTaskStatus, deleteAssistantTask,
+} from './pages/tasks.js';
+import { renderAccess, openRoleModal, editRole, saveRole, deleteRole } from './pages/access.js';
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 
@@ -35,11 +44,10 @@ function init() {
   initLocalStorage();
   initSidebar();
 
-  // Register page renderers
   registerRenderer('dashboard', renderDashboard);
   registerRenderer('history', renderHistoryPage);
-  registerRenderer('crm_students', renderStudents);
   registerRenderer('students', renderStudents);
+  registerRenderer('crm_students', renderCRMStudents);
   registerRenderer('groups', renderGroups);
   registerRenderer('income', renderIncome);
   registerRenderer('expenses', renderExpenses);
@@ -48,7 +56,6 @@ function init() {
   registerRenderer('analytics', renderAnalytics);
   registerRenderer('access', renderAccess);
 
-  // Restore session or show setup screen
   const restored = restoreSession();
   if (!restored) {
     document.getElementById('setup-screen')?.classList.add('show');
@@ -57,76 +64,100 @@ function init() {
 
 // ─── WINDOW GLOBALS (for HTML inline onclick handlers) ────────────────────────
 
-window.__navigate = navigate;
-window.__closeModal = closeModal;
-window.__toast = toast;
-window.__logout = logout;
-
-// Auth
-window.__selectRole = selectRole;
+// Core
+window.navigate = navigate;
+window.closeModal = closeModal;
+window.toast = toast;
+window.logout = logout;
+window.promptSwitchRole = promptSwitchRole;
+window.confirmSwitch = confirmSwitch;
+window.selectRole = selectRole;
+window.clearDemoData = () => { if (confirm('Сбросить все данные?')) { clearDemoData(); location.reload(); } };
 
 // Students
-window.__openStudentModal = openStudentModal;
-window.__saveStudent = saveStudent;
-window.__deleteStudent = deleteStudent;
-window.__openStudentDetail = openStudentDetail;
-window.__setCRMView = setCRMView;
-window.__setCRMStatusFilter = setCRMStatusFilter;
-window.__openStatusDateModal = openStatusDateModal;
-window.__confirmStatusChange = confirmStatusChange;
-window.__openPaymentModalFor = openPaymentModalFor;
-window.__savePaymentFor = savePaymentFor;
+window.renderStudents = renderStudents;
+window.renderCRMStudents = renderCRMStudents;
+window.renderPipeline = renderPipeline;
+window.setCRMView = setCRMView;
+window.setCRMStatusFilter = setCRMStatusFilter;
+window.openStudentModal = openStudentModal;
+window.calcLTV = calcLTV;
+window.editStudent = editStudent;
+window.saveStudent = saveStudent;
+window.deleteStudent = deleteStudent;
+window.openStudentDetail = openStudentDetail;
+window.openStatusDateModal = openStatusDateModal;
+window.confirmStatusChange = confirmStatusChange;
+window.openTrialFromCalendar = openTrialFromCalendar;
+window.scheduleTrialLesson = scheduleTrialLesson;
+window.openPaymentModalFor = openPaymentModalFor;
+window.addStudentNote = addStudentNote;
+window.selectChip = selectChip;
 
 // Groups
-window.__openGroupModal = openGroupModal;
-window.__saveGroup = saveGroup;
-window.__deleteGroup = deleteGroup;
-window.__openGroupDetail = openGroupDetail;
-window.__closeGroupDetail = closeGroupDetail;
-window.__openLessonModal = openLessonModal;
-window.__saveLesson = saveLesson;
-window.__deleteLesson = deleteLesson;
-window.__addStudentToGroup = addStudentToGroup;
-window.__removeStudentFromGroup = removeStudentFromGroup;
+window.renderGroups = renderGroups;
+window.openGroupModal = openGroupModal;
+window.editGroup = editGroup;
+window.saveGroup = saveGroup;
+window.deleteGroup = deleteGroup;
+window.openGroupDetail = openGroupDetail;
+window.closeGroupDetail = closeGroupDetail;
+window.renderGroupDetail = renderGroupDetail;
+window.renderLessonJournal = renderLessonJournal;
+window.openLessonModal = openLessonModal;
+window.saveLesson = saveLesson;
+window.deleteLesson = deleteLesson;
 
 // Calendar
-window.__setCalView = setCalView;
-window.__calNav = calNav;
-window.__calToday = calToday;
-window.__openLessonCard = openLessonCard;
-window.__openLessonFormModal = openLessonFormModal;
-window.__saveLessonForm = saveLessonForm;
-window.__deleteLessonFromCal = deleteLessonFromCal;
+window.setCalView = setCalView;
+window.calNav = calNav;
+window.calToday = calToday;
+window.renderCalendar = renderCalendar;
+window.openLessonFromCalendar = openLessonFromCalendar;
+window.openLessonFormModal = openLessonFormModal;
+window.toggleAttendance = toggleAttendance;
+window.saveLessonForm = saveLessonForm;
+window.openLessonCard = openLessonCard;
+window.exportICS = exportICS;
+
+// setHwStatus dispatch — groups version takes 4 string args, calendar takes 2 (second is element)
+window.setHwStatus = function(...args) {
+  if (args.length === 4) return groupsSetHwStatus(...args);
+  return calSetHwStatus(...args);
+};
 
 // Income
-window.__openPaymentModal = openPaymentModal;
-window.__savePayment = savePayment;
-window.__deletePayment = deletePayment;
+window.openPaymentModal = openPaymentModal;
+window.savePayment = savePayment;
+window.deletePayment = deletePayment;
 
 // Expenses
-window.__openExpenseModal = openExpenseModal;
-window.__saveExpense = saveExpense;
-window.__deleteExpense = deleteExpense;
-window.__toggleChannelField = toggleChannelField;
+window.openExpenseModal = openExpenseModal;
+window.toggleChannelField = toggleChannelField;
+window.addExpenseCategory = addExpenseCategory;
+window.saveExpense = saveExpense;
+window.deleteExpense = deleteExpense;
 
 // Analytics
-window.__setAnTab = setAnTab;
-window.__setAnPeriod = setAnPeriod;
+window.setAnTab = setAnTab;
+window.setAnPeriod = setAnPeriod;
 
 // Tasks
-window.__openAssistantTaskModal = openAssistantTaskModal;
-window.__saveAssistantTask = saveAssistantTask;
-window.__changeTaskStatus = changeTaskStatus;
-window.__deleteAssistantTask = deleteAssistantTask;
-window.__setTaskFilter = setTaskFilter;
+window.setTaskFilter = setTaskFilter;
+window.openAssistantTaskModal = openAssistantTaskModal;
+window.editAssistantTask = editAssistantTask;
+window.saveAssistantTask = saveAssistantTask;
+window.changeTaskStatus = changeTaskStatus;
+window.deleteAssistantTask = deleteAssistantTask;
 
 // Access
-window.__openRoleModal = openRoleModal;
-window.__saveRole = saveRole;
-window.__deleteRole = deleteRole;
+window.openRoleModal = openRoleModal;
+window.editRole = editRole;
+window.saveRole = saveRole;
+window.deleteRole = deleteRole;
 
 // History
-window.__undoHistory = undoHistory;
+window.undoHistoryEntry = undoHistoryEntry;
 
 // ─── START ────────────────────────────────────────────────────────────────────
 

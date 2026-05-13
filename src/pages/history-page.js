@@ -1,51 +1,47 @@
-import { CACHE } from '../core/store.js';
-import { undoHistoryEntry } from '../core/history.js';
+import { CACHE, dbInsert, dbUpdate, dbDelete } from '../core/store.js';
+import { state } from '../core/state.js';
+import { addHistoryEntry } from '../core/history.js';
 import { toast } from '../components/toast.js';
 
 export function renderHistoryPage() {
-  const el = document.getElementById('history-content');
+  const el = document.getElementById('history-container');
   if (!el) return;
-
-  const entries = [...CACHE.history].sort((a,b) => b.createdAt.localeCompare(a.createdAt));
-
-  if (!entries.length) {
-    el.innerHTML = '<div class="empty">История изменений пуста</div>';
-    return;
-  }
-
-  const ACTION_LABELS = { create: 'Создано', update: 'Изменено', delete: 'Удалено' };
-  const ACTION_COLORS = { create: 'b-g', update: 'b-bl', delete: 'b-r' };
-
-  el.innerHTML = `
-    <table style="width:100%;border-collapse:collapse" class="tbl-wrap">
-      <thead><tr>
-        <th>Дата</th><th>Действие</th><th>Описание</th><th>Кто</th><th></th>
-      </tr></thead>
-      <tbody>
-        ${entries.slice(0, 100).map(h => `
-          <tr style="${h.undone ? 'opacity:.5;text-decoration:line-through' : ''}">
-            <td style="white-space:nowrap;font-size:11px;color:var(--muted)">${new Date(h.createdAt).toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
-            <td><span class="b ${ACTION_COLORS[h.action] || 'b-gray'}">${ACTION_LABELS[h.action] || h.action}</span></td>
-            <td>${h.label || '—'}</td>
-            <td style="color:var(--muted);font-size:12px">${h.actor || '—'}</td>
-            <td>
-              ${!h.undone && (h.action === 'create' || h.action === 'update') ?
-                `<button class="btn btn-sm" onclick="window.__undoHistory('${h.id}')">↩ Отменить</button>` :
-                h.undone ? '<span style="font-size:11px;color:var(--hint)">Отменено</span>' : ''}
-            </td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
+  const entries = (CACHE.history_log || []).slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  if (!entries.length) { el.innerHTML = '<div class="empty">История изменений пуста</div>'; return; }
+  const role = state.currentRole || {};
+  el.innerHTML = entries.map(e => `
+    <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)" id="hlog-${e.id}">
+      <div style="width:10px;height:10px;border-radius:50%;background:var(--accent-mid);flex-shrink:0;margin-top:4px"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:500">${e.description || e.action}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">
+          <i class="ti ti-user" style="font-size:10px"></i> ${e.actor} &nbsp;·&nbsp;
+          <i class="ti ti-clock" style="font-size:10px"></i> ${new Date(e.timestamp).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          ${e.entity_type ? `&nbsp;·&nbsp; <span class="b b-gray" style="font-size:10px">${e.entity_type}</span>` : ''}
+        </div>
+      </div>
+      ${e.undo_data && role.isOwner ? `<button class="btn btn-sm btn-danger" onclick="undoHistoryEntry('${e.id}')"><i class="ti ti-rotate-left"></i> Отменить</button>` : ''}
+    </div>`).join('');
 }
 
-export function undoHistory(id) {
-  const ok = undoHistoryEntry(id);
-  if (ok) {
-    toast('Изменение отменено');
+export async function undoHistoryEntry(id) {
+  const entry = (CACHE.history_log || []).find(e => e.id === id);
+  if (!entry || !entry.undo_data) return;
+  if (!confirm(`Отменить действие: "${entry.description || entry.action}"?\n\nЭто восстановит предыдущее состояние данных.`)) return;
+  try {
+    const { table, action, record_id, old_data } = entry.undo_data;
+    if (action === 'insert') {
+      await dbDelete(table, record_id);
+      if (CACHE[table]) CACHE[table] = CACHE[table].filter(r => r.id !== record_id);
+    } else if (action === 'update' && old_data) {
+      await dbUpdate(table, record_id, old_data);
+      if (CACHE[table]) CACHE[table] = CACHE[table].map(r => r.id === record_id ? { ...r, ...old_data } : r);
+    } else if (action === 'delete' && old_data) {
+      await dbInsert(table, old_data);
+      if (CACHE[table]) CACHE[table].push(old_data);
+    }
+    await addHistoryEntry('undo', `Отменено: ${entry.description || entry.action}`, entry.entity_type, entry.entity_id, null);
     renderHistoryPage();
-  } else {
-    toast('Не удалось отменить');
-  }
+    toast('Действие отменено');
+  } catch (err) { toast('Ошибка при отмене: ' + err.message); }
 }

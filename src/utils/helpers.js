@@ -1,84 +1,46 @@
-let _uidCounter = Date.now();
-export const uid = () => `id_${(++_uidCounter).toString(36)}`;
+export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+export const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
+export const fmtDate = (s) => { if (!s) return '—'; const d = new Date(s); return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' }); };
+export const fmtDateLong = (s) => { if (!s) return '—'; const d = new Date(s + 'T00:00:00'); return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }); };
+export const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+export const dateStr = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+export const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+export const lastMonth = () => { const d = new Date(); d.setMonth(d.getMonth()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+export const daysLeft = (s) => { if (!s) return null; const diff = (new Date(s + 'T00:00:00') - new Date()) / 86400000; return Math.round(diff); };
+export const g = (id) => (document.getElementById(id) || {}).value || '';
 
-export const fmt = (n) => new Intl.NumberFormat('ru-RU').format(Math.round(n || 0));
-
-export const fmtDate = (iso) => {
-  if (!iso) return '—';
-  const [y, m, d] = iso.split('-');
-  return `${d}.${m}.${y}`;
-};
-
-export const fmtDateTime = (iso) => {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
-
-export const today = () => new Date().toISOString().slice(0, 10);
-
-export const thisMonth = () => new Date().toISOString().slice(0, 7);
-
-export const lastMonth = () => {
-  const d = new Date();
-  d.setMonth(d.getMonth() - 1);
-  return d.toISOString().slice(0, 7);
-};
-
-export const daysLeft = (iso) => {
-  if (!iso) return null;
-  const diff = (new Date(iso) - new Date(today())) / 86400000;
-  return Math.ceil(diff);
-};
-
-export const riskDot = (score) => {
-  if (score >= 70) return '<span class="dot red"></span>';
-  if (score >= 40) return '<span class="dot amber"></span>';
-  return '<span class="dot green"></span>';
-};
-
-export const groupShort = (name) => name ? name.slice(0, 2).toUpperCase() : '??';
-
-export const g = (id) => document.getElementById(id);
+export const ALL_PAGES = [
+  { id: 'dashboard',    label: 'Дашборд' },
+  { id: 'history',      label: 'История' },
+  { id: 'students',     label: 'CRM' },
+  { id: 'crm_students', label: 'Ученики' },
+  { id: 'groups',       label: 'Группы' },
+  { id: 'lessons_cal',  label: 'Занятия' },
+  { id: 'income',       label: 'Доходы' },
+  { id: 'expenses',     label: 'Расходы' },
+  { id: 'analytics',    label: 'Аналитика' },
+  { id: 'tasks',        label: 'Задачи' },
+  { id: 'access',       label: 'Доступы' },
+];
 
 export const STATUS_CONFIG = {
-  active:    { label: 'Активный',    cls: 'b-g'    },
-  trial:     { label: 'Пробный',     cls: 'b-bl'   },
-  paused:    { label: 'Пауза',       cls: 'b-a'    },
-  left:      { label: 'Ушёл',        cls: 'b-r'    },
-  lead:      { label: 'Лид',         cls: 'b-gray' },
-  graduated: { label: 'Выпускник',   cls: 'b-gray' },
+  lead:             { label: 'Лид',                   cls: 'b-gray', icon: 'ti-user-question' },
+  trial_scheduled:  { label: 'Пробник назначен',       cls: 'b-bl',   icon: 'ti-calendar-check' },
+  trial_done:       { label: 'Пробник проведён',        cls: 'b-a',    icon: 'ti-star' },
+  trial:            { label: 'Пробное',                cls: 'b-bl',   icon: 'ti-user-check' },
+  active:           { label: 'Занимается',             cls: 'b-g',    icon: 'ti-user-star' },
+  exam_passed:      { label: 'Сдал экзамен',           cls: 'b-a',    icon: 'ti-medal' },
+  stopped:          { label: 'Отказался от занятий',   cls: 'b-r',    icon: 'ti-user-x' },
+  refused:          { label: 'Отказался заниматься',   cls: 'b-gray', icon: 'ti-user-off' },
 };
 
 export const PIPELINE_STAGES = [
-  { id: 'lead',      label: 'Лиды'        },
-  { id: 'trial',     label: 'Пробный'     },
-  { id: 'active',    label: 'Активные'    },
-  { id: 'paused',    label: 'Пауза'       },
-  { id: 'left',      label: 'Ушли'        },
+  { id: 'lead',            label: 'Лид',                  color: '#64748b', bg: '#f8fafc' },
+  { id: 'trial_scheduled', label: 'Пробник назначен',      color: '#7c3aed', bg: '#f5f3ff' },
+  { id: 'trial_done',      label: 'Пробник проведён',       color: '#d97706', bg: '#fffbeb' },
+  { id: 'active',          label: 'Занимается',            color: '#05337D', bg: '#dde6f5' },
+  { id: 'exam_passed',     label: 'Сдал экзамен',          color: '#15803d', bg: '#f0fdf4' },
+  { id: 'stopped',         label: 'Отказался от занятий',  color: '#b91c1c', bg: '#fef2f2' },
 ];
 
-export const ALL_PAGES = [
-  'dashboard','history','crm_students','students','groups',
-  'income','expenses','tasks','lessons_cal','analytics','access',
-];
-
-export const DIFFICULTY_CONFIG = {
-  easy: { label: 'Лёгкий', cls: 'chip-easy' },
-  med:  { label: 'Средний', cls: 'chip-med' },
-  hard: { label: 'Сложный', cls: 'chip-hard' },
-};
-
-export const MOOD_EMOJI = { 5: '😄', 4: '🙂', 3: '😐', 2: '😕', 1: '😞' };
-
-export const HW_CONFIG = {
-  done:    { label: 'Сделано',   cls: 'hw-done'    },
-  partial: { label: 'Частично', cls: 'hw-partial'  },
-  miss:    { label: 'Не сделано', cls: 'hw-miss'   },
-  null:    { label: '—',         cls: 'hw-none'    },
-};
-
-export const showLoading = (on) => {
-  const el = document.getElementById('loading');
-  if (el) el.style.display = on ? 'flex' : 'none';
-};
+export const GROUP_COLORS = ['#2563eb','#16a34a','#d97706','#7c3aed','#db2777','#0891b2','#ea580c','#0f766e','#9333ea','#dc2626'];

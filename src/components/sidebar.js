@@ -13,9 +13,11 @@ export function initSidebar() {
 export function renderSetupRoles() {
   const container = document.getElementById('setup-roles');
   if (!container) return;
-  container.innerHTML = CACHE.roles.map(r => `
-    <button class="btn btn-p" onclick="window.__selectRole('${r.id}')">
-      ${r.name}
-    </button>
+  const ownerBtn = `<button class="btn btn-p" style="background:var(--surface2);color:var(--fg);border:1px solid var(--border)" onclick="selectRole('owner')">
+    <i class="ti ti-crown" style="margin-right:6px"></i>Владелец
+  </button>`;
+  const roleBtns = CACHE.roles.map(r => `
+    <button class="btn btn-p" onclick="selectRole('${r.id}')">${r.name}</button>
   `).join('');
+  container.innerHTML = ownerBtn + roleBtns;
 }

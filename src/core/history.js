@@ -1,35 +1,44 @@
 import { CACHE, dbInsert, dbUpdate, dbDelete } from './store.js';
-import { uid, fmtDateTime } from '../utils/helpers.js';
+import { uid } from '../utils/helpers.js';
 import { state } from './state.js';
 
-export function addHistoryEntry({ action, table, recordId, before, after, label }) {
-  return dbInsert('history', {
+export async function addHistoryEntry(action, description, entityType, entityId, undoData) {
+  const entry = {
     id: uid(),
-    action,      // 'create' | 'update' | 'delete'
-    table,
-    recordId,
-    before: before || null,
-    after: after || null,
-    label,
-    actor: state.currentRole ? state.currentRole.name : 'Система',
-    createdAt: new Date().toISOString(),
-  });
+    action,
+    description,
+    entity_type: entityType || '',
+    entity_id: entityId || '',
+    actor: state.currentRole ? state.currentRole.name : 'Владелец',
+    timestamp: new Date().toISOString(),
+    undo_data: undoData || null,
+  };
+  await dbInsert('history_log', entry);
+  if (!CACHE.history_log) CACHE.history_log = [];
+  CACHE.history_log.unshift(entry);
+  if (CACHE.history_log.length > 500) CACHE.history_log.pop();
 }
 
-export function undoHistoryEntry(entryId) {
-  const entry = CACHE.history.find(h => h.id === entryId);
-  if (!entry || entry.undone) return false;
-
-  if (entry.action === 'create') {
-    dbDelete(entry.table, entry.recordId);
-  } else if (entry.action === 'delete' && entry.before) {
-    CACHE[entry.table].push(entry.before);
-    const { dbInsert: _ins, ...rest } = { dbInsert };
-    dbInsert(entry.table, entry.before);
-  } else if (entry.action === 'update' && entry.before) {
-    dbUpdate(entry.table, entry.recordId, entry.before);
+export async function undoHistoryEntry(id) {
+  const entry = (CACHE.history_log || []).find(e => e.id === id);
+  if (!entry || !entry.undo_data) return;
+  if (!confirm(`Отменить действие: "${entry.description || entry.action}"?\n\nЭто восстановит предыдущее состояние данных.`)) return;
+  try {
+    const { table, action, record_id, old_data } = entry.undo_data;
+    if (action === 'insert') {
+      await dbDelete(table, record_id);
+      if (CACHE[table]) CACHE[table] = CACHE[table].filter(r => r.id !== record_id);
+    } else if (action === 'update' && old_data) {
+      await dbUpdate(table, record_id, old_data);
+      if (CACHE[table]) CACHE[table] = CACHE[table].map(r => r.id === record_id ? { ...r, ...old_data } : r);
+    } else if (action === 'delete' && old_data) {
+      await dbInsert(table, old_data);
+      if (CACHE[table]) CACHE[table].push(old_data);
+    }
+    await addHistoryEntry('undo', `Отменено: ${entry.description || entry.action}`, entry.entity_type, entry.entity_id, null);
+    return true;
+  } catch (err) {
+    console.error('Undo error:', err);
+    return false;
   }
-
-  dbUpdate('history', entryId, { undone: true, undoneAt: new Date().toISOString() });
-  return true;
 }

@@ -1,143 +1,135 @@
-import { CACHE, dbInsert, dbUpdate, dbDelete, dbFind, expenseCats } from '../core/store.js';
-import { fmt, fmtDate, today, thisMonth, lastMonth } from '../utils/helpers.js';
+import { CACHE, dbInsert, dbDelete } from '../core/store.js';
+import { state } from '../core/state.js';
+import { uid, fmt, fmtDate, today, thisMonth, lastMonth, g } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { addHistoryEntry } from '../core/history.js';
 
+const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+function expenseCats() {
+  try { return JSON.parse(localStorage.getItem('tutoros_expense_cats')) || ['Платформы','Реклама','Материалы','Оборудование','Прочее']; }
+  catch { return ['Платформы','Реклама','Материалы','Оборудование','Прочее']; }
+}
+function saveExpenseCategories(cats) { localStorage.setItem('tutoros_expense_cats', JSON.stringify(cats)); }
+
 export function renderExpenses() {
-  const el = document.getElementById('expenses-content');
-  if (!el) return;
+  const total = (CACHE.expenses || []).reduce((s, e) => s + e.amount, 0);
+  const curM = thisMonth();
+  const thisM = (CACHE.expenses || []).filter(e => e.date?.startsWith(curM)).reduce((s, e) => s + e.amount, 0);
+  const metricsEl = document.getElementById('expense-metrics');
+  if (metricsEl) metricsEl.innerHTML = `
+    <div class="met"><div class="met-label">Всего расходов</div><div class="met-val">${fmt(total)} ₽</div></div>
+    <div class="met"><div class="met-label">Этот месяц</div><div class="met-val">${fmt(thisM)} ₽</div></div>`;
 
-  const mo = thisMonth();
-  const all = [...CACHE.expenses].sort((a,b) => b.date.localeCompare(a.date));
-  const moExp = all.filter(e => e.date?.startsWith(mo));
-  const total = moExp.reduce((a, e) => a + (e.amount || 0), 0);
-  const lastMoTotal = all.filter(e => e.date?.startsWith(lastMonth())).reduce((a, e) => a + (e.amount || 0), 0);
+  const tbody = document.getElementById('expenses-tbody');
+  const empty = document.getElementById('expenses-empty');
+  if (!tbody) return;
+  if (!(CACHE.expenses || []).length) { tbody.innerHTML = ''; if (empty) empty.style.display = ''; return; }
+  if (empty) empty.style.display = 'none';
 
-  // By category this month
-  const byCat = {};
-  moExp.forEach(e => { byCat[e.category] = (byCat[e.category] || 0) + (e.amount || 0); });
+  const sorted = [...(CACHE.expenses || [])].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+  const groups = {};
+  sorted.forEach(e => {
+    const key = e.date ? e.date.slice(0, 7) : '0000-00';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(e);
+  });
 
-  el.innerHTML = `
-    <div class="an-grid" style="margin-bottom:20px">
-      <div class="an-met ${total <= lastMoTotal ? 'good' : 'warn'}">
-        <div class="an-label">Расходы (месяц)</div>
-        <div class="an-val">${fmt(total)} ₽</div>
-        ${lastMoTotal ? `<div class="an-sub">${total <= lastMoTotal ? '▼' : '▲'} ${fmt(Math.abs(total - lastMoTotal))} к прошлому</div>` : ''}
-      </div>
-      ${expenseCats.filter(c => byCat[c.id]).map(c => `
-        <div class="an-met">
-          <div class="an-label">${c.label}</div>
-          <div class="an-val" style="font-size:18px">${fmt(byCat[c.id])} ₽</div>
-          <div class="an-sub">${Math.round((byCat[c.id]/total)*100)}% от расходов</div>
-        </div>
-      `).join('')}
-    </div>
-
-    <div class="ph">
-      <span class="ph-title">Все расходы</span>
-      <button class="btn btn-p btn-sm" onclick="window.__openExpenseModal()">+ Расход</button>
-    </div>
-
-    <table style="width:100%;border-collapse:collapse" class="tbl-wrap">
-      <thead><tr>
-        <th>Дата</th><th>Категория</th><th>Поставщик</th><th>Сумма</th><th>Комментарий</th><th></th>
-      </tr></thead>
-      <tbody>
-        ${all.slice(0, 50).map(e => {
-          const cat = expenseCats.find(c => c.id === e.category);
-          return `<tr>
-            <td>${fmtDate(e.date)}</td>
-            <td><span class="b b-gray">${cat?.label || e.category || '—'}</span></td>
-            <td>${e.vendor || '—'}</td>
-            <td class="amount-neg">${fmt(e.amount)} ₽</td>
-            <td style="color:var(--muted)">${e.comment || ''}</td>
-            <td>
-              <button class="btn btn-sm" onclick="window.__openExpenseModal('${e.id}')">✏️</button>
-              <button class="btn btn-sm btn-danger" onclick="window.__deleteExpense('${e.id}')">✕</button>
-            </td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-  `;
+  const role = state.currentRole || {};
+  const canOwner = role.isOwner;
+  tbody.innerHTML = Object.entries(groups).map(([key, items]) => {
+    const [year, mon] = key.split('-');
+    const monthTotal = items.reduce((s, e) => s + e.amount, 0);
+    const header = `<tr>
+      <td colspan="5" style="background:var(--surface2);padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)">
+        ${MONTH_NAMES[+mon - 1]} ${year} <span style="font-weight:400;color:var(--hint);margin-left:8px">итого: −${fmt(monthTotal)} ₽</span>
+      </td>
+    </tr>`;
+    const rows = items.map(e => `<tr>
+      <td>${fmtDate(e.date)}</td><td><span class="b b-gray">${e.category}</span></td>
+      <td style="color:var(--muted)">${e.note || ''}</td>
+      <td class="amount-neg">−${fmt(e.amount)} ₽</td>
+      <td>${canOwner ? `<button class="btn btn-sm btn-icon" onclick="deleteExpense('${e.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}</td>
+    </tr>`).join('');
+    return header + rows;
+  }).join('');
 }
 
-export function openExpenseModal(id = null) {
-  const e = id ? dbFind('expenses', id) : null;
-  const isMkt = e?.category === 'marketing';
-
-  modal('expense-modal', `
-    <div class="modal-title">${e ? 'Редактировать расход' : 'Новый расход'}</div>
+export function openExpenseModal() {
+  const todayStr = today();
+  const cats = expenseCats();
+  const catOpts = cats.map(c => `<option>${c}</option>`).join('');
+  modal(`<div class="modal"><div class="modal-title">Добавить расход</div>
     <div class="form-row">
-      <div class="fg"><label>Категория *</label>
-        <select class="fi" id="em-cat" onchange="window.__toggleChannelField()">
-          ${expenseCats.map(c => `<option value="${c.id}" ${e?.category===c.id?'selected':''}>${c.label}</option>`).join('')}
-        </select>
+      <div class="fg"><label>Дата</label><input class="fi" type="date" id="ef-date" value="${todayStr}"></div>
+      <div class="fg">
+        <label>Категория</label>
+        <div style="display:flex;gap:6px">
+          <select class="fi" id="ef-cat" style="flex:1" onchange="toggleChannelField()">${catOpts}</select>
+          <button class="btn btn-sm" onclick="addExpenseCategory()" title="Добавить категорию" style="flex-shrink:0;padding:0 10px"><i class="ti ti-plus"></i></button>
+        </div>
       </div>
-      <div class="fg"><label>Сумма (₽) *</label><input class="fi" id="em-amount" type="number" value="${e?.amount || ''}"></div>
     </div>
     <div class="form-row">
-      <div class="fg"><label>Поставщик</label><input class="fi" id="em-vendor" value="${e?.vendor || ''}"></div>
-      <div class="fg"><label>Дата</label><input class="fi" id="em-date" type="date" value="${e?.date || today()}"></div>
+      <div class="fg"><label>Сумма ₽</label><input class="fi" type="number" id="ef-amount"></div>
+      <div class="fg"><label>Комментарий</label><input class="fi" id="ef-note"></div>
     </div>
-    <div class="fg" id="em-channel-wrap" style="${isMkt ? '' : 'display:none'}">
-      <label>Канал (маркетинг)</label>
-      <select class="fi" id="em-channel">
-        <option value="">— выберите —</option>
-        <option value="yandex" ${e?.channel==='yandex'?'selected':''}>Яндекс Директ</option>
-        <option value="vk" ${e?.channel==='vk'?'selected':''}>ВКонтакте</option>
-        <option value="telegram" ${e?.channel==='telegram'?'selected':''}>Telegram Ads</option>
-        <option value="instagram" ${e?.channel==='instagram'?'selected':''}>Instagram</option>
-        <option value="seo" ${e?.channel==='seo'?'selected':''}>SEO</option>
-        <option value="other" ${e?.channel==='other'?'selected':''}>Прочее</option>
+    <div class="fg" id="ef-channel-row" style="margin-bottom:10px;display:none">
+      <label>Канал привлечения <span style="color:var(--accent-mid);font-size:11px">(для CAC-аналитики)</span></label>
+      <select class="fi" id="ef-channel">
+        <option value="">— Не указан —</option>
+        <option>Авито</option>
+        <option>Сарафан</option>
+        <option>Telegram</option>
+        <option>Профи.ру</option>
+        <option>Instagram</option>
+        <option>ВКонтакте</option>
+        <option>Другое</option>
       </select>
     </div>
-    <div class="fg"><label>Комментарий</label><input class="fi" id="em-comment" value="${e?.comment || ''}"></div>
-    <div class="modal-footer">
-      ${e ? `<button class="btn btn-danger" onclick="window.__deleteExpense('${e.id}')">Удалить</button>` : ''}
-      <button class="btn" onclick="window.__closeModal()">Отмена</button>
-      <button class="btn btn-p" onclick="window.__saveExpense('${id||''}')">Сохранить</button>
-    </div>
-  `);
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Отмена</button><button class="btn btn-p" onclick="saveExpense()">Сохранить</button></div>
+  </div>`);
+  toggleChannelField();
 }
 
 export function toggleChannelField() {
-  const cat = document.getElementById('em-cat')?.value;
-  const wrap = document.getElementById('em-channel-wrap');
-  if (wrap) wrap.style.display = cat === 'marketing' ? '' : 'none';
+  const cat = (document.getElementById('ef-cat') || {}).value || '';
+  const row = document.getElementById('ef-channel-row');
+  if (row) row.style.display = cat === 'Реклама' ? '' : 'none';
 }
 
-export function saveExpense(id) {
-  const amount = +document.getElementById('em-amount')?.value;
-  if (!amount) { toast('Введите сумму'); return; }
-  const patch = {
-    category: document.getElementById('em-cat')?.value || 'other',
-    amount,
-    vendor: document.getElementById('em-vendor')?.value?.trim() || '',
-    date: document.getElementById('em-date')?.value || today(),
-    channel: document.getElementById('em-channel')?.value || null,
-    comment: document.getElementById('em-comment')?.value?.trim() || '',
-  };
-  if (id) {
-    const before = dbFind('expenses', id);
-    dbUpdate('expenses', id, patch);
-    addHistoryEntry({ action: 'update', table: 'expenses', recordId: id, before, label: `Расход обновлён: ${fmt(amount)} ₽` });
-  } else {
-    const row = dbInsert('expenses', patch);
-    addHistoryEntry({ action: 'create', table: 'expenses', recordId: row.id, label: `Расход ${fmt(amount)} ₽ — ${patch.vendor || patch.category}` });
-  }
-  closeModal();
-  toast('Сохранено');
-  renderExpenses();
+export function addExpenseCategory() {
+  const name = prompt('Название новой категории:');
+  if (!name || !name.trim()) return;
+  const cats = expenseCats();
+  if (cats.includes(name.trim())) { toast('Такая категория уже есть'); return; }
+  cats.push(name.trim());
+  saveExpenseCategories(cats);
+  const sel = document.getElementById('ef-cat');
+  if (sel) { const opt = document.createElement('option'); opt.textContent = name.trim(); sel.appendChild(opt); sel.value = name.trim(); }
+  toast('Категория добавлена');
 }
 
-export function deleteExpense(id) {
-  if (!confirm('Удалить расход?')) return;
-  const e = dbFind('expenses', id);
-  dbDelete('expenses', id);
-  addHistoryEntry({ action: 'delete', table: 'expenses', recordId: id, before: e, label: `Расход удалён: ${fmt(e?.amount)} ₽` });
-  closeModal();
-  toast('Удалено');
-  renderExpenses();
+export async function saveExpense() {
+  const cat = g('ef-cat');
+  const channel = cat === 'Реклама' ? ((document.getElementById('ef-channel') || {}).value || '') : '';
+  const e = { id: uid(), date: g('ef-date'), category: cat, amount: +g('ef-amount'), note: g('ef-note'), channel };
+  if (!e.amount) { toast('Введите сумму'); return; }
+  try {
+    await dbInsert('expenses', e);
+    if (!CACHE.expenses) CACHE.expenses = [];
+    CACHE.expenses.unshift(e);
+    await addHistoryEntry('insert', `Расход −${fmt(e.amount)} ₽ · ${e.category}${e.note ? ' (' + e.note + ')' : ''}`, 'expense', e.id, { table: 'expenses', action: 'insert', record_id: e.id, old_data: null });
+    closeModal(); renderExpenses(); toast('Расход добавлен');
+  } catch (err) { toast('Ошибка: ' + err.message); }
+}
+
+export async function deleteExpense(id) {
+  if (!confirm('Удалить?')) return;
+  try {
+    await dbDelete('expenses', id);
+    CACHE.expenses = (CACHE.expenses || []).filter(x => x.id !== id);
+    renderExpenses(); toast('Удалено');
+  } catch (e) { toast('Ошибка: ' + e.message); }
 }

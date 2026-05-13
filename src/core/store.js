@@ -5,27 +5,35 @@ import { uid } from '../utils/helpers.js';
 export const CACHE = {
   students: [],
   groups: [],
-  lessons: [],
   payments: [],
   expenses: [],
+  modules: [],
   tasks: [],
   roles: [],
-  history: [],
+  folders: [],
+  lessons: [],
+  atasks: [],
   events: [],
+  student_notes: [],
+  hw_submissions: [],
+  history_log: [],
 };
 
-export const TABLES = ['students','groups','lessons','payments','expenses','tasks','roles','history','events'];
+export const TABLES = ['groups','students','payments','expenses','modules','tasks','roles','folders','lessons','atasks','events','student_notes','hw_submissions','history_log'];
 
 const KEY = (t) => `tutoros_${t}`;
 
-export const expenseCats = [
-  { id: 'marketing',   label: 'Маркетинг'     },
-  { id: 'salary',      label: 'Зарплата'      },
-  { id: 'software',    label: 'ПО/Сервисы'    },
-  { id: 'rent',        label: 'Аренда'        },
-  { id: 'materials',   label: 'Материалы'     },
-  { id: 'other',       label: 'Прочее'        },
-];
+export function getExpenseCategories() {
+  try { return JSON.parse(localStorage.getItem('tutoros_expense_cats') || 'null'); } catch(e) { return null; }
+}
+
+export function saveExpenseCategories(cats) {
+  localStorage.setItem('tutoros_expense_cats', JSON.stringify(cats));
+}
+
+export function expenseCats() {
+  return getExpenseCategories() || ['Платформы', 'Реклама', 'Материалы', 'Оборудование', 'Прочее'];
+}
 
 export function loadAll() {
   for (const t of TABLES) {
@@ -38,24 +46,20 @@ function save(table) {
   localStorage.setItem(KEY(table), JSON.stringify(CACHE[table]));
 }
 
-export function dbInsert(table, record) {
-  const row = { ...record, id: record.id || uid(), createdAt: record.createdAt || new Date().toISOString() };
-  CACHE[table].push(row);
-  save(table);
-  return row;
+export async function dbInsert(table, record) {
+  const rows = JSON.parse(localStorage.getItem(KEY(table)) || '[]');
+  rows.push(record);
+  localStorage.setItem(KEY(table), JSON.stringify(rows));
 }
 
-export function dbUpdate(table, id, patch) {
-  const idx = CACHE[table].findIndex(r => r.id === id);
-  if (idx === -1) return null;
-  CACHE[table][idx] = { ...CACHE[table][idx], ...patch };
-  save(table);
-  return CACHE[table][idx];
+export async function dbUpdate(table, id, patch) {
+  const rows = (JSON.parse(localStorage.getItem(KEY(table)) || '[]')).map(r => r.id === id ? { ...r, ...patch } : r);
+  localStorage.setItem(KEY(table), JSON.stringify(rows));
 }
 
-export function dbDelete(table, id) {
-  CACHE[table] = CACHE[table].filter(r => r.id !== id);
-  save(table);
+export async function dbDelete(table, id) {
+  const rows = (JSON.parse(localStorage.getItem(KEY(table)) || '[]')).filter(r => r.id !== id);
+  localStorage.setItem(KEY(table), JSON.stringify(rows));
 }
 
 export function dbFind(table, id) {
@@ -63,20 +67,16 @@ export function dbFind(table, id) {
 }
 
 export function initLocalStorage() {
-  const hasData = localStorage.getItem(KEY('students'));
-  if (!hasData) {
-    for (const t of TABLES) {
-      if (SEED[t] && SEED[t].length) {
-        localStorage.setItem(KEY(t), JSON.stringify(SEED[t]));
-      }
-    }
-  }
+  // Demo mode: always reseed so relative dates stay fresh on every load
+  TABLES.forEach(t => {
+    const data = SEED[t] || [];
+    localStorage.setItem(KEY(t), JSON.stringify(data));
+  });
   loadAll();
 }
 
 export function clearDemoData() {
-  for (const t of TABLES) {
-    localStorage.removeItem(KEY(t));
-    CACHE[t] = [];
-  }
+  TABLES.forEach(t => {
+    localStorage.setItem(KEY(t), JSON.stringify(SEED[t] || []));
+  });
 }

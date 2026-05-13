@@ -1,138 +1,119 @@
-import { CACHE, dbInsert, dbUpdate, dbDelete, dbFind } from '../core/store.js';
-import { uid, fmt, fmtDate, today, thisMonth, lastMonth } from '../utils/helpers.js';
+import { CACHE, dbInsert, dbUpdate, dbDelete } from '../core/store.js';
+import { state } from '../core/state.js';
+import { uid, fmt, fmtDate, daysLeft, today, thisMonth, lastMonth, g } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { addHistoryEntry } from '../core/history.js';
+import { addEvent } from '../core/events.js';
+
+const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 
 export function renderIncome() {
-  const el = document.getElementById('income-content');
-  if (!el) return;
+  const total = (CACHE.payments || []).reduce((s, p) => s + p.amount, 0);
+  const curM = thisMonth();
+  const prevM = lastMonth();
+  const thisM = (CACHE.payments || []).filter(p => p.date?.startsWith(curM)).reduce((s, p) => s + p.amount, 0);
+  const lastM = (CACHE.payments || []).filter(p => p.date?.startsWith(prevM)).reduce((s, p) => s + p.amount, 0);
+  const metricsEl = document.getElementById('income-metrics');
+  if (metricsEl) metricsEl.innerHTML = `
+    <div class="met"><div class="met-label">Всего получено</div><div class="met-val">${fmt(total)} ₽</div></div>
+    <div class="met"><div class="met-label">Этот месяц</div><div class="met-val">${fmt(thisM)} ₽</div></div>
+    <div class="met"><div class="met-label">Прошлый месяц</div><div class="met-val">${fmt(lastM)} ₽</div></div>
+    <div class="met"><div class="met-label">Налог (4%)</div><div class="met-val">${fmt(thisM * 0.04)} ₽</div></div>`;
 
-  const mo = thisMonth();
-  const payments = [...CACHE.payments].sort((a,b) => b.date.localeCompare(a.date));
-  const moPayments = payments.filter(p => p.date?.startsWith(mo));
-  const total = moPayments.reduce((a, p) => a + (p.amount || 0), 0);
-  const lastMoPay = payments.filter(p => p.date?.startsWith(lastMonth())).reduce((a, p) => a + (p.amount || 0), 0);
-  const growth = lastMoPay ? Math.round((total - lastMoPay) / lastMoPay * 100) : null;
+  const sName = id => { const s = (CACHE.students || []).find(x => x.id === id); return s ? s.name : '—'; };
+  const tbody = document.getElementById('income-tbody');
+  const empty = document.getElementById('income-empty');
+  if (!tbody) return;
+  if (!(CACHE.payments || []).length) { tbody.innerHTML = ''; if (empty) empty.style.display = ''; return; }
+  if (empty) empty.style.display = 'none';
 
-  el.innerHTML = `
-    <div class="an-grid" style="margin-bottom:20px">
-      <div class="an-met ${total >= lastMoPay ? 'good' : 'warn'}">
-        <div class="an-label">Доходы (месяц)</div>
-        <div class="an-val">${fmt(total)} ₽</div>
-        ${growth !== null ? `<div class="an-sub">${growth >= 0 ? '+' : ''}${growth}% к прошлому месяцу</div>` : ''}
-      </div>
-      <div class="an-met">
-        <div class="an-label">Всего платежей</div>
-        <div class="an-val">${moPayments.length}</div>
-        <div class="an-sub">за текущий месяц</div>
-      </div>
-      <div class="an-met">
-        <div class="an-label">Средний платёж</div>
-        <div class="an-val">${moPayments.length ? fmt(total / moPayments.length) : 0} ₽</div>
-      </div>
-    </div>
+  const sorted = [...(CACHE.payments || [])].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+  const groups = {};
+  sorted.forEach(p => {
+    const key = p.date ? p.date.slice(0, 7) : '0000-00';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(p);
+  });
 
-    <div class="ph">
-      <span class="ph-title">Все платежи</span>
-      <button class="btn btn-p btn-sm" onclick="window.__openPaymentModal()">+ Платёж</button>
-    </div>
-
-    <table style="width:100%;border-collapse:collapse" class="tbl-wrap">
-      <thead><tr>
-        <th>Дата</th><th>Ученик</th><th>Сумма</th><th>Способ</th><th>Комментарий</th><th></th>
-      </tr></thead>
-      <tbody>
-        ${payments.slice(0, 50).map(p => {
-          const s = CACHE.students.find(st => st.id === p.studentId);
-          const METHOD = { card: '💳', cash: '💵', transfer: '🔁' };
-          return `<tr>
-            <td>${fmtDate(p.date)}</td>
-            <td>${s ? `<a href="#" onclick="window.__openStudentDetail('${s.id}');return false" style="color:var(--accent)">${s.name}</a>` : '—'}</td>
-            <td class="amount-pos">${fmt(p.amount)} ₽</td>
-            <td>${METHOD[p.method] || p.method || '—'}</td>
-            <td style="color:var(--muted)">${p.comment || ''}</td>
-            <td>
-              <button class="btn btn-sm" onclick="window.__openPaymentModal('${p.id}')">✏️</button>
-              <button class="btn btn-sm btn-danger" onclick="window.__deletePayment('${p.id}')">✕</button>
-            </td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-  `;
+  const role = state.currentRole || {};
+  const canOwner = role.isOwner;
+  tbody.innerHTML = Object.entries(groups).map(([key, items]) => {
+    const [year, mon] = key.split('-');
+    const monthTotal = items.reduce((s, p) => s + p.amount, 0);
+    const header = `<tr>
+      <td colspan="5" style="background:var(--surface2);padding:8px 10px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)">
+        ${MONTH_NAMES[+mon - 1]} ${year} <span style="font-weight:400;color:var(--hint);margin-left:8px">итого: +${fmt(monthTotal)} ₽</span>
+      </td>
+    </tr>`;
+    const rows = items.map(p => {
+      const subEnd = p.sub_end ? fmtDate(p.sub_end) : '—';
+      const subDl = p.sub_end ? daysLeft(p.sub_end) : null;
+      let subBadge;
+      if (!p.sub_end) subBadge = '<span style="color:var(--hint)">—</span>';
+      else if (subDl < 0) subBadge = `<span class="b b-r">Просрочен</span>`;
+      else if (subDl <= 7) subBadge = `<span class="b b-a">${subEnd}</span>`;
+      else subBadge = `<span class="b b-g">${subEnd}</span>`;
+      return `<tr>
+      <td>${fmtDate(p.date)}</td><td>${sName(p.student_id)}</td>
+      <td>${subBadge}</td>
+      <td class="amount-pos">+${fmt(p.amount)} ₽</td>
+      <td>${canOwner ? `<button class="btn btn-sm btn-icon" onclick="deletePayment('${p.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}</td>
+    </tr>`;
+    }).join('');
+    return header + rows;
+  }).join('');
 }
 
-export function openPaymentModal(id = null) {
-  const p = id ? dbFind('payments', id) : null;
-  modal('payment-modal', `
-    <div class="modal-title">${p ? 'Редактировать платёж' : 'Новый платёж'}</div>
+export function openPaymentModal() {
+  const sOpts = (CACHE.students || []).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  const todayStr = today();
+  const nextMonth = new Date(); nextMonth.setMonth(nextMonth.getMonth() + 1);
+  const nextMonthStr = nextMonth.toISOString().slice(0, 10);
+  modal(`<div class="modal"><div class="modal-title">Добавить платёж</div>
     <div class="form-row">
-      <div class="fg"><label>Ученик</label>
-        <select class="fi" id="im-student">
-          <option value="">— выберите —</option>
-          ${CACHE.students.map(s => `<option value="${s.id}" ${p?.studentId===s.id?'selected':''}>${s.name}</option>`).join('')}
-        </select>
-      </div>
-      <div class="fg"><label>Сумма (₽) *</label><input class="fi" id="im-amount" type="number" value="${p?.amount || ''}"></div>
+      <div class="fg"><label>Ученик</label><select class="fi" id="pf-student">${sOpts}</select></div>
+      <div class="fg"><label>Дата платежа</label><input class="fi" type="date" id="pf-date" value="${todayStr}"></div>
     </div>
     <div class="form-row">
-      <div class="fg"><label>Дата</label><input class="fi" id="im-date" type="date" value="${p?.date || today()}"></div>
-      <div class="fg"><label>Способ</label>
-        <select class="fi" id="im-method">
-          <option value="card" ${p?.method==='card'?'selected':''}>Карта</option>
-          <option value="cash" ${p?.method==='cash'?'selected':''}>Наличные</option>
-          <option value="transfer" ${p?.method==='transfer'?'selected':''}>Перевод</option>
-        </select>
+      <div class="fg"><label>Сумма ₽</label><input class="fi" type="number" id="pf-amount"></div>
+      <div class="fg"><label>Период</label><input class="fi" id="pf-period" placeholder="Май 2025"></div>
+    </div>
+    <div class="form-row">
+      <div class="fg" style="grid-column:1/-1">
+        <label>Абонемент действует до <span style="color:var(--accent-mid);font-weight:600">*</span></label>
+        <input class="fi" type="date" id="pf-sub-end" value="${nextMonthStr}">
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">Эта дата будет показана в CRM-таблице учеников как статус абонемента.</div>
       </div>
     </div>
-    <div class="fg"><label>Комментарий</label><input class="fi" id="im-comment" value="${p?.comment || ''}"></div>
-    <div class="modal-footer">
-      ${p ? `<button class="btn btn-danger" onclick="window.__deletePayment('${p.id}')">Удалить</button>` : ''}
-      <button class="btn" onclick="window.__closeModal()">Отмена</button>
-      <button class="btn btn-p" onclick="window.__savePayment('${id||''}')">Сохранить</button>
-    </div>
-  `);
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Отмена</button><button class="btn btn-p" onclick="savePayment()">Сохранить</button></div>
+  </div>`);
 }
 
-export function savePayment(id) {
-  const amount = +document.getElementById('im-amount')?.value;
-  if (!amount) { toast('Введите сумму'); return; }
-  const studentId = document.getElementById('im-student')?.value || null;
-  const date = document.getElementById('im-date')?.value || today();
-  const method = document.getElementById('im-method')?.value || 'card';
-  const comment = document.getElementById('im-comment')?.value?.trim() || '';
-
-  if (id) {
-    const before = dbFind('payments', id);
-    dbUpdate('payments', id, { studentId, amount, date, method, comment });
-    addHistoryEntry({ action: 'update', table: 'payments', recordId: id, before, label: `Платёж обновлён: ${fmt(amount)} ₽` });
-  } else {
-    const row = dbInsert('payments', { studentId, amount, date, method, comment });
-    // update student balance
-    if (studentId) {
-      const s = dbFind('students', studentId);
-      if (s) dbUpdate('students', studentId, { balance: (s.balance || 0) + amount, totalPaid: (s.totalPaid || 0) + amount });
-    }
-    addHistoryEntry({ action: 'create', table: 'payments', recordId: row.id, label: `Платёж ${fmt(amount)} ₽` });
-  }
-
-  closeModal();
-  toast('Сохранено');
-  renderIncome();
+export async function savePayment() {
+  const p = { id: uid(), student_id: g('pf-student'), date: g('pf-date'), amount: +g('pf-amount'), period: g('pf-period'), sub_end: g('pf-sub-end') || null };
+  if (!p.amount) { toast('Введите сумму'); return; }
+  try {
+    await dbInsert('payments', p);
+    const stu = (CACHE.students || []).find(s => s.id === p.student_id);
+    const updates = { paid: true };
+    if (stu && ['lead', 'trial_scheduled', 'trial_done', 'trial'].includes(stu.crm_status)) updates.crm_status = 'active';
+    await dbUpdate('students', p.student_id, updates);
+    if (!CACHE.payments) CACHE.payments = [];
+    CACHE.payments.unshift(p);
+    CACHE.students = (CACHE.students || []).map(s => s.id === p.student_id ? { ...s, ...updates } : s);
+    await addHistoryEntry('insert', `Платёж +${fmt(p.amount)} ₽ · ${stu ? stu.name : ''}`, 'payment', p.id, { table: 'payments', action: 'insert', record_id: p.id, old_data: null });
+    await addEvent('student', p.student_id, 'payment_added', { amount: p.amount });
+    if (stu && updates.crm_status) await addEvent('student', p.student_id, 'status_changed', { from: stu.crm_status, to: 'active' });
+    closeModal(); renderIncome(); toast('Платёж добавлен');
+  } catch (e) { toast('Ошибка: ' + e.message); }
 }
 
-export function deletePayment(id) {
+export async function deletePayment(id) {
   if (!confirm('Удалить платёж?')) return;
-  const p = dbFind('payments', id);
-  // reverse balance
-  if (p?.studentId) {
-    const s = dbFind('students', p.studentId);
-    if (s) dbUpdate('students', p.studentId, { balance: (s.balance || 0) - (p.amount || 0) });
-  }
-  dbDelete('payments', id);
-  addHistoryEntry({ action: 'delete', table: 'payments', recordId: id, before: p, label: `Платёж удалён: ${fmt(p?.amount)} ₽` });
-  closeModal();
-  toast('Удалено');
-  renderIncome();
+  try {
+    await dbDelete('payments', id);
+    CACHE.payments = (CACHE.payments || []).filter(x => x.id !== id);
+    renderIncome(); toast('Удалено');
+  } catch (e) { toast('Ошибка: ' + e.message); }
 }

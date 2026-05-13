@@ -1,102 +1,81 @@
-import { CACHE, dbInsert, dbUpdate, dbDelete, dbFind } from '../core/store.js';
-import { uid } from '../utils/helpers.js';
+import { CACHE, dbInsert, dbUpdate, dbDelete } from '../core/store.js';
+import { uid, g, ALL_PAGES } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
-import { selectRole } from '../core/auth.js';
-import { renderSetupRoles } from '../components/sidebar.js';
 
 export function renderAccess() {
-  const el = document.getElementById('access-content');
+  const el = document.getElementById('roles-list');
   if (!el) return;
-
-  el.innerHTML = `
-    <div class="ph">
-      <span class="ph-title">Роли и доступ</span>
-      <button class="btn btn-p btn-sm" onclick="window.__openRoleModal()">+ Роль</button>
-    </div>
-
-    <table style="width:100%;border-collapse:collapse" class="tbl-wrap">
-      <thead><tr>
-        <th>Имя</th><th>Тип доступа</th><th>PIN</th><th></th>
-      </tr></thead>
-      <tbody>
-        ${CACHE.roles.map(r => `
-          <tr>
-            <td><strong>${r.name}</strong></td>
-            <td><span class="b ${r.access==='admin'?'b-bl':'b-g'}">${r.access==='admin'?'Администратор':'Педагог'}</span></td>
-            <td><code style="background:var(--surface2);padding:2px 6px;border-radius:4px;font-size:12px">${r.pin}</code></td>
-            <td style="display:flex;gap:4px">
-              <button class="btn btn-sm" onclick="window.__openRoleModal('${r.id}')">✏️</button>
-              <button class="btn btn-sm" onclick="window.__selectRole('${r.id}')">Войти</button>
-              <button class="btn btn-sm btn-danger" onclick="window.__deleteRole('${r.id}')">✕</button>
-            </td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-
-    <div style="margin-top:24px">
-      <div class="an-section">Описание уровней доступа</div>
-      <div class="alert alert-b">
-        <i class="ph-bold ph-shield"></i>
+  if (!(CACHE.roles || []).length) { el.innerHTML = '<div class="empty">Ролей нет. Создайте первую для ассистента.</div>'; return; }
+  el.innerHTML = CACHE.roles.map(r => {
+    const pages = (r.pages || []).map(p => ALL_PAGES.find(x => x.id === p)?.label || p);
+    return `<div class="card">
+      <div class="card-header">
         <div>
-          <strong>Администратор</strong> — полный доступ: ученики, финансы, аналитика, настройки.<br>
-          <strong>Педагог</strong> — только свои ученики и расписание. Финансы скрыты.
+          <div style="font-size:14px;font-weight:600">${r.name}</div>
+          <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">${pages.map(p => `<span class="tag">${p}</span>`).join('')}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="b ${r.can_edit ? 'b-a' : 'b-gray'}">${r.can_edit ? 'Редактирование' : 'Только чтение'}</span>
+          <span class="b b-gray" title="PIN">🔑 ${r.pin || 'без PIN'}</span>
+          <button class="btn btn-sm btn-icon" onclick="editRole('${r.id}')"><i class="ti ti-edit"></i></button>
+          <button class="btn btn-sm btn-icon" onclick="deleteRole('${r.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
+  }).join('');
 }
 
-export function openRoleModal(id = null) {
-  const r = id ? dbFind('roles', id) : null;
-  modal('role-modal', `
-    <div class="modal-title">${r ? 'Редактировать роль' : 'Новая роль'}</div>
-    <div class="fg"><label>Имя *</label><input class="fi" id="rm-name" value="${r?.name || ''}" placeholder="Анна Петровна"></div>
-    <div class="fg"><label>PIN-код (4 цифры) *</label><input class="fi" id="rm-pin" maxlength="8" value="${r?.pin || ''}" placeholder="1234" type="password"></div>
-    <div class="fg"><label>Тип доступа</label>
-      <select class="fi" id="rm-access">
-        <option value="teacher" ${r?.access==='teacher'?'selected':''}>Педагог</option>
-        <option value="admin" ${r?.access==='admin'?'selected':''}>Администратор</option>
+export function openRoleModal(id) {
+  const r = id ? (CACHE.roles || []).find(x => x.id === id) : null;
+  const defaultPages = ['students', 'groups', 'tasks'];
+  const v = r || { name: '', pin: '', pages: defaultPages, can_edit: false };
+  modal(`<div class="modal"><div class="modal-title">${r ? 'Редактировать роль' : 'Новая роль'}</div>
+    <div class="form-row">
+      <div class="fg"><label>Название</label><input class="fi" id="rf-name" value="${v.name}" placeholder="Ассистент"></div>
+      <div class="fg"><label>PIN-код</label><input class="fi" id="rf-pin" value="${v.pin || ''}" placeholder="1234" maxlength="8"></div>
+    </div>
+    <div class="fg" style="margin-bottom:12px">
+      <label style="margin-bottom:6px;display:block">Права редактирования</label>
+      <select class="fi" id="rf-edit">
+        <option value="0" ${!v.can_edit ? 'selected' : ''}>Только просмотр</option>
+        <option value="1" ${v.can_edit ? 'selected' : ''}>Может добавлять / редактировать</option>
       </select>
     </div>
-    <div class="modal-footer">
-      ${r ? `<button class="btn btn-danger" onclick="window.__deleteRole('${r.id}')">Удалить</button>` : ''}
-      <button class="btn" onclick="window.__closeModal()">Отмена</button>
-      <button class="btn btn-p" onclick="window.__saveRole('${id||''}')">Сохранить</button>
+    <div class="fg">
+      <label style="margin-bottom:6px;display:block">Доступные разделы</label>
+      <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        ${ALL_PAGES.filter(p => p.id !== 'access').map(p => `<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:13px;background:var(--surface)">
+          <input type="checkbox" id="rp-${p.id}" ${(v.pages || []).includes(p.id) ? 'checked' : ''} style="accent-color:var(--accent)">
+          ${p.label}
+        </label>`).join('')}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:5px">Финансы (доходы, расходы) по умолчанию скрыты для ассистента.</div>
     </div>
-  `);
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Отмена</button><button class="btn btn-p" onclick="saveRole('${id || ''}')">Сохранить</button></div>
+  </div>`);
 }
 
-export function saveRole(id) {
-  const name = document.getElementById('rm-name')?.value?.trim();
-  const pin = document.getElementById('rm-pin')?.value?.trim();
-  if (!name || !pin) { toast('Заполните имя и PIN'); return; }
+export function editRole(id) { openRoleModal(id); }
 
-  const patch = {
-    name,
-    pin,
-    access: document.getElementById('rm-access')?.value || 'teacher',
-  };
-
-  if (id) {
-    dbUpdate('roles', id, patch);
-  } else {
-    dbInsert('roles', patch);
-  }
-
-  closeModal();
-  toast('Сохранено');
-  renderAccess();
-  renderSetupRoles();
+export async function saveRole(id) {
+  const pages = ALL_PAGES.map(p => p.id).filter(p => (document.getElementById('rp-' + p) || {}).checked);
+  const obj = { id: id || uid(), name: g('rf-name'), pin: g('rf-pin'), pages, can_edit: g('rf-edit') === '1' };
+  if (!obj.name) { toast('Введите название'); return; }
+  if (!pages.length) { toast('Выберите разделы'); return; }
+  try {
+    if (id) await dbUpdate('roles', id, obj); else await dbInsert('roles', obj);
+    if (id) CACHE.roles = (CACHE.roles || []).map(x => x.id === id ? obj : x);
+    else { if (!CACHE.roles) CACHE.roles = []; CACHE.roles.push(obj); }
+    closeModal(); renderAccess(); toast('Роль сохранена');
+  } catch (e) { toast('Ошибка: ' + e.message); }
 }
 
-export function deleteRole(id) {
-  if (CACHE.roles.length <= 1) { toast('Нельзя удалить последнюю роль'); return; }
+export async function deleteRole(id) {
   if (!confirm('Удалить роль?')) return;
-  dbDelete('roles', id);
-  closeModal();
-  toast('Роль удалена');
-  renderAccess();
-  renderSetupRoles();
+  try {
+    await dbDelete('roles', id);
+    CACHE.roles = (CACHE.roles || []).filter(x => x.id !== id);
+    renderAccess(); toast('Удалено');
+  } catch (e) { toast('Ошибка: ' + e.message); }
 }

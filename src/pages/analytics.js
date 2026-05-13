@@ -1,254 +1,386 @@
 import { CACHE } from '../core/store.js';
-import { state } from '../core/state.js';
-import { fmt, today, thisMonth, lastMonth } from '../utils/helpers.js';
-import { calcRiskScore } from '../core/risk.js';
+import { fmt, fmtDate, thisMonth, lastMonth } from '../utils/helpers.js';
 
-export function renderAnalytics() {
-  const el = document.getElementById('analytics-content');
-  if (!el) return;
-
-  const tab = state.anTab || 'overview';
-  const period = state.anPeriod || 'month';
-
-  el.innerHTML = `
-    <div class="an-period-bar" style="margin-bottom:12px">
-      <button class="${tab==='overview'?'on':''}" onclick="window.__setAnTab('overview')">Обзор</button>
-      <button class="${tab==='finance'?'on':''}" onclick="window.__setAnTab('finance')">Финансы</button>
-      <button class="${tab==='students'?'on':''}" onclick="window.__setAnTab('students')">Ученики</button>
-      <button class="${tab==='channels'?'on':''}" onclick="window.__setAnTab('channels')">Каналы</button>
-    </div>
-    <div id="an-tab-content"></div>
-  `;
-
-  renderAnTab(tab, period);
-}
+let _anTab = 'overview';
+let _anMonths = 1;
 
 export function setAnTab(tab) {
-  state.anTab = tab;
+  _anTab = tab;
+  document.querySelectorAll('#an-tab-toggle button').forEach((b, i) => b.classList.toggle('on', ['overview', 'channels', 'detail'][i] === tab));
+  ['overview', 'channels', 'detail'].forEach(t => {
+    const el = document.getElementById('an-tab-' + t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
   renderAnalytics();
 }
 
-export function setAnPeriod(period) {
-  state.anPeriod = period;
+export function setAnPeriod(months) {
+  _anMonths = months;
+  document.querySelectorAll('.an-period-bar button').forEach((b, i) => {
+    b.classList.toggle('on', [1, 3, 6, 12, 0][i] === months);
+  });
   renderAnalytics();
 }
 
-function renderAnTab(tab, period) {
-  const el = document.getElementById('an-tab-content');
-  if (!el) return;
+function anPeriodStart() {
+  if (_anMonths === 0) return new Date('2000-01-01');
+  const d = new Date();
+  d.setMonth(d.getMonth() - _anMonths);
+  return d;
+}
 
-  const mo = thisMonth();
-  const lastMo = lastMonth();
+function daysBetween(a, b) {
+  if (!a || !b) return null;
+  return Math.round((new Date(b) - new Date(a)) / 86400000);
+}
 
-  const students = CACHE.students;
-  const active = students.filter(s => s.status === 'active');
-  const payments = CACHE.payments;
-  const expenses = CACHE.expenses;
+function median(arr) {
+  if (!arr.length) return null;
+  const s = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+}
 
-  const moIncome = payments.filter(p => p.date?.startsWith(mo)).reduce((a,p)=>a+(p.amount||0),0);
-  const lastMoIncome = payments.filter(p => p.date?.startsWith(lastMo)).reduce((a,p)=>a+(p.amount||0),0);
-  const moExpenses = expenses.filter(e => e.date?.startsWith(mo)).reduce((a,e)=>a+(e.amount||0),0);
-  const profit = moIncome - moExpenses;
-  const margin = moIncome ? Math.round(profit / moIncome * 100) : 0;
-  const growth = lastMoIncome ? Math.round((moIncome - lastMoIncome) / lastMoIncome * 100) : null;
+export function renderAnalytics() {
+  const periodStart = anPeriodStart();
+  const students = CACHE.students || [];
+  const payments = CACHE.payments || [];
+  const expenses = CACHE.expenses || [];
 
-  if (tab === 'overview') {
-    const atRisk = active.filter(s => calcRiskScore(s) >= 40).length;
-    const highRisk = active.filter(s => calcRiskScore(s) >= 70).length;
-    const trials = students.filter(s => s.status === 'trial').length;
-    const converted = students.filter(s => s.status === 'active' && s.trialDate).length;
-    const trialConversion = (converted + trials) > 0 ? Math.round(converted / (converted + trials) * 100) : 0;
+  const periodPayments = payments.filter(p => new Date(p.date) >= periodStart);
+  const periodExpenses = expenses.filter(e => new Date(e.date) >= periodStart);
 
-    el.innerHTML = `
-      <div class="an-grid">
-        <div class="an-met ${moIncome >= lastMoIncome ? 'good' : 'warn'}">
-          <div class="an-label">Доходы (месяц)</div>
-          <div class="an-val">${fmt(moIncome)} ₽</div>
-          ${growth !== null ? `<div class="an-sub">${growth >= 0 ? '+' : ''}${growth}% к прошлому</div>` : ''}
-        </div>
-        <div class="an-met ${profit >= 0 ? 'good' : 'bad'}">
-          <div class="an-label">Прибыль</div>
-          <div class="an-val">${fmt(profit)} ₽</div>
-          <div class="an-sub">Маржа ${margin}%</div>
-        </div>
-        <div class="an-met">
-          <div class="an-label">Активных учеников</div>
-          <div class="an-val">${active.length}</div>
-        </div>
-        <div class="an-met ${highRisk > 0 ? 'bad' : atRisk > 0 ? 'warn' : 'good'}">
-          <div class="an-label">В зоне риска</div>
-          <div class="an-val">${atRisk}</div>
-          <div class="an-sub">${highRisk} — высокий риск</div>
-        </div>
-        <div class="an-met">
-          <div class="an-label">Конверсия пробных</div>
-          <div class="an-val">${trialConversion}%</div>
-          <div class="an-sub">${trials} пробных сейчас</div>
-        </div>
-      </div>
-
-      <div class="an-section">Здоровье бизнеса</div>
-      ${renderHealthBlock(active, moIncome, moExpenses)}
-
-      <div class="an-section">Воронка учеников</div>
-      ${renderFunnel(students)}
-    `;
-  } else if (tab === 'finance') {
-    el.innerHTML = `
-      <div class="an-grid">
-        <div class="an-met ${moIncome >= lastMoIncome ? 'good' : 'warn'}">
-          <div class="an-label">Доходы</div><div class="an-val">${fmt(moIncome)} ₽</div>
-        </div>
-        <div class="an-met warn">
-          <div class="an-label">Расходы</div><div class="an-val">${fmt(moExpenses)} ₽</div>
-        </div>
-        <div class="an-met ${profit >= 0 ? 'good' : 'bad'}">
-          <div class="an-label">Прибыль</div><div class="an-val">${fmt(profit)} ₽</div>
-          <div class="an-sub">Маржа ${margin}%</div>
-        </div>
-      </div>
-      <div class="an-section">MRR за последние 6 месяцев</div>
-      ${renderMrrBars()}
-    `;
-  } else if (tab === 'students') {
-    const retention = renderRetention(active);
-    el.innerHTML = `
-      <div class="an-grid">
-        <div class="an-met"><div class="an-label">Активных</div><div class="an-val">${active.length}</div></div>
-        <div class="an-met"><div class="an-label">Пробных</div><div class="an-val">${students.filter(s=>s.status==='trial').length}</div></div>
-        <div class="an-met"><div class="an-label">На паузе</div><div class="an-val">${students.filter(s=>s.status==='paused').length}</div></div>
-        <div class="an-met warn"><div class="an-label">Ушли</div><div class="an-val">${students.filter(s=>s.status==='left').length}</div></div>
-      </div>
-      <div class="an-section">Удержание (по педагогам)</div>
-      ${retention}
-    `;
-  } else if (tab === 'channels') {
-    el.innerHTML = `
-      <div class="an-section" style="margin-top:0">Маркетинговые расходы этого месяца</div>
-      ${renderChannelsTable()}
-    `;
+  function becameStatusInPeriod(s, status) {
+    const h = s.status_history || [];
+    if (h.length) return h.some(e => e.status === status && new Date(e.date) >= periodStart);
+    return new Date(s.created_at || '2000-01-01') >= periodStart;
   }
-}
 
-function renderHealthBlock(active, income, expenseTotal) {
-  const atRisk = active.filter(s => calcRiskScore(s) >= 40).length;
-  const riskScore = active.length ? Math.round((1 - atRisk / active.length) * 100) : 100;
-  const margin = income ? Math.round((income - expenseTotal) / income * 100) : 0;
-  const finScore = Math.max(0, Math.min(100, margin + 50));
-  const overall = Math.round((riskScore + finScore) / 2);
-  const color = overall >= 70 ? '#16a34a' : overall >= 50 ? '#ca8a04' : '#dc2626';
+  const newActiveInPeriod = students.filter(s => becameStatusInPeriod(s, 'active'));
+  const adSpend = periodExpenses.filter(e => e.category === 'Реклама').reduce((s, e) => s + e.amount, 0);
+  const cac = newActiveInPeriod.length > 0
+    ? (adSpend > 0 ? Math.round(adSpend / newActiveInPeriod.length) : 0)
+    : null;
 
-  return `<div class="health-block">
-    <div class="health-score-circle" style="background:${color}20;color:${color}">
-      <div class="hs-num">${overall}</div>
+  function studentActualLTV(s) {
+    return payments.filter(p => p.student_id === s.id).reduce((sum, p) => sum + p.amount, 0);
+  }
+  function studentLifetimeMonths(s) {
+    const h = s.status_history || [];
+    const startEntry = h.find(e => e.status === 'active');
+    const startDate = startEntry ? new Date(startEntry.date) : new Date(s.created_at || Date.now());
+    const end = s.left_at ? new Date(s.left_at) : new Date();
+    return Math.max(1, Math.round((end - startDate) / 2592000000));
+  }
+
+  const studentsWithPayments = students.filter(s => studentActualLTV(s) > 0);
+  const ltvSamples = studentsWithPayments.map(s => studentActualLTV(s));
+  const ltv = ltvSamples.length ? Math.round(ltvSamples.reduce((a, b) => a + b, 0) / ltvSamples.length) : null;
+
+  const finishedStudents = students.filter(s => ['stopped', 'refused', 'exam_passed'].includes(s.crm_status));
+  const lifetimeSamples = finishedStudents.map(studentLifetimeMonths);
+  const avgLifetime = lifetimeSamples.length ? Math.round(lifetimeSamples.reduce((a, b) => a + b, 0) / lifetimeSamples.length) : null;
+
+  const activeNow = students.filter(s => s.crm_status === 'active');
+  const studentsWithRate = activeNow.filter(s => s.price_per_hour && s.lessons_per_month);
+  const arpu = studentsWithRate.length
+    ? Math.round(studentsWithRate.reduce((s, st) => s + (st.price_per_hour * st.lessons_per_month), 0) / studentsWithRate.length)
+    : null;
+
+  const totalRevenuePeriod = periodPayments.reduce((s, p) => s + p.amount, 0);
+  const periodMonths = _anMonths || 12;
+  const totalLessonHours = activeNow.reduce((s, st) => s + (st.lessons_per_month || 0) * periodMonths, 0);
+  const hourlyRate = (totalRevenuePeriod > 0 && totalLessonHours > 0)
+    ? Math.round(totalRevenuePeriod / totalLessonHours)
+    : (arpu && activeNow.length
+      ? Math.round((arpu * activeNow.length) / activeNow.reduce((s, st) => s + (st.lessons_per_month || 0), 0))
+      : null);
+
+  const avgCheck = periodPayments.length ? Math.round(periodPayments.reduce((s, p) => s + p.amount, 0) / periodPayments.length) : null;
+
+  const churned = students.filter(s => ['stopped', 'refused'].includes(s.crm_status) && s.left_at && new Date(s.left_at) >= periodStart);
+  const churnBase = activeNow.length + churned.length;
+  const churnRate = churnBase ? Math.round(churned.length / churnBase * 100) : 0;
+
+  const allMonthsWithPayments = [...new Set(payments.map(p => p.date?.slice(0, 7)).filter(Boolean))].sort();
+  const lastMonthWithData = allMonthsWithPayments[allMonthsWithPayments.length - 1] || new Date().toISOString().slice(0, 7);
+  const prevMonthWithData = allMonthsWithPayments[allMonthsWithPayments.length - 2] || null;
+  const mrrDisplay = payments.filter(p => p.date?.startsWith(lastMonthWithData)).reduce((s, p) => s + p.amount, 0);
+  const mrrPrevDisplay = prevMonthWithData ? payments.filter(p => p.date?.startsWith(prevMonthWithData)).reduce((s, p) => s + p.amount, 0) : 0;
+  const mrrGrowth = mrrPrevDisplay ? Math.round((mrrDisplay - mrrPrevDisplay) / mrrPrevDisplay * 100) : null;
+
+  const totalExpPeriod = periodExpenses.reduce((s, e) => s + e.amount, 0);
+  const grossMargin = totalRevenuePeriod > 0 ? Math.round((totalRevenuePeriod - totalExpPeriod) / totalRevenuePeriod * 100) : null;
+
+  const ltvCac = (ltv && cac) ? +(ltv / cac).toFixed(1) : null;
+  const payback = (cac && arpu && arpu > 0) ? +(cac / arpu).toFixed(1) : null;
+
+  // Funnel
+  const allLeads = students.filter(s => becameStatusInPeriod(s, 'lead'));
+  const toTrialSched = students.filter(s => becameStatusInPeriod(s, 'trial_scheduled'));
+  const toTrialDone = students.filter(s => becameStatusInPeriod(s, 'trial_done') || becameStatusInPeriod(s, 'trial'));
+  const toActive = students.filter(s => becameStatusInPeriod(s, 'active'));
+  const toTrial = [...new Set([...toTrialSched, ...toTrialDone])];
+  const convLeadTrial = allLeads.length ? Math.round(toTrial.length / allLeads.length * 100) : 0;
+  const convTrialActive = toTrial.length ? Math.round(toActive.length / toTrial.length * 100) : 0;
+  const convLeadActive = allLeads.length ? Math.round(toActive.length / allLeads.length * 100) : 0;
+
+  // Overview metrics
+  const activeNowCount = activeNow.length;
+  const totalAll = students.length;
+  const projectedMRR = activeNow.reduce((sum, s) => sum + (s.price_per_hour || 0) * (s.lessons_per_month || 0), 0);
+  const unpaidNow = students.filter(s => s.crm_status === 'active' && !s.paid).length;
+  const mrrThisM = payments.filter(p => p.date?.startsWith(thisMonth())).reduce((s, p) => s + p.amount, 0);
+  const expThisM = expenses.filter(e => e.date?.startsWith(thisMonth())).reduce((s, e) => s + e.amount, 0);
+
+  const anOverview = document.getElementById('an-overview-metrics');
+  if (anOverview) anOverview.innerHTML = `
+    <div class="met"><div class="met-label">Активных учеников</div><div class="met-val">${activeNowCount}</div><div class="met-sub">всего ${totalAll} · ${(CACHE.groups || []).length} групп</div></div>
+    <div class="met"><div class="met-label">Доход этот месяц</div><div class="met-val">${fmt(mrrThisM)} ₽</div><div class="met-sub">расходы ${fmt(expThisM)} ₽</div></div>
+    <div class="met"><div class="met-label">Прибыль этот месяц</div><div class="met-val" style="color:var(--green)">${fmt(mrrThisM - expThisM)} ₽</div></div>
+    <div class="met"><div class="met-label">Планируемый MRR</div><div class="met-val">${fmt(projectedMRR)} ₽</div><div class="met-sub">по тарифам учеников</div></div>
+    <div class="met"><div class="met-label">Не оплатили</div><div class="met-val" style="color:${unpaidNow > 0 ? 'var(--red)' : 'inherit'}">${unpaidNow}</div><div class="met-sub">активных</div></div>
+    <div class="met"><div class="met-label">Лиды / Пробные</div><div class="met-val">${students.filter(s => s.crm_status === 'lead').length} / ${students.filter(s => s.crm_status === 'trial').length}</div><div class="met-sub">в воронке</div></div>`;
+
+  function ltvCacColor(v) { if (!v) return ''; if (v >= 3) return 'good'; if (v >= 1.5) return 'warn'; return 'bad'; }
+  function churnColor(v) { if (v <= 5) return 'good'; if (v <= 15) return 'warn'; return 'bad'; }
+  function marginColor(v) { if (v === null) return ''; if (v >= 50) return 'good'; if (v >= 20) return 'warn'; return 'bad'; }
+
+  const kpis = [
+    { label: 'CAC',         val: cac !== null ? (cac > 0 ? fmt(cac) + ' ₽' : '0 ₽') : '—', sub: cac !== null ? (cac === 0 ? `${newActiveInPeriod.length} уч., нет рекл. расходов` : `${newActiveInPeriod.length} новых уч.`) : 'нет новых учеников', hint: 'рекл. расходы / новых учеников', cls: '' },
+    { label: 'LTV',         val: ltv ? fmt(ltv) + ' ₽' : '—', sub: `ср. по ${ltvSamples.length} уч. с оплатами`, hint: 'среднее факт. платежей на ученика', cls: '' },
+    { label: 'LTV / CAC',   val: ltvCac ? '×' + ltvCac : '—', sub: ltvCac ? (ltvCac >= 3 ? 'Отлично ✓' : ltvCac >= 1.5 ? 'Норма' : 'Опасно ⚠') : 'нужны CAC и LTV', hint: 'норма: >3', cls: ltvCacColor(ltvCac) },
+    { label: 'Payback',     val: payback ? payback + ' мес' : '—', sub: 'окупаемость привлечения', hint: 'CAC / ARPU', cls: '' },
+    { label: 'ARPU',        val: arpu ? fmt(arpu) + ' ₽/мес' : '—', sub: `ср. по ${studentsWithRate.length} уч.`, hint: 'ср. (цена × занятий) по активным', cls: '' },
+    { label: 'Ст-ть часа',  val: hourlyRate ? fmt(hourlyRate) + ' ₽' : '—', sub: 'твой час', hint: 'выручка / кол-во занятий', cls: '' },
+    { label: 'Средний чек', val: avgCheck ? fmt(avgCheck) + ' ₽' : '—', sub: `${periodPayments.length} платежей`, hint: '', cls: '' },
+    { label: 'MRR',         val: fmt(mrrDisplay) + ' ₽', sub: mrrGrowth !== null ? (mrrGrowth >= 0 ? '↑ +' + mrrGrowth + '%' : '↓ ' + mrrGrowth + '%') : '', hint: 'последний месяц с данными', cls: mrrGrowth > 0 ? 'good' : mrrGrowth < -10 ? 'warn' : '' },
+    { label: 'Gross Margin', val: grossMargin !== null ? grossMargin + '%' : '—', sub: '(доход − расходы) / доход', hint: 'норма: >50%', cls: marginColor(grossMargin) },
+    { label: 'Churn rate',  val: churnRate + '%', sub: churned.length + ' ушли за период', hint: 'норма: <5%', cls: churnColor(churnRate) },
+    { label: 'Retention',   val: (100 - churnRate) + '%', sub: 'остаются', hint: '1 − churn rate', cls: (100 - churnRate) >= 90 ? 'good' : (100 - churnRate) >= 80 ? '' : 'bad' },
+  ];
+
+  const kmEl = document.getElementById('an-key-metrics');
+  if (kmEl) kmEl.innerHTML = kpis.map(k => `
+    <div class="an-met ${k.cls}">
+      <div class="an-label">${k.label}</div>
+      <div class="an-val">${k.val}</div>
+      ${k.sub ? `<div class="an-sub">${k.sub}</div>` : ''}
+      ${k.hint ? `<div class="an-hint">${k.hint}</div>` : ''}
+    </div>`).join('');
+
+  // Funnel
+  const funnelSteps = [
+    { label: 'Лиды',             n: allLeads.length,    color: 'var(--accent-mid)', conv: '' },
+    { label: 'Пробник назначен', n: toTrialSched.length, color: '#7c3aed',           conv: `${convLeadTrial}% из лидов` },
+    { label: 'Пробник проведён', n: toTrialDone.length,  color: 'var(--amber)',      conv: '' },
+    { label: 'Активные',         n: toActive.length,     color: '#22c55e',           conv: `${convTrialActive}% из пробных` },
+  ];
+  const maxN = Math.max(...funnelSteps.map(s => s.n), 1);
+  const funnelEl = document.getElementById('an-funnel');
+  if (funnelEl) funnelEl.innerHTML = funnelSteps.map(s => `
+    <div class="funnel-row">
+      <div style="width:140px;font-size:13px;font-weight:600">${s.label}</div>
+      <div class="funnel-bar"><div class="funnel-fill" style="width:${s.n / maxN * 100}%;background:${s.color}"></div></div>
+      <div style="width:40px;text-align:right;font-size:13px;font-weight:700">${s.n}</div>
+      <div style="width:200px;font-size:11px;color:var(--muted);padding-left:12px">${s.conv || '— входная точка'}</div>
+    </div>`).join('') + `<div style="padding-top:10px;font-size:11px;color:var(--muted)">Сквозная конверсия лид → ученик: <b>${convLeadActive}%</b></div>`;
+
+  // MRR bars
+  const mMonths = [];
+  for (let i = 11; i >= 0; i--) { const d = new Date(); d.setMonth(d.getMonth() - i); mMonths.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); }
+  const mTotals = mMonths.map(m => payments.filter(p => p.date?.startsWith(m)).reduce((s, p) => s + p.amount, 0));
+  const maxMRR = Math.max(...mTotals, 1);
+  const mLbls = mMonths.map(m => ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'][+m.split('-')[1] - 1]);
+  const mrrBarsEl = document.getElementById('an-mrr-bars');
+  if (mrrBarsEl) mrrBarsEl.innerHTML = mMonths.map((m, i) => `
+    <div class="mrr-bar-w" title="${mLbls[i]}: ${fmt(mTotals[i])} ₽">
+      <div class="mrr-bar-v" style="font-size:9px;color:var(--muted)">${mTotals[i] ? fmt(Math.round(mTotals[i] / 1000)) + 'к' : ''}</div>
+      <div class="mrr-bar-b ${m === lastMonthWithData ? 'cur' : ''}" style="height:${Math.max(3, mTotals[i] / maxMRR * 64)}px"></div>
+      <div class="mrr-bar-l">${mLbls[i]}</div>
+    </div>`).join('');
+
+  const mrrGrowthMonths = mMonths.slice(1).map((m, i) => {
+    const prev = mTotals[i]; const cur = mTotals[i + 1];
+    return prev ? Math.round((cur - prev) / prev * 100) : null;
+  }).filter(v => v !== null);
+  const avgGrowth = mrrGrowthMonths.length ? Math.round(mrrGrowthMonths.reduce((a, b) => a + b, 0) / mrrGrowthMonths.length) : null;
+  const mrrStatsEl = document.getElementById('an-mrr-stats');
+  if (mrrStatsEl) mrrStatsEl.innerHTML = `Ср. рост MRR / мес: <b>${avgGrowth !== null ? (avgGrowth >= 0 ? '+' : '') + avgGrowth + '%' : '—'}</b> &nbsp;·&nbsp; Пик: <b>${fmt(Math.max(...mTotals))} ₽</b>`;
+
+  // Key 3
+  const k3 = document.getElementById('an-key3');
+  if (k3) k3.innerHTML = `
+    <div class="pulse-card">
+      <div class="p-stripe" style="background:var(--accent-mid)"></div>
+      <div class="p-label">MRR</div>
+      <div class="p-val">${fmt(mrrDisplay)} ₽</div>
+      ${mrrGrowth !== null ? `<div class="p-delta ${mrrGrowth >= 0 ? 'up' : 'down'}">${mrrGrowth >= 0 ? '+' : ''}${mrrGrowth}% к пред.</div>` : '<div class="p-delta flat">нет данных</div>'}
+    </div>
+    <div class="pulse-card">
+      <div class="p-stripe" style="background:${ltv && cac && ltv / cac >= 3 ? '#22c55e' : ltv && cac && ltv / cac >= 1.5 ? '#f59e0b' : '#ef4444'}"></div>
+      <div class="p-label">LTV / CAC</div>
+      <div class="p-val">${ltvCac ? '×' + ltvCac : '—'}</div>
+      <div class="p-delta flat">${ltvCac ? (ltvCac >= 3 ? 'Отлично ✓' : ltvCac >= 1.5 ? 'Норма' : 'Опасно ⚠') : 'нет данных'}</div>
+    </div>
+    <div class="pulse-card">
+      <div class="p-stripe" style="background:${churnRate <= 5 ? '#22c55e' : churnRate <= 15 ? '#f59e0b' : '#ef4444'}"></div>
+      <div class="p-label">Churn rate</div>
+      <div class="p-val" style="color:${churnRate <= 5 ? 'var(--green)' : churnRate <= 15 ? 'var(--amber)' : 'var(--red)'}">${churnRate}%</div>
+      <div class="p-delta flat">${churned.length} ушли · норма &lt;5%</div>
+    </div>`;
+
+  // Retention cohort
+  const retEl = document.getElementById('an-retention');
+  if (retEl) {
+    const cohorts = {};
+    students.filter(s => s.status_history?.length).forEach(s => {
+      const activeEntry = s.status_history.find(e => e.status === 'active');
+      if (!activeEntry) return;
+      const m = activeEntry.date.slice(0, 7);
+      if (!cohorts[m]) cohorts[m] = { joined: 0, still: 0 };
+      cohorts[m].joined++;
+      if (s.crm_status === 'active' || s.crm_status === 'exam_passed') cohorts[m].still++;
+    });
+    const cohortArr = Object.entries(cohorts).sort().slice(-8);
+    if (!cohortArr.length) {
+      retEl.innerHTML = '<div class="empty">Нет данных по когортам</div>';
+    } else {
+      retEl.innerHTML = `<div class="retention-grid">${cohortArr.map(([m, v]) => {
+        const pct = Math.round(v.still / v.joined * 100);
+        const color = pct >= 80 ? '#22c55e' : pct >= 60 ? '#2563eb' : pct >= 40 ? '#f59e0b' : '#ef4444';
+        const mon = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'][+m.split('-')[1] - 1];
+        return `<div class="ret-row">
+          <div class="ret-label">${mon} ${m.split('-')[0]} · ${v.joined} уч.</div>
+          <div class="ret-bar-wrap"><div class="ret-bar-fill" style="width:${pct}%;background:${color}">${pct > 20 ? pct + '%' : ''}</div></div>
+          <div class="ret-pct" style="color:${color}">${pct}%</div>
+        </div>`;
+      }).join('')}</div>`;
+    }
+  }
+
+  // Health score
+  const allLessons = CACHE.lessons || [];
+  const totalAttendSlots = allLessons.reduce((s, l) => {
+    const gr = (CACHE.groups || []).find(g => g.id === l.group_id);
+    return s + (gr ? (CACHE.students || []).filter(st => st.group_id === gr.id && st.crm_status === 'active').length : 0);
+  }, 0);
+  const totalAbsents = allLessons.reduce((s, l) => s + (l.student_attendance || []).filter(a => !a.present).length, 0);
+  const attendancePct = totalAttendSlots > 0 ? Math.round((1 - totalAbsents / totalAttendSlots) * 100) : 100;
+  const churnScore = Math.max(0, 100 - churnRate * 3);
+  const finScore = mrrGrowth !== null ? Math.min(100, 50 + mrrGrowth) : 50;
+  const healthScore = Math.round((attendancePct * 0.35) + (churnScore * 0.4) + (finScore * 0.25));
+  const healthLabel = healthScore >= 80 ? 'Отлично' : healthScore >= 60 ? 'Хорошо' : healthScore >= 40 ? 'Требует внимания' : 'Критично';
+  const healthColor = healthScore >= 80 ? '#22c55e' : healthScore >= 60 ? '#05337D' : healthScore >= 40 ? '#f59e0b' : '#ef4444';
+  const healthBg = healthScore >= 80 ? '#f0fdf4' : healthScore >= 60 ? '#dde6f5' : healthScore >= 40 ? '#fffbeb' : '#fef2f2';
+  const hb = document.getElementById('an-health-block');
+  if (hb) hb.innerHTML = `<div class="health-block" style="border-color:${healthColor}30;background:${healthBg}">
+    <div class="health-score-circle" style="background:${healthColor};color:#fff">
+      <div class="hs-num">${healthScore}</div>
       <div class="hs-label">Балл</div>
     </div>
-    <div class="health-breakdown">
-      <div class="hb-item">
-        <div class="hb-label">Риски</div>
-        <div class="hb-bar"><div class="hb-fill" style="width:${riskScore}%;background:${riskScore>=70?'#16a34a':'#ca8a04'}"></div></div>
-        <div class="hb-val" style="color:${riskScore>=70?'#16a34a':'#ca8a04'}">${riskScore}%</div>
-      </div>
-      <div class="hb-item">
-        <div class="hb-label">Финансы</div>
-        <div class="hb-bar"><div class="hb-fill" style="width:${finScore}%;background:${finScore>=70?'#16a34a':'#ca8a04'}"></div></div>
-        <div class="hb-val" style="color:${finScore>=70?'#16a34a':'#ca8a04'}">${margin}% маржа</div>
+    <div style="flex:1">
+      <div style="font-size:16px;font-weight:700;color:${healthColor};margin-bottom:10px">${healthLabel}</div>
+      <div class="health-breakdown">
+        ${[
+    { label: 'Посещаемость', val: attendancePct, color: '#2563eb' },
+    { label: 'Удержание', val: 100 - churnRate, color: '#16a34a' },
+    { label: 'Рост выручки', val: Math.max(0, finScore), color: '#d97706' },
+  ].map(c => `<div class="hb-item">
+          <div class="hb-label">${c.label}</div>
+          <div class="hb-bar"><div class="hb-fill" style="width:${c.val}%;background:${c.color}"></div></div>
+          <div class="hb-val" style="color:${c.color}">${c.val}%</div>
+        </div>`).join('')}
       </div>
     </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Активных</div>
+      <div style="font-size:24px;font-weight:800">${activeNow.length}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">из ${students.length} всего</div>
+    </div>
   </div>`;
-}
 
-function renderFunnel(students) {
-  const stages = [
-    { key: 'lead',   label: 'Лиды' },
-    { key: 'trial',  label: 'Пробные' },
-    { key: 'active', label: 'Активные' },
+  // Time in statuses
+  const transitions = [
+    { from: 'lead',    to: 'trial',       label: 'Лид → Пробное' },
+    { from: 'trial',   to: 'active',      label: 'Пробное → Занимается' },
+    { from: 'active',  to: 'stopped',     label: 'Занимается → Ушёл' },
+    { from: 'active',  to: 'exam_passed', label: 'Занимается → Сдал' },
   ];
-  const max = students.length || 1;
-  return `<div>
-    ${stages.map(st => {
-      const count = students.filter(s => s.status === st.key || s.pipelineStage === st.key).length;
-      const pct = Math.round(count / max * 100);
-      return `<div class="funnel-row">
-        <span style="width:80px;font-size:12px">${st.label}</span>
-        <div class="funnel-bar"><div class="funnel-fill" style="width:${pct}%"></div></div>
-        <span style="width:40px;text-align:right;font-size:12px;font-weight:600">${count}</span>
-      </div>`;
-    }).join('')}
-  </div>`;
-}
-
-function renderMrrBars() {
-  const now = new Date();
-  const months = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-    return d.toISOString().slice(0, 7);
+  const timeStats = transitions.map(tr => {
+    const days = students.map(s => {
+      const h = s.status_history || [];
+      const from = h.find(e => e.status === tr.from);
+      const to = h.find(e => e.status === tr.to);
+      if (!from || !to) return null;
+      return daysBetween(from.date, to.date);
+    }).filter(v => v !== null && v >= 0);
+    return { ...tr, days, med: median(days), n: days.length };
   });
-  const values = months.map(m => CACHE.payments.filter(p => p.date?.startsWith(m)).reduce((a,p)=>a+(p.amount||0),0));
-  const max = Math.max(...values, 1);
+  const tsEl = document.getElementById('an-time-in-status');
+  if (tsEl) tsEl.innerHTML = timeStats.map(tr => `
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="width:200px;font-size:13px;font-weight:500">${tr.label}</div>
+      <div style="font-size:20px;font-weight:700;width:80px">${tr.med !== null ? tr.med + 'д' : '—'}</div>
+      <div style="flex:1">${tr.med !== null ? `<div class="prog"><div class="prog-f" style="width:${Math.min(100, tr.med / 90 * 100)}%"></div></div>` : ''}</div>
+      <div style="font-size:11px;color:var(--hint)">${tr.n} случ.</div>
+    </div>`).join('');
 
-  return `<div class="mrr-bars">
-    ${months.map((m, i) => {
-      const h = Math.round((values[i] / max) * 70);
-      const isCur = m === thisMonth();
-      return `<div class="mrr-bar-w">
-        <div class="mrr-bar-v">${fmt(values[i])}</div>
-        <div class="mrr-bar-b ${isCur?'cur':''}" style="height:${h}px" title="${m}: ${fmt(values[i])} ₽"></div>
-        <div class="mrr-bar-l">${m.slice(5)}</div>
-      </div>`;
-    }).join('')}
-  </div>`;
-}
+  // Churn list
+  const churnEl = document.getElementById('an-churn-list');
+  const churnEmEl = document.getElementById('an-churn-empty');
+  if (churnEl) {
+    if (!churned.length) {
+      churnEl.innerHTML = ''; if (churnEmEl) churnEmEl.style.display = '';
+    } else {
+      if (churnEmEl) churnEmEl.style.display = 'none';
+      churnEl.innerHTML = churned.map(s => {
+        const h = s.status_history || [];
+        const startEntry = h.find(e => e.status === 'active');
+        const months = studentLifetimeMonths(s);
+        const actualLTV = studentActualLTV(s);
+        return `<div class="ch-row">
+          <span><b>${s.name}</b></span>
+          <span style="color:var(--muted)">${startEntry ? fmtDate(startEntry.date) : ''} — ${fmtDate(s.left_at)}</span>
+          <span><span class="tag" style="margin:0">${s.source || '—'}</span></span>
+          <span>${months ? months + ' мес' : '—'}</span>
+          <span class="amount-pos">${actualLTV ? fmt(actualLTV) + ' ₽' : '—'}</span>
+        </div>`;
+      }).join('');
+    }
+  }
 
-function renderRetention(active) {
-  const byTeacher = {};
-  active.forEach(s => {
-    const t = s.teacher || 'Не указан';
-    byTeacher[t] = (byTeacher[t] || 0) + 1;
-  });
-  const total = active.length || 1;
-  return `<div class="retention-grid">
-    ${Object.entries(byTeacher).map(([teacher, count]) => {
-      const pct = Math.round(count / total * 100);
-      return `<div class="ret-row">
-        <div class="ret-label">${teacher}</div>
-        <div class="ret-bar-wrap">
-          <div class="ret-bar-fill" style="width:${pct}%;background:var(--accent-mid)">${count}</div>
-        </div>
-        <div class="ret-pct">${pct}%</div>
-      </div>`;
-    }).join('')}
-  </div>`;
-}
-
-function renderChannelsTable() {
-  const mo = thisMonth();
-  const mktExp = CACHE.expenses.filter(e => e.category === 'marketing' && e.date?.startsWith(mo));
-  const totalSpend = mktExp.reduce((a,e)=>a+(e.amount||0),0);
-  const byChannel = {};
-  mktExp.forEach(e => {
-    const ch = e.channel || 'other';
-    byChannel[ch] = (byChannel[ch] || 0) + (e.amount || 0);
-  });
-
-  const CHANNEL_NAMES = { yandex: 'Яндекс Директ', vk: 'ВКонтакте', telegram: 'Telegram Ads', instagram: 'Instagram', seo: 'SEO', other: 'Прочее' };
-
-  if (!Object.keys(byChannel).length) return '<div class="empty">Нет маркетинговых расходов</div>';
-
-  return `<table class="channel-tbl">
-    <thead><tr><th>Канал</th><th>Расход</th><th>Доля</th></tr></thead>
-    <tbody>
-      ${Object.entries(byChannel).sort((a,b)=>b[1]-a[1]).map(([ch, amount]) => {
-        const pct = totalSpend ? Math.round(amount / totalSpend * 100) : 0;
-        return `<tr>
-          <td>${CHANNEL_NAMES[ch] || ch}</td>
-          <td class="amount-neg">${fmt(amount)} ₽</td>
-          <td>
-            <div>${pct}%</div>
-            <div class="roi-bar"><div class="roi-fill" style="width:${pct}%;height:6px;border-radius:3px;background:var(--accent-mid)"></div></div>
-          </td>
-        </tr>`;
-      }).join('')}
-    </tbody>
-  </table>`;
+  // Channels table
+  const chTbl = document.getElementById('an-channels-table');
+  if (chTbl) {
+    const channels = ['Авито','Сарафан','Telegram','Профи.ру','Instagram','ВКонтакте','Другое'];
+    const rows = channels.map(ch => {
+      const spend = periodExpenses.filter(e => e.category === 'Реклама' && e.channel === ch).reduce((s, e) => s + e.amount, 0);
+      const acquired = students.filter(s => s.source === ch && becameStatusInPeriod(s, 'active')).length ||
+        students.filter(s => s.source === ch && ['active', 'exam_passed'].includes(s.crm_status)).length;
+      const ltvCh = students.filter(s => s.source === ch).map(s => payments.filter(p => p.student_id === s.id).reduce((a, p) => a + p.amount, 0)).filter(v => v > 0);
+      const avgLtv = ltvCh.length ? Math.round(ltvCh.reduce((a, b) => a + b, 0) / ltvCh.length) : null;
+      const cac_ch = spend && acquired ? Math.round(spend / acquired) : null;
+      const roi = cac_ch && avgLtv ? +(avgLtv / cac_ch).toFixed(1) : null;
+      if (!spend && !acquired) return null;
+      return { ch, spend, acquired, cac_ch, avgLtv, roi };
+    }).filter(Boolean);
+    if (!rows.length) {
+      chTbl.innerHTML = '<div class="empty">Нет данных — укажи канал при добавлении расходов на рекламу</div>';
+    } else {
+      const maxRoi = Math.max(...rows.map(r => r.roi || 0), 1);
+      chTbl.innerHTML = `<table class="channel-tbl">
+        <thead><tr><th>Канал</th><th>Расходы</th><th>Привлечено</th><th>CAC</th><th>Ср. LTV</th><th>ROI</th></tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td><b>${r.ch}</b></td>
+          <td style="color:var(--red)">${r.spend ? '−' + fmt(r.spend) + ' ₽' : '—'}</td>
+          <td>${r.acquired} уч.</td>
+          <td>${r.cac_ch ? fmt(r.cac_ch) + ' ₽' : '—'}</td>
+          <td>${r.avgLtv ? fmt(r.avgLtv) + ' ₽' : '—'}</td>
+          <td>${r.roi !== null ? `<div style="font-weight:700;color:${r.roi >= 3 ? 'var(--green)' : r.roi >= 1 ? 'var(--amber)' : 'var(--red)'}">×${r.roi}</div>
+            <div class="roi-bar"><div class="roi-fill" style="width:${Math.min(100, r.roi / maxRoi * 100)}%;background:${r.roi >= 3 ? '#22c55e' : r.roi >= 1 ? '#f59e0b' : '#ef4444'}"></div></div>` : '<span style="color:var(--hint)">—</span>'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+    }
+  }
 }

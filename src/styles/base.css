@@ -11,7 +11,8 @@ html, body {
 }
 
 /* Setup screen */
-.setup-screen { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 24px; }
+.setup-screen { position: fixed; inset: 0; background: var(--bg); display: none; align-items: center; justify-content: center; z-index: 999; padding: 24px; }
+.setup-screen.show { display: flex; }
 .setup-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px 36px; max-width: 560px; width: 100%; }
 .setup-logo { font-size: 22px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
 .setup-sub { font-size: 14px; color: var(--muted); margin-bottom: 24px; }
@@ -20,7 +21,8 @@ html, body {
 .step-block code { background: var(--border); padding: 1px 5px; border-radius: 4px; font-family: monospace; font-size: 12px; }
 
 /* Loading overlay */
-.loading-overlay { position: fixed; inset: 0; background: rgba(247,246,243,.8); display: flex; align-items: center; justify-content: center; z-index: 100; gap: 10px; font-size: 14px; color: var(--muted); }
+.loading-overlay { position: fixed; inset: 0; background: rgba(247,246,243,.8); display: none; align-items: center; justify-content: center; z-index: 100; gap: 10px; font-size: 14px; color: var(--muted); }
+.loading-overlay.show { display: flex; }
 
 /* Spinner */
 .spin { display: inline-block; animation: spin .8s linear infinite; }
