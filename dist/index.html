@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TutorOS</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script type="module" crossorigin src="/assets/index-BONL8s5V.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-YCalnwOt.css">
+</head>
+<body>
+
+<!-- ── SETUP SCREEN ─────────────────────────────────────────────────────────── -->
+<div id="setup-screen" class="setup-screen">
+  <div class="setup-box">
+    <div class="setup-logo">TutorOS</div>
+    <div class="setup-sub">Управление онлайн-школой</div>
+    <div id="setup-roles" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+</div>
+
+<!-- ── LOADING ──────────────────────────────────────────────────────────────── -->
+<div id="loading-overlay" class="loading-overlay">
+  <i class="ti ti-loader spin" style="font-size:20px"></i> Загрузка данных...
+</div>
+
+<!-- ── APP SHELL ────────────────────────────────────────────────────────────── -->
+<div class="app" id="app" style="display:none">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="sb-logo">
+      <div class="name">TutorOS</div>
+      <div class="sub">Управление практикой</div>
+    </div>
+    <div class="sb-nav" id="sidebar-nav">
+      <div class="sb-section">Обзор</div>
+      <div class="sb-item" data-pg="dashboard"><i class="ti ti-layout-dashboard"></i><span>Дашборд</span></div>
+      <div class="sb-item" data-pg="analytics" style="padding-left:28px;font-size:12px"><i class="ti ti-chart-bar" style="font-size:15px"></i><span>Аналитика</span></div>
+      <div class="sb-item" data-pg="tasks" style="padding-left:28px;font-size:12px"><i class="ti ti-clipboard-list" style="font-size:15px"></i><span>Задачи</span></div>
+      <div class="sb-item" data-pg="history" style="padding-left:28px;font-size:12px"><i class="ti ti-history" style="font-size:15px"></i><span>История</span></div>
+      <div class="sb-section">CRM</div>
+      <div class="sb-item" data-pg="students"><i class="ti ti-layout-columns"></i><span>Воронка</span></div>
+      <div class="sb-item" data-pg="crm_students" style="padding-left:28px;font-size:12px"><i class="ti ti-users" style="font-size:15px"></i><span>Ученики</span></div>
+      <div class="sb-item" data-pg="groups" style="padding-left:28px;font-size:12px"><i class="ti ti-sitemap" style="font-size:15px"></i><span>Группы</span></div>
+      <div class="sb-item" data-pg="lessons_cal" style="padding-left:28px;font-size:12px"><i class="ti ti-calendar-event" style="font-size:15px"></i><span>Занятия</span></div>
+      <div class="sb-section" data-finance-section>Финансы</div>
+      <div class="sb-item" data-pg="income" data-finance-item><i class="ti ti-cash"></i><span>Доходы</span></div>
+      <div class="sb-item" data-pg="expenses" data-finance-item><i class="ti ti-receipt"></i><span>Расходы</span></div>
+      <div class="sb-section">Система</div>
+      <div class="sb-item" data-pg="access" data-owner-only><i class="ti ti-shield-lock"></i><span>Доступы</span></div>
+    </div>
+    <div class="sb-footer">
+      <div id="role-badge" style="background:rgba(255,255,255,.1);border-radius:6px;padding:7px 10px;margin-bottom:8px;cursor:pointer" onclick="promptSwitchRole()">
+        <div style="font-size:10px;color:rgba(255,255,255,.4);margin-bottom:1px">Текущая роль</div>
+        <div style="font-size:12px;color:#fff;font-weight:500" id="current-role-name">Владелец</div>
+      </div>
+      <div id="sync-status" style="font-size:11px;color:rgba(255,255,255,.35);display:flex;align-items:center;gap:4px;margin-bottom:6px">
+        <span class="dot" style="background:#f59e0b;width:6px;height:6px;border-radius:50%;display:inline-block"></span>&nbsp;Демо-режим · localStorage
+      </div>
+      <button class="btn btn-danger btn-sm" style="width:100%;justify-content:center;font-size:11px" onclick="clearDemoData()">
+        <i class="ti ti-trash"></i> Сбросить данные
+      </button>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="page-title">Дашборд</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="realtime-badge" style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px">
+          <i class="ti ti-database"></i> localStorage
+        </span>
+      </div>
+    </div>
+    <div class="content" id="content">
+
+      <!-- ── DASHBOARD ──────────────────────────────────────────────────────── -->
+      <div class="pg on" id="pg-dashboard">
+        <div id="dash-pulse" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px"></div>
+        <div style="display:grid;grid-template-columns:1fr 320px;gap:14px;align-items:start">
+          <div>
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+              <i class="ti ti-calendar-event" style="margin-right:4px"></i>Ближайшие занятия
+            </div>
+            <div id="dash-today" style="margin-bottom:18px"></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">
+                <i class="ti ti-circle-check" style="margin-right:4px"></i>Требует действия
+              </div>
+              <span id="dash-action-count" style="font-size:11px;color:var(--hint)"></span>
+            </div>
+            <div id="dash-actions" style="margin-bottom:18px"></div>
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+              <i class="ti ti-filter" style="margin-right:4px"></i>Воронка продаж
+            </div>
+            <div id="dash-funnel" class="card" style="padding:14px 18px;margin-bottom:18px"></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">
+                <i class="ti ti-history" style="margin-right:4px"></i>Последние изменения
+              </div>
+              <button class="btn btn-sm" onclick="navigate('history')">Все <i class="ti ti-arrow-right" style="font-size:11px"></i></button>
+            </div>
+            <div id="dash-history" class="card" style="padding:0"></div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+              <i class="ti ti-clipboard-list" style="margin-right:4px"></i>Задачи ассистентам
+              <button class="btn btn-sm" style="float:right;margin-top:-2px" onclick="navigate('tasks')">Все <i class="ti ti-arrow-right" style="font-size:11px"></i></button>
+            </div>
+            <div id="dashboard-tasks"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── HISTORY ────────────────────────────────────────────────────────── -->
+      <div class="pg" id="pg-history">
+        <div class="ph">
+          <div class="ph-title">История изменений</div>
+        </div>
+        <div id="history-container" class="card" style="padding:0"></div>
+      </div>
+
+      <!-- ── STUDENTS / PIPELINE ────────────────────────────────────────────── -->
+      <div class="pg" id="pg-students">
+        <div class="ph">
+          <div class="ph-title">Воронка продаж</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div class="view-toggle" id="crm-view-toggle">
+              <button class="on" onclick="setCRMView('pipeline')"><i class="ti ti-layout-columns"></i> Pipeline</button>
+              <button onclick="setCRMView('table')"><i class="ti ti-table"></i> Таблица</button>
+            </div>
+            <button class="btn btn-p btn-sm" onclick="openStudentModal()"><i class="ti ti-plus"></i> Добавить</button>
+          </div>
+        </div>
+        <!-- Status filter tabs -->
+        <div id="crm-status-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn btn-sm btn-p" onclick="setCRMStatusFilter('')">Все</button>
+          <button class="btn btn-sm" onclick="setCRMStatusFilter('lead')">Лид</button>
+          <button class="btn btn-sm" onclick="setCRMStatusFilter('trial_scheduled')">Пробник назначен</button>
+          <button class="btn btn-sm" onclick="setCRMStatusFilter('trial_done')">Пробник проведён</button>
+          <button class="btn btn-sm" onclick="setCRMStatusFilter('active')">Активный</button>
+          <button class="btn btn-sm" onclick="setCRMStatusFilter('exam_passed')">Сдал ЕГЭ</button>
+          <button class="btn btn-sm" onclick="setCRMStatusFilter('stopped')">Остановил</button>
+          <button class="btn btn-sm" onclick="setCRMStatusFilter('refused')">Отказался</button>
+        </div>
+        <!-- Pipeline view -->
+        <div id="crm-pipeline-view">
+          <div id="pipeline-board" style="display:flex;gap:10px;overflow-x:auto;padding-bottom:12px;min-height:300px"></div>
+        </div>
+        <!-- Table view -->
+        <div id="crm-table-view" style="display:none">
+          <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+            <input class="fi" id="student-search" placeholder="Поиск по имени..." style="max-width:200px" oninput="renderStudents()">
+            <select class="fi" id="student-filter" style="max-width:180px" onchange="renderStudents()">
+              <option value="">Все группы</option>
+            </select>
+            <select class="fi" id="student-status-filter" style="max-width:160px" onchange="renderStudents()">
+              <option value="">Все статусы</option>
+              <option value="lead">Лид</option>
+              <option value="trial_scheduled">Пробник назначен</option>
+              <option value="trial_done">Пробник проведён</option>
+              <option value="active">Активный</option>
+              <option value="exam_passed">Сдал ЕГЭ</option>
+              <option value="stopped">Остановил</option>
+              <option value="refused">Отказался</option>
+            </select>
+          </div>
+          <div class="card" style="padding:0;overflow-x:auto">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>Статус</th><th>Имя</th><th>Класс</th><th>Контакт</th>
+                  <th>Формат / Группа</th><th>Подписка</th><th>Цена/ч</th><th>Ур/мес</th>
+                  <th>LTV/мес</th><th>Цель</th><th>Риск</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="students-tbody"></tbody>
+            </table>
+            <div id="students-empty" class="empty" style="display:none">Нет учеников по фильтру</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── CRM STUDENTS LIST ───────────────────────────────────────────────── -->
+      <div class="pg" id="pg-crm_students">
+        <div class="ph">
+          <div class="ph-title">Ученики</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input class="fi" id="crm-students-search" placeholder="Поиск..." style="max-width:200px" oninput="renderCRMStudents()">
+            <select class="fi" id="crm-students-status" style="max-width:160px" onchange="renderCRMStudents()">
+              <option value="">Все статусы</option>
+              <option value="lead">Лид</option>
+              <option value="trial_scheduled">Пробник назначен</option>
+              <option value="trial_done">Пробник проведён</option>
+              <option value="active">Активный</option>
+              <option value="exam_passed">Сдал ЕГЭ</option>
+              <option value="stopped">Остановил</option>
+              <option value="refused">Отказался</option>
+            </select>
+            <button class="btn btn-p btn-sm" onclick="openStudentModal()"><i class="ti ti-plus"></i> Добавить</button>
+          </div>
+        </div>
+        <div class="card" style="padding:0;overflow-x:auto">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th>Статус</th><th>Имя</th><th>Класс</th><th>Контакт</th>
+                <th>Формат / Группа</th><th>Подписка</th><th>Цена/ч</th><th>Ур/мес</th>
+                <th>LTV/мес</th><th>Риск</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="crm-students-tbody"></tbody>
+          </table>
+          <div id="crm-students-empty" class="empty" style="display:none">Нет учеников</div>
+        </div>
+      </div>
+
+      <!-- ── GROUPS ─────────────────────────────────────────────────────────── -->
+      <div class="pg" id="pg-groups">
+        <!-- Group list view -->
+        <div id="groups-list-view">
+          <div class="ph">
+            <div class="ph-title">Группы</div>
+            <button class="btn btn-p btn-sm" onclick="openGroupModal()"><i class="ti ti-plus"></i> Создать группу</button>
+          </div>
+          <div id="groups-list"></div>
+        </div>
+        <!-- Group detail view -->
+        <div id="group-detail-view" style="display:none">
+          <div class="ph">
+            <div>
+              <button class="btn btn-sm" onclick="closeGroupDetail()" style="margin-bottom:6px"><i class="ti ti-arrow-left"></i> Назад</button>
+              <div class="ph-title" id="gd-title">Группа</div>
+            </div>
+            <button class="btn btn-sm btn-icon" id="gd-edit-btn"><i class="ti ti-edit"></i></button>
+          </div>
+          <div id="gd-metrics" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px"></div>
+          <div style="display:grid;grid-template-columns:1fr 280px;gap:14px;align-items:start">
+            <div id="gd-journal"></div>
+            <div id="gd-members"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── INCOME ─────────────────────────────────────────────────────────── -->
+      <div class="pg" id="pg-income">
+        <div class="ph">
+          <div class="ph-title">Доходы</div>
+          <button class="btn btn-p btn-sm" onclick="openPaymentModal()"><i class="ti ti-plus"></i> Добавить платёж</button>
+        </div>
+        <div id="income-metrics" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px"></div>
+        <div class="card" style="padding:0;overflow-x:auto">
+          <table class="tbl">
+            <thead>
+              <tr><th>Дата</th><th>Ученик</th><th>Тип</th><th>Период</th><th>Сумма</th><th></th></tr>
+            </thead>
+            <tbody id="income-tbody"></tbody>
+          </table>
+          <div id="income-empty" class="empty" style="display:none">Платежей нет</div>
+        </div>
+      </div>
+
+      <!-- ── EXPENSES ───────────────────────────────────────────────────────── -->
+      <div class="pg" id="pg-expenses">
+        <div class="ph">
+          <div class="ph-title">Расходы</div>
+          <button class="btn btn-p btn-sm" onclick="openExpenseModal()"><i class="ti ti-plus"></i> Добавить расход</button>
+        </div>
+        <div id="expense-metrics" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px"></div>
+        <div class="card" style="padding:0;overflow-x:auto">
+          <table class="tbl">
+            <thead>
+              <tr><th>Дата</th><th>Категория</th><th>Описание</th><th>Сумма</th><th></th></tr>
+            </thead>
+            <tbody id="expenses-tbody"></tbody>
+          </table>
+          <div id="expenses-empty" class="empty" style="display:none">Расходов нет</div>
+        </div>
+      </div>
+
+      <!-- ── TASKS ──────────────────────────────────────────────────────────── -->
+      <div class="pg" id="pg-tasks">
+        <div class="ph">
+          <div class="ph-title">Задачи</div>
+          <button class="btn btn-p btn-sm" onclick="openAssistantTaskModal()"><i class="ti ti-plus"></i> Новая задача</button>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+          <button class="btn btn-sm task-tab on" onclick="setTaskFilter('')">Все</button>
+          <button class="btn btn-sm task-tab" onclick="setTaskFilter('assigned')">Назначено</button>
+          <button class="btn btn-sm task-tab" onclick="setTaskFilter('in_progress')">В процессе</button>
+          <button class="btn btn-sm task-tab" onclick="setTaskFilter('done')">Выполнено</button>
+        </div>
+        <div class="card" style="padding:0;overflow-x:auto">
+          <table class="tbl">
+            <thead>
+              <tr><th>Задача</th><th>Комментарий</th><th>Ассистент</th><th>Дедлайн</th><th>Статус</th><th></th></tr>
+            </thead>
+            <tbody id="assistant-tasks-tbody"></tbody>
+          </table>
+          <div id="assistant-tasks-empty" class="empty" style="display:none">Задач нет</div>
+        </div>
+      </div>
+
+      <!-- ── CALENDAR ───────────────────────────────────────────────────────── -->
+      <div class="pg" id="pg-lessons_cal">
+        <div class="ph" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">
+          <div class="ph-title">Занятия</div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <div class="view-toggle" id="cal-view-toggle">
+              <button class="on" data-view="week" onclick="setCalView('week')"><i class="ti ti-layout-columns" style="font-size:13px"></i> Неделя</button>
+              <button data-view="month" onclick="setCalView('month')"><i class="ti ti-calendar-month" style="font-size:13px"></i> Месяц</button>
+            </div>
+            <button class="btn btn-sm" onclick="calNav(-1)"><i class="ti ti-chevron-left"></i></button>
+            <span id="cal-label" style="font-size:13px;font-weight:600;min-width:160px;text-align:center;white-space:nowrap">—</span>
+            <button class="btn btn-sm" onclick="calNav(1)"><i class="ti ti-chevron-right"></i></button>
+            <button class="btn btn-sm" onclick="calToday()">Сегодня</button>
+            <button class="btn btn-p btn-sm" onclick="openLessonFormModal()"><i class="ti ti-plus"></i> Урок</button>
+            <button class="btn btn-sm" onclick="exportICS()" title="Экспорт ICS"><i class="ti ti-calendar-download"></i></button>
+          </div>
+        </div>
+        <div id="cal-container"></div>
+      </div>
+
+      <!-- ── ANALYTICS ──────────────────────────────────────────────────────── -->
+      <div class="pg" id="pg-analytics">
+        <div class="ph">
+          <div class="ph-title">Аналитика</div>
+          <div class="an-period-bar">
+            <button class="on" onclick="setAnPeriod(1)">1м</button>
+            <button onclick="setAnPeriod(3)">3м</button>
+            <button onclick="setAnPeriod(6)">6м</button>
+            <button onclick="setAnPeriod(12)">12м</button>
+            <button onclick="setAnPeriod(0)">Всё время</button>
+          </div>
+        </div>
+        <!-- Tab toggle -->
+        <div class="view-toggle" id="an-tab-toggle" style="margin-bottom:14px">
+          <button class="on" onclick="setAnTab('overview')">Обзор</button>
+          <button onclick="setAnTab('channels')">Каналы</button>
+          <button onclick="setAnTab('detail')">Детально</button>
+        </div>
+        <!-- Overview tab -->
+        <div id="an-tab-overview">
+          <div id="an-overview-metrics" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+            <div id="an-key-metrics"></div>
+            <div id="an-funnel"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+            <div id="an-mrr-bars"></div>
+            <div id="an-mrr-stats"></div>
+          </div>
+        </div>
+        <!-- Channels tab -->
+        <div id="an-tab-channels" style="display:none">
+          <div id="an-channels-table"></div>
+        </div>
+        <!-- Detail tab -->
+        <div id="an-tab-detail" style="display:none">
+          <div id="an-key3" style="margin-bottom:14px"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+            <div id="an-health-block"></div>
+            <div id="an-retention"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div id="an-time-in-status"></div>
+            <div>
+              <div id="an-churn-list"></div>
+              <div id="an-churn-empty" class="empty" style="display:none">Нет оттока за период</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── ACCESS ─────────────────────────────────────────────────────────── -->
+      <div class="pg" id="pg-access">
+        <div class="ph">
+          <div class="ph-title">Доступы и роли</div>
+          <button class="btn btn-p btn-sm" onclick="openRoleModal()"><i class="ti ti-plus"></i> Новая роль</button>
+        </div>
+        <div id="roles-list"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL & TOAST ──────────────────────────────────────────────────────── -->
+<div id="modal-root"></div>
+<div class="toast" id="toast"></div>
+
+</body>
+</html>
