@@ -22,6 +22,7 @@ export const ALL_PAGES = [
   { id: 'tasks',        label: 'Задачи' },
   { id: 'homework',     label: 'ДЗ' },
   { id: 'access',       label: 'Доступы' },
+  { id: 'curator_dash', label: 'Дашборд' },
 ];
 
 export const STATUS_CONFIG = {
@@ -48,6 +49,6 @@ export const PIPELINE_STAGES = [
 export const GROUP_COLORS = ['#2563eb','#16a34a','#d97706','#7c3aed','#db2777','#0891b2','#ea580c','#0f766e','#9333ea','#dc2626'];
 
 export const ROLE_TYPES = {
-  curator:  { label: 'Куратор',    icon: 'ti-school',       pages: ['groups', 'lessons_cal', 'homework'], homePage: 'groups' },
-  marketer: { label: 'Маркетолог', icon: 'ti-speakerphone', pages: ['students', 'crm_students'],          homePage: 'crm_students' },
+  curator:  { label: 'Куратор',    icon: 'ti-school',       pages: ['curator_dash', 'groups', 'lessons_cal', 'homework'], homePage: 'curator_dash' },
+  marketer: { label: 'Маркетолог', icon: 'ti-speakerphone', pages: ['students', 'crm_students'],                           homePage: 'crm_students' },
 };

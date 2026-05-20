@@ -374,10 +374,10 @@ const assistant_groups = [
 
 // ─── Homework Assignments ─────────────────────────────────────────────────────
 const homework_assignments = [
-  { id:'ha1', group_id:'g1', lesson_id:null, topic:'Тригонометрия: формулы приведения',       description:'Задачи 1–15 из сборника Ященко, стр. 47',          due_date:daysAgo(3),       assigned_at:daysAgo(7)+'T18:30:00Z' },
-  { id:'ha2', group_id:'g1', lesson_id:null, topic:'Производная: задачи на экстремум',         description:'Вариант 3 полностью, задачи 13–16',                 due_date:daysFromNow(4),   assigned_at:daysAgo(3)+'T18:30:00Z' },
-  { id:'ha3', group_id:'g2', lesson_id:null, topic:'Показательные уравнения',                  description:'Самостоятельная работа, все 10 задач',               due_date:daysAgo(1),       assigned_at:daysAgo(6)+'T17:30:00Z' },
-  { id:'ha4', group_id:'g2', lesson_id:null, topic:'Логарифмы: сложные преобразования',        description:'Задачи повышенного уровня, стр. 84–85',             due_date:daysFromNow(6),   assigned_at:daysAgo(2)+'T17:30:00Z' },
+  { id:'ha1', group_id:'g1', lesson_id:null, topic:'Тригонометрия: формулы приведения',       description:'Задачи 1–15 из сборника Ященко, стр. 47',          due_date:daysAgo(3),       assigned_at:daysAgo(7)+'T18:30:00Z', hw_type:'detailed', is_advanced:false },
+  { id:'ha2', group_id:'g1', lesson_id:null, topic:'Производная: задачи на экстремум',         description:'Вариант 3 полностью, задачи 13–16',                 due_date:daysFromNow(4),   assigned_at:daysAgo(3)+'T18:30:00Z', hw_type:'detailed', is_advanced:false },
+  { id:'ha3', group_id:'g2', lesson_id:null, topic:'Показательные уравнения',                  description:'Самостоятельная работа, все 10 задач',               due_date:daysAgo(1),       assigned_at:daysAgo(6)+'T17:30:00Z', hw_type:'brief',    is_advanced:false },
+  { id:'ha4', group_id:'g2', lesson_id:null, topic:'Логарифмы: сложные преобразования',        description:'Задачи повышенного уровня, стр. 84–85',             due_date:daysFromNow(6),   assigned_at:daysAgo(2)+'T17:30:00Z', hw_type:'trial',    is_advanced:true  },
 ];
 
 // ─── Homework Submissions ─────────────────────────────────────────────────────

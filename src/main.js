@@ -15,7 +15,7 @@ import {
   openStudentModal, calcLTV, editStudent, saveStudent, deleteStudent,
   openStudentDetail, openStatusDateModal, confirmStatusChange,
   openTrialFromCalendar, scheduleTrialLesson,
-  openPaymentModalFor, addStudentNote, selectChip,
+  openPaymentModalFor, addStudentNote, selectChip, resetStudentRisk,
 } from './pages/students.js';
 import {
   renderGroups, openGroupModal, editGroup, saveGroup, deleteGroup,
@@ -42,6 +42,7 @@ import {
   addReviewError, removeReviewError, updateScorePreview, renderAllHwFiltered,
   updateHwBadge, openCreateHwModal, updateHwLessonOpts, saveNewHw, changeHwStatus,
 } from './pages/homework.js';
+import { renderCuratorDashPage } from './pages/curator-dash.js';
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 
@@ -61,6 +62,7 @@ function init() {
   registerRenderer('lessons_cal', renderCalendar);
   registerRenderer('analytics', renderAnalytics);
   registerRenderer('access', renderAccess);
+  registerRenderer('curator_dash', renderCuratorDashPage);
 
   updateHwBadge();
 
@@ -101,6 +103,7 @@ window.scheduleTrialLesson = scheduleTrialLesson;
 window.openPaymentModalFor = openPaymentModalFor;
 window.addStudentNote = addStudentNote;
 window.selectChip = selectChip;
+window.resetStudentRisk = resetStudentRisk;
 
 // Groups
 window.renderGroups = renderGroups;

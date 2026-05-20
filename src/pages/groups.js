@@ -45,9 +45,17 @@ export function renderGroups() {
   renderCuratorDash();
   const el = document.getElementById('groups-list');
   if (!el) return;
-  if (!(CACHE.groups || []).length) { el.innerHTML = '<div class="empty">Групп нет. Создайте первую!</div>'; return; }
   const role = state.currentRole || {};
-  el.innerHTML = CACHE.groups.map(gr => {
+
+  // Curators only see their assigned groups
+  let groups = CACHE.groups || [];
+  if (!role.isOwner) {
+    const myGroupIds = new Set((CACHE.assistant_groups || []).filter(ag => ag.assistant_id === role.id).map(ag => ag.group_id));
+    groups = groups.filter(g => myGroupIds.has(g.id));
+  }
+  if (!groups.length) { el.innerHTML = '<div class="empty">Групп нет или вам не назначены группы.</div>'; return; }
+
+  el.innerHTML = groups.map(gr => {
     const members = (CACHE.students || []).filter(s => s.group_id === gr.id && s.crm_status === 'active');
     const allMembers = (CACHE.students || []).filter(s => s.group_id === gr.id);
     const lessons = (CACHE.lessons || []).filter(l => l.group_id === gr.id);
@@ -63,7 +71,7 @@ export function renderGroups() {
         </div>
         <div style="display:flex;gap:6px;align-items:center" onclick="event.stopPropagation()">
           ${unpaid ? `<span class="b b-r"><i class="ti ti-cash-off" style="font-size:10px"></i> ${unpaid} не оплат.</span>` : ''}
-          <span class="b b-g">${fmt(mrr)} ₽/мес</span>
+          ${role.isOwner ? `<span class="b b-g">${fmt(mrr)} ₽/мес</span>` : ''}
           ${role.isOwner ? `<button class="btn btn-sm btn-icon" onclick="editGroup('${gr.id}')"><i class="ti ti-edit"></i></button>
           <button class="btn btn-sm btn-icon" onclick="deleteGroup('${gr.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
         </div>

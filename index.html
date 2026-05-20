@@ -44,6 +44,7 @@
       <div class="sb-item" data-pg="crm_students" data-sb-section="marketing"><i class="ti ti-layout-columns"></i><span>Воронка</span></div>
 
       <div class="sb-section" data-sb-group="studies">Ученики</div>
+      <div class="sb-item" data-pg="curator_dash" data-sb-section="studies"><i class="ti ti-layout-dashboard"></i><span>Дашборд</span></div>
       <div class="sb-item" data-pg="groups" data-sb-section="studies"><i class="ti ti-sitemap"></i><span>Группы</span></div>
       <div class="sb-item" data-pg="lessons_cal" data-sb-section="studies"><i class="ti ti-calendar-event"></i><span>Занятия</span></div>
       <div class="sb-item" data-pg="homework" data-sb-section="studies"><i class="ti ti-home-check"></i><span>ДЗ&nbsp;<span id="hw-queue-badge" style="background:var(--red);color:#fff;border-radius:10px;padding:0 5px;font-size:10px;font-weight:700;display:none"></span></span></div>
@@ -174,8 +175,8 @@
             <thead>
               <tr>
                 <th>Статус</th><th>Имя</th><th>Класс</th><th>Контакт</th>
-                <th>Формат / Группа</th><th>Подписка</th><th>Цена/ч</th><th>Ур/мес</th>
-                <th>LTV/мес</th><th>Цель</th><th>Риск</th><th></th>
+                <th>Формат / Группа</th><th>Подписка</th><th class="fin-col">Цена/ч</th><th class="fin-col">Ур/мес</th>
+                <th class="fin-col">LTV/мес</th><th>Цель</th><th>Риск</th><th></th>
               </tr>
             </thead>
             <tbody id="students-tbody"></tbody>
@@ -302,6 +303,14 @@
           </div>
         </div>
         <div id="cal-container"></div>
+      </div>
+
+      <!-- ── CURATOR DASHBOARD ─────────────────────────────────────────────────── -->
+      <div class="pg" id="pg-curator_dash">
+        <div class="ph">
+          <div class="ph-title">Мой дашборд</div>
+        </div>
+        <div id="curator-dash-content"></div>
       </div>
 
       <!-- ── HOMEWORK ─────────────────────────────────────────────────────────── -->

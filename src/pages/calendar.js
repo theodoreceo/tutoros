@@ -234,22 +234,6 @@ export function openLessonFormModal(date, gid, existingId) {
   }).join('')}
     </div>` : '';
 
-  const attendeeRows = members.length ? members.map(s => {
-    const att = (v.student_attendance || []).find(a => a.student_id === s.id);
-    const present = att ? att.present : true;
-    const note = att?.note || '';
-    return `<div class="att-row${!present ? ' absent' : ''}" id="att-${s.id}">
-      <div class="att-toggle${!present ? ' absent' : ''}" onclick="toggleAttendance('${s.id}')" id="att-tog-${s.id}">
-        ${!present ? '<i class="ti ti-x" style="font-size:11px"></i>' : ''}
-      </div>
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:500">${s.name}</div>
-        <input class="fi" id="att-note-${s.id}" value="${note}" placeholder="Заметка..." style="font-size:11px;padding:3px 7px;margin-top:4px">
-      </div>
-      <span style="font-size:10px;color:var(--muted)" id="att-lbl-${s.id}">${!present ? 'отсутствует' : 'присутствует'}</span>
-    </div>`;
-  }).join('') : '<div style="font-size:12px;color:var(--hint)">Активных учеников в группе нет</div>';
-
   modal(`<div class="modal" style="max-width:640px">
     <div class="modal-title">${existing ? 'Редактировать занятие' : 'Новое занятие'} · ${gr.name}</div>
     ${hwReviewBlock}
@@ -268,12 +252,8 @@ export function openLessonFormModal(date, gid, existingId) {
     <div class="fg" style="margin-bottom:10px"><label>Тема занятия</label><input class="fi" id="lf-topic" value="${v.topic || ''}" placeholder="Тригонометрия: формулы приведения"></div>
     <div class="form-row" style="margin-bottom:12px">
       <div class="fg"><label><i class="ti ti-link" style="font-size:11px"></i> Ссылка на занятие</label><input class="fi" id="lf-lesson-link" value="${v.lesson_link || ''}" placeholder="https://..."></div>
-      <div class="fg"><label><i class="ti ti-home" style="font-size:11px"></i> Ссылка на домашнее задание</label><input class="fi" id="lf-hw-link" value="${v.homework_link || ''}" placeholder="https://docs.google.com/..."></div>
+      <div class="fg"><label><i class="ti ti-home" style="font-size:11px"></i> Ссылка на ДЗ</label><input class="fi" id="lf-hw-link" value="${v.homework_link || ''}" placeholder="https://docs.google.com/..."></div>
     </div>
-    <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">
-      <i class="ti ti-users"></i> Ученики <span style="font-weight:400;font-style:normal;text-transform:none">(нажми на квадрат чтобы отметить отсутствие)</span>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:0;margin-bottom:12px" id="att-list">${attendeeRows}</div>
     <div style="margin-bottom:14px;border-top:1px solid var(--border);padding-top:12px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
         <input type="checkbox" id="lf-hw-assign" style="accent-color:var(--accent-mid)" onchange="toggleHwAssignBlock()">
@@ -284,7 +264,21 @@ export function openLessonFormModal(date, gid, existingId) {
           <div class="fg" style="grid-column:1/-1"><label>Тема задания</label><input class="fi" id="lf-hw-topic" placeholder="Тригонометрия: задачи на формулы приведения..."></div>
         </div>
         <div class="fg" style="margin-bottom:10px"><label>Описание / инструкция</label><textarea class="fi" id="lf-hw-desc" rows="2" placeholder="Подробности..."></textarea></div>
-        <div class="fg"><label>Дедлайн</label><input class="fi" type="date" id="lf-hw-due"></div>
+        <div class="form-row" style="margin-bottom:10px">
+          <div class="fg">
+            <label>Тип задания</label>
+            <select class="fi" id="lf-hw-type">
+              <option value="detailed">Подробный ответ</option>
+              <option value="brief">Краткий ответ</option>
+              <option value="trial">Пробник</option>
+            </select>
+          </div>
+          <div class="fg"><label>Дедлайн</label><input class="fi" type="date" id="lf-hw-due"></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;margin-bottom:4px">
+          <input type="checkbox" id="lf-hw-advanced" style="accent-color:var(--accent-mid)">
+          <span>Сложный уровень</span>
+        </label>
       </div>
     </div>
     <div class="fg"><label>Заметка к занятию</label><textarea class="fi" id="lf-notes" rows="2">${v.notes || ''}</textarea></div>
@@ -301,16 +295,7 @@ export function toggleHwAssignBlock() {
   if (block) block.style.display = checked ? '' : 'none';
 }
 
-export function toggleAttendance(sid) {
-  const row = document.getElementById('att-' + sid);
-  const tog = document.getElementById('att-tog-' + sid);
-  const lbl = document.getElementById('att-lbl-' + sid);
-  const absent = !row.classList.contains('absent');
-  row.classList.toggle('absent', absent);
-  tog.classList.toggle('absent', absent);
-  tog.innerHTML = absent ? '<i class="ti ti-x" style="font-size:11px"></i>' : '';
-  if (lbl) lbl.textContent = absent ? 'отсутствует' : 'присутствует';
-}
+export function toggleAttendance() {}
 
 export function setCalHwStatus(hwId, btn) {
   const states = ['pending', 'done', 'missing'];
@@ -330,13 +315,6 @@ export async function saveLessonForm(existingId) {
   if (!date) { toast('Укажите дату'); return; }
 
   const members = (CACHE.students || []).filter(s => s.group_id === state.currentGroupId && ['active', 'trial'].includes(s.crm_status));
-  const student_attendance = members.map(s => ({
-    student_id: s.id,
-    present: !document.getElementById('att-' + s.id)?.classList.contains('absent'),
-    note: (document.getElementById('att-note-' + s.id) || {}).value || ''
-  }));
-
-  const absent_ids = student_attendance.filter(a => !a.present).map(a => a.student_id);
   const hw_link = g('lf-hw-link');
   const lesson_link = g('lf-lesson-link');
   const duration = +(document.getElementById('lf-dur') || {}).value || 60;
@@ -347,7 +325,6 @@ export async function saveLessonForm(existingId) {
     group_id: state.currentGroupId,
     date, start_time, duration, topic,
     lesson_link, homework_link: hw_link,
-    student_attendance,
     task_ids: [],
     notes: g('lf-notes'),
     created_at: existingId ? ((CACHE.lessons || []).find(x => x.id === existingId) || {}).created_at || new Date().toISOString() : new Date().toISOString()
@@ -361,20 +338,14 @@ export async function saveLessonForm(existingId) {
       await dbUpdate('hw_submissions', hwId, { status, checked_at: new Date().toISOString() });
     }
 
-    if (hw_link && !existingId) {
-      const presentIds = student_attendance.filter(a => a.present).map(a => a.student_id);
-      for (const sid of presentIds) {
-        const hwObj = { id: uid(), lesson_id: obj.id, group_id: state.currentGroupId, student_id: sid, hw_link, assigned_at: new Date().toISOString(), status: 'pending', checked_at: null };
-        await dbInsert('hw_submissions', hwObj);
-      }
-    }
-
     // Create homework assignment if requested
     const hwAssign = !existingId && (document.getElementById('lf-hw-assign') || {}).checked;
     if (hwAssign) {
       const hwTopic = (document.getElementById('lf-hw-topic') || {}).value || topic;
       const hwDesc = (document.getElementById('lf-hw-desc') || {}).value || '';
       const hwDue = (document.getElementById('lf-hw-due') || {}).value || '';
+      const hw_type = (document.getElementById('lf-hw-type') || {}).value || 'detailed';
+      const is_advanced = (document.getElementById('lf-hw-advanced') || {}).checked || false;
       const { db } = await import('../lib/db.js');
       const assignment = await db.homeworks.createAssignment({
         group_id: state.currentGroupId,
@@ -382,20 +353,16 @@ export async function saveLessonForm(existingId) {
         topic: hwTopic,
         description: hwDesc,
         due_date: hwDue,
+        hw_type,
+        is_advanced,
       });
-      const presentStudents = members.filter(s => student_attendance.find(a => a.student_id === s.id && a.present !== false));
-      for (const stu of presentStudents) {
-        await db.homeworks.createSubmission({
-          assignment_id: assignment.id,
-          student_id: stu.id,
-        });
+      for (const stu of members) {
+        await db.homeworks.createSubmission({ assignment_id: assignment.id, student_id: stu.id });
       }
     }
 
     if (!existingId) {
-      for (const sid of absent_ids) await addEvent('student', sid, 'lesson_absent', { lesson_id: obj.id, topic });
-      const actives = members.filter(s => s.crm_status === 'active');
-      for (const s of actives) await recalcRisk(s);
+      for (const s of members.filter(s => s.crm_status === 'active')) await recalcRisk(s);
     }
 
     const gr2 = (CACHE.groups || []).find(x => x.id === obj.group_id);

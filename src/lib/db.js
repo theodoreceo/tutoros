@@ -33,9 +33,13 @@ export const db = {
       return (CACHE.homework_assignments || []).filter(a => a.group_id === groupId);
     },
     async getQueue(assistantId) {
+      // brief-answer HW doesn't go to the review queue
+      const briefIds = new Set(
+        (CACHE.homework_assignments || []).filter(a => a.hw_type === 'brief').map(a => a.id)
+      );
       // null/undefined assistantId = owner = see all submitted
       if (!assistantId) {
-        return (CACHE.homework_submissions || []).filter(s => s.status === 'submitted');
+        return (CACHE.homework_submissions || []).filter(s => s.status === 'submitted' && !briefIds.has(s.assignment_id));
       }
       const myGroups = await db.assistantGroups.getGroupsByAssistant(assistantId);
       const groupIds = new Set(myGroups.map(ag => ag.group_id));
@@ -43,7 +47,7 @@ export const db = {
         (CACHE.homework_assignments || []).filter(a => groupIds.has(a.group_id)).map(a => a.id)
       );
       return (CACHE.homework_submissions || []).filter(s =>
-        s.status === 'submitted' && myAssignmentIds.has(s.assignment_id)
+        s.status === 'submitted' && myAssignmentIds.has(s.assignment_id) && !briefIds.has(s.assignment_id)
       );
     },
     async getSubmission(id) {
