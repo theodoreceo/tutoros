@@ -195,8 +195,8 @@ export function renderAnalytics() {
   const mrrBarsEl = document.getElementById('an-mrr-bars');
   if (mrrBarsEl) mrrBarsEl.innerHTML = mMonths.map((m, i) => `
     <div class="mrr-bar-w" title="${mLbls[i]}: ${fmt(mTotals[i])} ₽">
-      <div class="mrr-bar-v" style="font-size:9px;color:var(--muted)">${mTotals[i] ? fmt(Math.round(mTotals[i] / 1000)) + 'к' : ''}</div>
-      <div class="mrr-bar-b ${m === lastMonthWithData ? 'cur' : ''}" style="height:${Math.max(3, mTotals[i] / maxMRR * 64)}px"></div>
+      <div class="mrr-bar-v">${mTotals[i] ? fmt(Math.round(mTotals[i] / 1000)) + 'к' : ''}</div>
+      <div class="mrr-bar-b ${m === lastMonthWithData ? 'cur' : ''}" style="height:${Math.max(3, mTotals[i] / maxMRR * 78)}px"></div>
       <div class="mrr-bar-l">${mLbls[i]}</div>
     </div>`).join('');
 
