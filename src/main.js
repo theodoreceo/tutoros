@@ -1,6 +1,6 @@
 import './styles/index.css';
 
-import { initLocalStorage, clearDemoData } from './core/store.js';
+import { initSupabase, clearDemoData } from './core/store.js';
 import { state } from './core/state.js';
 import { restoreSession, selectRole, applyRoleUI, logout, promptSwitchRole, confirmSwitch } from './core/auth.js';
 import { navigate, registerRenderer, setupNav } from './core/router.js';
@@ -46,8 +46,16 @@ import { renderCuratorDashPage } from './pages/curator-dash.js';
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 
-function init() {
-  initLocalStorage();
+async function init() {
+  const loadingEl = document.getElementById('loading-screen');
+  try {
+    await initSupabase();
+  } catch (err) {
+    if (loadingEl) loadingEl.innerHTML = `<div style="color:#ef4444;font-size:14px"><b>Ошибка подключения к базе данных</b><br><span style="font-size:12px;opacity:.7">${err.message}</span></div>`;
+    return;
+  }
+  if (loadingEl) loadingEl.style.display = 'none';
+
   initSidebar();
 
   registerRenderer('dashboard', renderDashboard);
@@ -82,7 +90,7 @@ window.logout = logout;
 window.promptSwitchRole = promptSwitchRole;
 window.confirmSwitch = confirmSwitch;
 window.selectRole = selectRole;
-window.clearDemoData = () => { if (confirm('Сбросить все данные?')) { clearDemoData(); location.reload(); } };
+window.clearDemoData = async () => { if (confirm('Сбросить все данные?')) { await clearDemoData(); location.reload(); } };
 
 // Students
 window.renderStudents = renderStudents;

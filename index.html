@@ -12,6 +12,17 @@
 </head>
 <body>
 
+<!-- ── LOADING SCREEN ───────────────────────────────────────────────────────── -->
+<div id="loading-screen" style="position:fixed;inset:0;background:#f7f3ee;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:16px">
+  <div style="font-family:'Playfair Display',serif;font-size:28px;color:#2c1810">теорема <em>федора</em></div>
+  <div style="display:flex;gap:6px">
+    <div style="width:8px;height:8px;border-radius:50%;background:#c2b5a5;animation:ldot 1.2s ease-in-out infinite"></div>
+    <div style="width:8px;height:8px;border-radius:50%;background:#c2b5a5;animation:ldot 1.2s ease-in-out .2s infinite"></div>
+    <div style="width:8px;height:8px;border-radius:50%;background:#c2b5a5;animation:ldot 1.2s ease-in-out .4s infinite"></div>
+  </div>
+  <style>@keyframes ldot{0%,80%,100%{opacity:.25;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}</style>
+</div>
+
 <!-- ── SETUP SCREEN ─────────────────────────────────────────────────────────── -->
 <div id="setup-screen" class="setup-screen">
   <div class="setup-box">
