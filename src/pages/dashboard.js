@@ -20,6 +20,7 @@ export function renderDashboard() {
   const mrr = CACHE.payments.filter(p => p.date?.startsWith(thisMonth())).reduce((s, p) => s + p.amount, 0);
   const mrrPrev = CACHE.payments.filter(p => p.date?.startsWith(lastMonth())).reduce((s, p) => s + p.amount, 0);
   const mrrDelta = mrrPrev ? Math.round((mrr - mrrPrev) / mrrPrev * 100) : null;
+  const projectedMRR = active.reduce((sum, s) => sum + (s.price_per_hour || 0) * (s.lessons_per_month || 0), 0);
   const expThisM = CACHE.expenses.filter(e => e.date?.startsWith(thisMonth())).reduce((s, e) => s + e.amount, 0);
   const profit = mrr - expThisM;
   const profitPrev = mrrPrev - CACHE.expenses.filter(e => e.date?.startsWith(lastMonth())).reduce((s, e) => s + e.amount, 0);
@@ -39,6 +40,12 @@ export function renderDashboard() {
       <div class="p-label">Прибыль / месяц</div>
       <div class="p-val" style="color:${profit >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(profit)} ₽</div>
       ${profitDelta !== null ? `<div class="p-delta ${deltaClass(profitDelta)}">${deltaIcon(profitDelta)} ${profitDelta > 0 ? '+' : ''}${profitDelta}% к прошлому</div>` : '<div class="p-delta flat">первый месяц</div>'}
+    </div>
+    <div class="pulse-card">
+      <div class="p-stripe" style="background:#c2b5a5"></div>
+      <div class="p-label">Прогноз выручки / месяц</div>
+      <div class="p-val" style="color:#5a5048">${projectedMRR ? fmt(projectedMRR) + ' ₽' : '—'}</div>
+      <div class="p-delta flat">сумма LTV · ${active.filter(s => s.price_per_hour && s.lessons_per_month).length} уч. с тарифом</div>
     </div>
     <div class="pulse-card">
       <div class="p-stripe" style="background:#22c55e"></div>

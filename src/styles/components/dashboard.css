@@ -9,7 +9,7 @@
 /* Today strip */
 .today-strip { display: flex; flex-direction: column; gap: 6px; }
 .today-lesson { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent-mid); border-radius: var(--r); cursor: pointer; transition: box-shadow .12s; }
-.today-lesson:hover { box-shadow: 0 2px 8px rgba(5,51,125,.08); }
+.today-lesson:hover { box-shadow: 0 2px 8px rgba(26,23,20,.08); }
 .today-lesson.past { opacity: .5; border-left-color: var(--hint); }
 .today-lesson.upcoming { border-left-color: var(--green); }
 .tl-time { font-size: 12px; font-weight: 600; color: var(--accent); width: 52px; flex-shrink: 0; }

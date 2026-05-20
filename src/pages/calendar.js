@@ -465,7 +465,7 @@ export async function deleteLesson(id) {
 }
 
 export function exportICS() {
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//TutorOS//RU', 'CALSCALE:GREGORIAN'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//теорема федора//RU', 'CALSCALE:GREGORIAN'];
   (CACHE.lessons || []).forEach(l => {
     const gr = (CACHE.groups || []).find(g => g.id === l.group_id);
     const [h, m] = (l.start_time || '09:00').split(':').map(Number);
@@ -481,6 +481,6 @@ export function exportICS() {
   });
   lines.push('END:VCALENDAR');
   const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'TutorOS_lessons.ics'; a.click();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'teorema_fedora_lessons.ics'; a.click();
   toast('.ics скачан — импортируй в Apple/Google Calendar двойным кликом');
 }
