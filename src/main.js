@@ -25,7 +25,7 @@ import {
 } from './pages/groups.js';
 import {
   setCalView, calNav, calToday, renderCalendar,
-  openLessonFromCalendar, openLessonFormModal, toggleAttendance,
+  openLessonFromCalendar, openLessonFormFromPicker, openLessonFormModal, toggleAttendance,
   setCalHwStatus, toggleHwAssignBlock,
   saveLessonForm, openLessonCard, deleteLesson as calDeleteLesson, exportICS,
 } from './pages/calendar.js';
@@ -125,6 +125,7 @@ window.calNav = calNav;
 window.calToday = calToday;
 window.renderCalendar = renderCalendar;
 window.openLessonFromCalendar = openLessonFromCalendar;
+window.openLessonFormFromPicker = openLessonFormFromPicker;
 window.openLessonFormModal = openLessonFormModal;
 window.toggleAttendance = toggleAttendance;
 window.saveLessonForm = saveLessonForm;

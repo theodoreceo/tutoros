@@ -10,6 +10,7 @@ import { recalcRisk } from '../core/risk.js';
 let _calView = 'week';
 let _calDate = new Date();
 const _hwBtnStates = {};
+let _pendingGroupIds = [];
 
 function groupColor(gid) {
   const idx = (CACHE.groups || []).findIndex(g => g.id === gid);
@@ -191,19 +192,32 @@ export function renderCalendar() {
 
 export function openLessonFromCalendar(date) {
   const dateVal = date || dateStr(new Date());
-  if (!(CACHE.groups || []).length) { toast('Сначала создай хотя бы одну группу'); return; }
-  const gOpts = (CACHE.groups || []).map(gr => `<option value="${gr.id}">${gr.name}</option>`).join('');
+  const groups = CACHE.groups || [];
+  if (!groups.length) { toast('Сначала создай хотя бы одну группу'); return; }
+  const checkboxes = groups.map((gr, i) =>
+    `<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r);cursor:pointer;transition:background .1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <input type="checkbox" name="cal-group-pick" value="${gr.id}" style="accent-color:var(--accent-mid)" ${i === 0 ? 'checked' : ''}>
+      <span style="font-size:13px">${gr.name}</span>
+    </label>`
+  ).join('');
   modal(`<div class="modal" style="max-width:340px">
     <div class="modal-title">Новое занятие · ${dateVal}</div>
     <div class="fg" style="margin-bottom:16px">
-      <label>Группа</label>
-      <select class="fi" id="cal-group-pick">${gOpts}</select>
+      <label>Группы</label>
+      <div style="margin-top:4px">${checkboxes}</div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal()">Отмена</button>
-      <button class="btn btn-p" onclick="openLessonFormModal('${dateVal}',(document.getElementById('cal-group-pick')||{}).value)">Далее →</button>
+      <button class="btn btn-p" onclick="openLessonFormFromPicker('${dateVal}')">Далее →</button>
     </div>
   </div>`);
+}
+
+export function openLessonFormFromPicker(dateVal) {
+  const checked = [...document.querySelectorAll('input[name="cal-group-pick"]:checked')].map(el => el.value);
+  if (!checked.length) { toast('Выберите хотя бы одну группу'); return; }
+  _pendingGroupIds = checked;
+  openLessonFormModal(dateVal, checked[0]);
 }
 
 export function openLessonFormModal(date, gid, existingId) {
@@ -214,29 +228,23 @@ export function openLessonFormModal(date, gid, existingId) {
   const gr = (CACHE.groups || []).find(x => x.id === groupId);
   if (!gr) { toast('Группа не найдена'); return; }
 
+  // For new lessons, use _pendingGroupIds (may be multiple); for edits, single group
+  const groupIds = existingId ? [groupId] : (_pendingGroupIds.length ? _pendingGroupIds : [groupId]);
+  const groupNames = groupIds.map(id => (CACHE.groups || []).find(g => g.id === id)?.name || id).join(', ');
+
+  const v = existing || { date, start_time: '18:00', duration: 60, topic: '', lesson_link: '', materials_link: '', notes: '', led_by: '' };
+
+  // Conductor dropdown: owner + all roles
+  const conductorOpts = [
+    `<option value="" ${!v.led_by ? 'selected' : ''}>— не указан —</option>`,
+    `<option value="owner" ${v.led_by === 'owner' ? 'selected' : ''}>Владелец</option>`,
+    ...(CACHE.roles || []).map(r => `<option value="${r.id}" ${v.led_by === r.id ? 'selected' : ''}>${r.name}</option>`),
+  ].join('');
+
   const members = (CACHE.students || []).filter(s => s.group_id === groupId && ['active', 'trial'].includes(s.crm_status));
-  const v = existing || { date, start_time: '18:00', duration: 60, topic: '', lesson_link: '', homework_link: '', student_attendance: [], notes: '' };
-
-  const prevLesson = (CACHE.lessons || []).filter(l => l.group_id === groupId && l.date < v.date && l.homework_link).sort((a, b) => b.date > a.date ? 1 : -1)[0];
-  const pendingHW = prevLesson ? (CACHE.hw_submissions || []).filter(h => h.lesson_id === prevLesson.id && h.status === 'pending') : [];
-
-  const hwReviewBlock = (!existingId && pendingHW.length) ? `
-    <div style="background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:var(--r);padding:12px 14px;margin-bottom:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">
-        <i class="ti ti-clipboard-check"></i> Проверить ДЗ с прошлого занятия${prevLesson.homework_link ? ` · <a href="${prevLesson.homework_link}" target="_blank" style="color:var(--accent-mid);font-size:11px">открыть</a>` : ''}
-      </div>
-      ${pendingHW.map(h => {
-    const stu = (CACHE.students || []).find(s => s.id === h.student_id);
-    return `<div class="hw-row">
-          <span style="flex:1;font-size:13px">${stu ? stu.name : '?'}</span>
-          <button class="hw-status-btn pending" id="hwbtn-${h.id}" onclick="setCalHwStatus('${h.id}',this)">— не проверено</button>
-        </div>`;
-  }).join('')}
-    </div>` : '';
 
   modal(`<div class="modal" style="max-width:640px">
-    <div class="modal-title">${existing ? 'Редактировать занятие' : 'Новое занятие'} · ${gr.name}</div>
-    ${hwReviewBlock}
+    <div class="modal-title">${existing ? 'Редактировать занятие' : 'Новое занятие'} · ${existing ? gr.name : groupNames}</div>
     <div class="form-row" style="margin-bottom:10px">
       <div class="fg"><label>Дата</label><input class="fi" type="date" id="lf-date" value="${v.date || date}"></div>
       <div class="fg"><label>Время начала</label><input class="fi" type="time" id="lf-time" value="${v.start_time || '18:00'}"></div>
@@ -249,10 +257,13 @@ export function openLessonFormModal(date, gid, existingId) {
         </select>
       </div>
     </div>
-    <div class="fg" style="margin-bottom:10px"><label>Тема занятия</label><input class="fi" id="lf-topic" value="${v.topic || ''}" placeholder="Тригонометрия: формулы приведения"></div>
+    <div class="form-row" style="margin-bottom:10px">
+      <div class="fg" style="flex:2"><label>Тема занятия</label><input class="fi" id="lf-topic" value="${v.topic || ''}" placeholder="Тригонометрия: формулы приведения"></div>
+      <div class="fg"><label>Ведёт занятие</label><select class="fi" id="lf-led-by">${conductorOpts}</select></div>
+    </div>
     <div class="form-row" style="margin-bottom:12px">
-      <div class="fg"><label><i class="ti ti-link" style="font-size:11px"></i> Ссылка на занятие</label><input class="fi" id="lf-lesson-link" value="${v.lesson_link || ''}" placeholder="https://..."></div>
-      <div class="fg"><label><i class="ti ti-home" style="font-size:11px"></i> Ссылка на ДЗ</label><input class="fi" id="lf-hw-link" value="${v.homework_link || ''}" placeholder="https://docs.google.com/..."></div>
+      <div class="fg"><label><i class="ti ti-video" style="font-size:11px"></i> Ссылка на занятие</label><input class="fi" id="lf-lesson-link" value="${v.lesson_link || ''}" placeholder="https://..."></div>
+      <div class="fg"><label><i class="ti ti-books" style="font-size:11px"></i> Ссылка на материалы</label><input class="fi" id="lf-materials-link" value="${v.materials_link || ''}" placeholder="https://drive.google.com/..."></div>
     </div>
     <div style="margin-bottom:14px;border-top:1px solid var(--border);padding-top:12px">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
@@ -314,60 +325,75 @@ export async function saveLessonForm(existingId) {
   const date = g('lf-date');
   if (!date) { toast('Укажите дату'); return; }
 
-  const members = (CACHE.students || []).filter(s => s.group_id === state.currentGroupId && ['active', 'trial'].includes(s.crm_status));
-  const hw_link = g('lf-hw-link');
   const lesson_link = g('lf-lesson-link');
+  const materials_link = g('lf-materials-link');
+  const led_by = (document.getElementById('lf-led-by') || {}).value || '';
   const duration = +(document.getElementById('lf-dur') || {}).value || 60;
   const start_time = g('lf-time') || '18:00';
+  const notes = g('lf-notes');
+  const createdAt = new Date().toISOString();
 
-  const obj = {
-    id: existingId || uid(),
-    group_id: state.currentGroupId,
-    date, start_time, duration, topic,
-    lesson_link, homework_link: hw_link,
-    task_ids: [],
-    notes: g('lf-notes'),
-    created_at: existingId ? ((CACHE.lessons || []).find(x => x.id === existingId) || {}).created_at || new Date().toISOString() : new Date().toISOString()
-  };
+  // For new lessons: create one per selected group; for edit: single group
+  const groupIds = existingId ? [state.currentGroupId] : (_pendingGroupIds.length ? _pendingGroupIds : [state.currentGroupId]);
+
+  const hwAssign = !existingId && (document.getElementById('lf-hw-assign') || {}).checked;
+  let hwParams = null;
+  if (hwAssign) {
+    hwParams = {
+      topic: (document.getElementById('lf-hw-topic') || {}).value || topic,
+      description: (document.getElementById('lf-hw-desc') || {}).value || '',
+      due_date: (document.getElementById('lf-hw-due') || {}).value || '',
+      hw_type: (document.getElementById('lf-hw-type') || {}).value || 'detailed',
+      is_advanced: (document.getElementById('lf-hw-advanced') || {}).checked || false,
+    };
+  }
 
   try {
-    if (existingId) await dbUpdate('lessons', existingId, obj);
-    else await dbInsert('lessons', obj);
-
     for (const [hwId, status] of Object.entries(_hwBtnStates)) {
-      await dbUpdate('hw_submissions', hwId, { status, checked_at: new Date().toISOString() });
+      await dbUpdate('hw_submissions', hwId, { status, checked_at: createdAt });
     }
 
-    // Create homework assignment if requested
-    const hwAssign = !existingId && (document.getElementById('lf-hw-assign') || {}).checked;
-    if (hwAssign) {
-      const hwTopic = (document.getElementById('lf-hw-topic') || {}).value || topic;
-      const hwDesc = (document.getElementById('lf-hw-desc') || {}).value || '';
-      const hwDue = (document.getElementById('lf-hw-due') || {}).value || '';
-      const hw_type = (document.getElementById('lf-hw-type') || {}).value || 'detailed';
-      const is_advanced = (document.getElementById('lf-hw-advanced') || {}).checked || false;
-      const { db } = await import('../lib/db.js');
-      const assignment = await db.homeworks.createAssignment({
-        group_id: state.currentGroupId,
-        lesson_id: obj.id,
-        topic: hwTopic,
-        description: hwDesc,
-        due_date: hwDue,
-        hw_type,
-        is_advanced,
-      });
-      for (const stu of members) {
-        await db.homeworks.createSubmission({ assignment_id: assignment.id, student_id: stu.id });
+    const lessonIds = [];
+    for (const gid of groupIds) {
+      const lessonId = existingId || uid();
+      const obj = {
+        id: lessonId,
+        group_id: gid,
+        date, start_time, duration, topic,
+        lesson_link, materials_link, led_by,
+        task_ids: [],
+        notes,
+        created_at: existingId ? ((CACHE.lessons || []).find(x => x.id === existingId) || {}).created_at || createdAt : createdAt,
+      };
+      if (existingId) await dbUpdate('lessons', existingId, obj);
+      else await dbInsert('lessons', obj);
+      lessonIds.push(lessonId);
+
+      if (hwParams) {
+        const { db } = await import('../lib/db.js');
+        const assignment = await db.homeworks.createAssignment({
+          group_id: gid,
+          lesson_id: lessonId,
+          ...hwParams,
+        });
+        const members = (CACHE.students || []).filter(s => s.group_id === gid && ['active', 'trial'].includes(s.crm_status));
+        for (const stu of members) {
+          await db.homeworks.createSubmission({ assignment_id: assignment.id, student_id: stu.id });
+        }
       }
+
+      if (!existingId) {
+        const members = (CACHE.students || []).filter(s => s.group_id === gid && s.crm_status === 'active');
+        for (const s of members) await recalcRisk(s);
+      }
+
+      const gr2 = (CACHE.groups || []).find(x => x.id === gid);
+      await addHistoryEntry(existingId ? 'update' : 'insert', `${existingId ? 'Изменено' : 'Добавлено'} занятие: ${topic}${gr2 ? ' (' + gr2.name + ')' : ''} · ${date}`, 'lesson', lessonId, null);
     }
 
-    if (!existingId) {
-      for (const s of members.filter(s => s.crm_status === 'active')) await recalcRisk(s);
-    }
-
-    const gr2 = (CACHE.groups || []).find(x => x.id === obj.group_id);
-    await addHistoryEntry(existingId ? 'update' : 'insert', `${existingId ? 'Изменено' : 'Добавлено'} занятие: ${topic}${gr2 ? ' (' + gr2.name + ')' : ''} · ${date}`, 'lesson', obj.id, { table: 'lessons', action: existingId ? 'update' : 'insert', record_id: obj.id, old_data: null });
-    closeModal(); renderCalendar(); toast(existingId ? 'Занятие обновлено' : 'Занятие добавлено');
+    _pendingGroupIds = [];
+    closeModal(); renderCalendar();
+    toast(existingId ? 'Занятие обновлено' : groupIds.length > 1 ? `Занятие добавлено в ${groupIds.length} группы` : 'Занятие добавлено');
   } catch (e) { toast('Ошибка: ' + e.message); }
 }
 
@@ -398,9 +424,10 @@ export function openLessonCard(lid) {
         <button class="btn" onclick="closeModal()"><i class="ti ti-x"></i></button>
       </div>
     </div>
-    ${(l.lesson_link || l.homework_link) ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    ${l.led_by ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px"><i class="ti ti-user-check" style="font-size:11px"></i> Ведёт: <b>${l.led_by === 'owner' ? 'Владелец' : ((CACHE.roles || []).find(r => r.id === l.led_by) || {}).name || l.led_by}</b></div>` : ''}
+    ${(l.lesson_link || l.materials_link) ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
       ${l.lesson_link ? `<a href="${l.lesson_link}" target="_blank" class="btn btn-sm"><i class="ti ti-video"></i> Запись занятия</a>` : ''}
-      ${l.homework_link ? `<a href="${l.homework_link}" target="_blank" class="btn btn-sm"><i class="ti ti-home"></i> Домашнее задание</a>` : ''}
+      ${l.materials_link ? `<a href="${l.materials_link}" target="_blank" class="btn btn-sm"><i class="ti ti-books"></i> Материалы</a>` : ''}
     </div>` : ''}
     ${attendance.length ? `<div style="margin-bottom:12px">
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Ученики</div>
@@ -443,7 +470,7 @@ export function exportICS() {
     const dtEnd = `${dt}T${String(Math.floor(endTotalMin / 60)).padStart(2, '0')}${String(endTotalMin % 60).padStart(2, '0')}00`;
     lines.push('BEGIN:VEVENT', `DTSTART:${dtStart}`, `DTEND:${dtEnd}`,
       `SUMMARY:${l.topic || 'Занятие'}${gr ? ' (' + gr.name + ')' : ''}`,
-      `DESCRIPTION:${l.homework_link ? 'ДЗ: ' + l.homework_link : ''}`,
+      `DESCRIPTION:${l.materials_link ? 'Материалы: ' + l.materials_link : ''}`,
       `UID:${l.id}@tutoros`, 'END:VEVENT');
   });
   lines.push('END:VCALENDAR');
