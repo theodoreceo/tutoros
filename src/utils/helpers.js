@@ -20,6 +20,7 @@ export const ALL_PAGES = [
   { id: 'expenses',     label: 'Расходы' },
   { id: 'analytics',    label: 'Аналитика' },
   { id: 'tasks',        label: 'Задачи' },
+  { id: 'homework',     label: 'ДЗ' },
   { id: 'access',       label: 'Доступы' },
 ];
 

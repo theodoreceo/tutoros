@@ -17,9 +17,12 @@ export const CACHE = {
   student_notes: [],
   hw_submissions: [],
   history_log: [],
+  homework_assignments: [],
+  homework_submissions: [],
+  assistant_groups: [],
 };
 
-export const TABLES = ['groups','students','payments','expenses','modules','tasks','roles','folders','lessons','atasks','events','student_notes','hw_submissions','history_log'];
+export const TABLES = ['groups','students','payments','expenses','modules','tasks','roles','folders','lessons','atasks','events','student_notes','hw_submissions','history_log','homework_assignments','homework_submissions','assistant_groups'];
 
 const KEY = (t) => `tutoros_${t}`;
 

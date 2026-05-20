@@ -12,6 +12,7 @@ const TITLES = {
   expenses:     'Расходы',
   analytics:    'Аналитика',
   tasks:        'Задачи ассистентам',
+  homework:     'Домашние задания',
   access:       'Управление доступами',
 };
 
