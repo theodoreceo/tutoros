@@ -25,13 +25,10 @@ export async function undoHistoryEntry(id) {
     const { table, action, record_id, old_data } = entry.undo_data;
     if (action === 'insert') {
       await dbDelete(table, record_id);
-      if (CACHE[table]) CACHE[table] = CACHE[table].filter(r => r.id !== record_id);
     } else if (action === 'update' && old_data) {
       await dbUpdate(table, record_id, old_data);
-      if (CACHE[table]) CACHE[table] = CACHE[table].map(r => r.id === record_id ? { ...r, ...old_data } : r);
     } else if (action === 'delete' && old_data) {
       await dbInsert(table, old_data);
-      if (CACHE[table]) CACHE[table].push(old_data);
     }
     await addHistoryEntry('undo', `Отменено: ${entry.description || entry.action}`, entry.entity_type, entry.entity_id, null);
     return true;
