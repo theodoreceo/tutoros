@@ -13,7 +13,7 @@ export const ALL_PAGES = [
   { id: 'dashboard',    label: 'Дашборд' },
   { id: 'history',      label: 'История' },
   { id: 'students',     label: 'CRM' },
-  { id: 'crm_students', label: 'Ученики' },
+  { id: 'crm_students', label: 'Воронка' },
   { id: 'groups',       label: 'Группы' },
   { id: 'lessons_cal',  label: 'Занятия' },
   { id: 'income',       label: 'Доходы' },
@@ -25,23 +25,24 @@ export const ALL_PAGES = [
 ];
 
 export const STATUS_CONFIG = {
-  lead:             { label: 'Лид',                   cls: 'b-gray', icon: 'ti-user-question' },
-  trial_scheduled:  { label: 'Пробник назначен',       cls: 'b-bl',   icon: 'ti-calendar-check' },
-  trial_done:       { label: 'Пробник проведён',        cls: 'b-a',    icon: 'ti-star' },
-  trial:            { label: 'Пробное',                cls: 'b-bl',   icon: 'ti-user-check' },
-  active:           { label: 'Занимается',             cls: 'b-g',    icon: 'ti-user-star' },
-  exam_passed:      { label: 'Сдал экзамен',           cls: 'b-a',    icon: 'ti-medal' },
-  stopped:          { label: 'Отказался от занятий',   cls: 'b-r',    icon: 'ti-user-x' },
-  refused:          { label: 'Отказался заниматься',   cls: 'b-gray', icon: 'ti-user-off' },
+  lead:             { label: 'Лид',             cls: 'b-gray', icon: 'ti-user-question' },
+  trial_scheduled:  { label: 'Пробник назначен', cls: 'b-bl',   icon: 'ti-calendar-check' },
+  trial_done:       { label: 'Пробник проведён',  cls: 'b-a',    icon: 'ti-star' },
+  trial:            { label: 'Пробное',          cls: 'b-bl',   icon: 'ti-user-check' },
+  active:           { label: 'Занимается',       cls: 'b-g',    icon: 'ti-user-star' },
+  exam_passed:      { label: 'Сдал экзамен',     cls: 'b-a',    icon: 'ti-medal' },
+  stopped:          { label: 'Отказался',        cls: 'b-gray', icon: 'ti-user-x' },
+  refused:          { label: 'Отказался',        cls: 'b-gray', icon: 'ti-user-off' },
+  left:             { label: 'Ушел',             cls: 'b-r',    icon: 'ti-door-exit' },
 };
 
 export const PIPELINE_STAGES = [
-  { id: 'lead',            label: 'Лид',                  color: '#64748b', bg: '#f8fafc' },
-  { id: 'trial_scheduled', label: 'Пробник назначен',      color: '#7c3aed', bg: '#f5f3ff' },
-  { id: 'trial_done',      label: 'Пробник проведён',       color: '#d97706', bg: '#fffbeb' },
-  { id: 'active',          label: 'Занимается',            color: '#05337D', bg: '#dde6f5' },
-  { id: 'exam_passed',     label: 'Сдал экзамен',          color: '#15803d', bg: '#f0fdf4' },
-  { id: 'stopped',         label: 'Отказался от занятий',  color: '#b91c1c', bg: '#fef2f2' },
+  { id: 'lead',            label: 'Лид',             color: '#64748b', bg: '#f8fafc' },
+  { id: 'trial_scheduled', label: 'Пробник назначен', color: '#7c3aed', bg: '#f5f3ff' },
+  { id: 'trial_done',      label: 'Пробник проведён',  color: '#d97706', bg: '#fffbeb' },
+  { id: 'stopped',         label: 'Отказался',        color: '#94a3b8', bg: '#f8fafc' },
+  { id: 'exam_passed',     label: 'Сдал экзамен',     color: '#15803d', bg: '#f0fdf4' },
+  { id: 'left',            label: 'Ушел',             color: '#b91c1c', bg: '#fef2f2' },
 ];
 
 export const GROUP_COLORS = ['#2563eb','#16a34a','#d97706','#7c3aed','#db2777','#0891b2','#ea580c','#0f766e','#9333ea','#dc2626'];

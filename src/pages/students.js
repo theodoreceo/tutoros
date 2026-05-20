@@ -7,79 +7,30 @@ import { addHistoryEntry } from '../core/history.js';
 import { addEvent, studentEvents } from '../core/events.js';
 import { calcRiskScore, riskBadge, renderSubscriptionBadge, studentSubscriptionStatus, recalcRisk } from '../core/risk.js';
 
-let _crmView = 'pipeline';
-
 function groupShort(id) {
   const gr = (CACHE.groups || []).find(x => x.id === id);
   return gr ? gr.name.slice(0, 24) + (gr.name.length > 24 ? '…' : '') : '—';
 }
 
-export function setCRMView(v) {
-  _crmView = v;
-  document.getElementById('crm-pipeline-view').style.display = v === 'pipeline' ? '' : 'none';
-  document.getElementById('crm-table-view').style.display = v === 'table' ? '' : 'none';
-  document.querySelectorAll('#crm-view-toggle button').forEach((b, i) => b.classList.toggle('on', ['pipeline', 'table'][i] === v));
-  if (v === 'pipeline') renderPipeline(); else renderStudents();
-}
+export function setCRMView() {}
 
 export function setCRMStatusFilter(status) {
-  setCRMView('table');
-  const el = document.getElementById('student-status-filter');
-  if (el) el.value = status;
-  document.querySelectorAll('#crm-status-tabs .btn').forEach(b => {
-    const isActive = b.getAttribute('onclick')?.includes(`'${status}'`) || (status === '' && b.getAttribute('onclick')?.includes("''"));
-    b.classList.toggle('btn-p', isActive);
-  });
-  renderStudents();
+  import('../core/router.js').then(({ navigate }) => navigate('students'));
+  setTimeout(() => {
+    const el = document.getElementById('student-status-filter');
+    if (el) { el.value = status; renderStudents(); }
+  }, 50);
 }
 
-export function renderCRMStudents() {
-  const search = (document.getElementById('crm-students-search') || {}).value?.toLowerCase() || '';
-  const stFilter = (document.getElementById('crm-students-status') || {}).value || '';
-  let students = (CACHE.students || []).filter(s => {
-    if (search && !s.name.toLowerCase().includes(search)) return false;
-    if (stFilter && s.crm_status !== stFilter) return false;
-    return true;
-  });
-  const tbody = document.getElementById('crm-students-tbody');
-  const empty = document.getElementById('crm-students-empty');
-  if (!tbody) return;
-  if (!students.length) { tbody.innerHTML = ''; if (empty) empty.style.display = ''; return; }
-  if (empty) empty.style.display = 'none';
-  const role = state.currentRole || {};
-  const canEdit = role.canEdit || role.isOwner;
-  tbody.innerHTML = students.map(s => {
-    const st = STATUS_CONFIG[s.crm_status] || STATUS_CONFIG['lead'];
-    const ltv = (s.price_per_hour || 0) * (s.lessons_per_month || 0);
-    const contact = s.contact || s.phone || '—';
-    const subBadge = renderSubscriptionBadge(s);
-    return `<tr style="cursor:pointer" onclick="openStudentDetail('${s.id}')">
-      <td><span class="b ${st.cls}"><i class="ti ${st.icon}" style="font-size:11px;margin-right:3px"></i>${st.label}</span></td>
-      <td><b>${s.name}</b><br><span style="font-size:11px;color:var(--muted)">${s.source || ''}</span></td>
-      <td>${s.grade}</td>
-      <td style="max-width:140px;word-break:break-all"><span style="font-size:12px">${contact}</span></td>
-      <td><span class="b ${s.format === 'individual' ? 'b-bl' : 'b-gray'}">${s.format === 'individual' ? 'Инд' : 'Группа'}</span><br><span style="font-size:11px;color:var(--muted)">${groupShort(s.group_id)}</span></td>
-      <td>${subBadge}</td>
-      <td style="text-align:right">${s.price_per_hour ? fmt(s.price_per_hour) + ' ₽' : '—'}</td>
-      <td style="text-align:center">${s.lessons_per_month ?? '—'}</td>
-      <td style="text-align:right;font-weight:600;color:var(--green)">${ltv ? fmt(ltv) + ' ₽/мес' : '—'}</td>
-      <td>${riskBadge(s)}</td>
-      <td style="white-space:nowrap" onclick="event.stopPropagation()">${canEdit ? `<button class="btn btn-sm btn-icon" onclick="editStudent('${s.id}')"><i class="ti ti-edit"></i></button>
-        <button class="btn btn-sm btn-icon" onclick="deleteStudent('${s.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
-      </td>
-    </tr>`;
-  }).join('');
-}
-
+// CRM — полная таблица всех учеников
 export function renderStudents() {
-  if (_crmView === 'pipeline') { renderPipeline(); return; }
   const gf = document.getElementById('student-filter');
   if (gf) gf.innerHTML = '<option value="">Все группы</option>' + (CACHE.groups || []).map(g => `<option value="${g.id}">${g.name.slice(0, 30)}</option>`).join('');
-  const search = (document.getElementById('student-search') || {}).value || '';
+  const search = ((document.getElementById('student-search') || {}).value || '').toLowerCase();
   const gFilter = (document.getElementById('student-filter') || {}).value || '';
   const stFilter = (document.getElementById('student-status-filter') || {}).value || '';
   let students = (CACHE.students || []).filter(s => {
-    if (search && !s.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !s.name.toLowerCase().includes(search) && !(s.contact || '').toLowerCase().includes(search)) return false;
     if (gFilter && s.group_id !== gFilter) return false;
     if (stFilter && s.crm_status !== stFilter) return false;
     return true;
@@ -115,18 +66,41 @@ export function renderStudents() {
   }).join('');
 }
 
+// Воронка — pipeline без активных, с поиском и 30-дневным скрытием ушедших
+export function renderCRMStudents() {
+  renderPipeline();
+}
+
 export function renderPipeline() {
   const board = document.getElementById('pipeline-board');
   if (!board) return;
   const role = state.currentRole || {};
+  const search = ((document.getElementById('pipeline-search') || {}).value || '').toLowerCase();
+  const now = Date.now();
+  const cutoff30 = now - 30 * 86400000;
+
   board.innerHTML = PIPELINE_STAGES.map(stage => {
-    const cards = (CACHE.students || []).filter(s => {
-      if (stage.id === 'trial_done') return s.crm_status === 'trial_done' || s.crm_status === 'trial';
-      return s.crm_status === stage.id;
+    const exitStatuses = ['stopped', 'refused', 'left'];
+    let cards = (CACHE.students || []).filter(s => {
+      // map both stopped and refused to the 'stopped' column
+      if (stage.id === 'stopped') {
+        if (s.crm_status !== 'stopped' && s.crm_status !== 'refused') return false;
+      } else if (stage.id === 'trial_done') {
+        if (s.crm_status !== 'trial_done' && s.crm_status !== 'trial') return false;
+      } else {
+        if (s.crm_status !== stage.id) return false;
+      }
+      // hide exit-status students older than 30 days
+      if (exitStatuses.includes(s.crm_status) && s.left_at && new Date(s.left_at).getTime() < cutoff30) return false;
+      return true;
     });
-    const risk = cards.reduce((acc, s) => { const r = calcRiskScore(s); acc[r.level] = (acc[r.level] || 0) + 1; return acc; }, {});
-    const badge = risk.high ? `<span style="background:#fef2f2;color:#b91c1c;border-radius:20px;font-size:10px;padding:1px 6px;font-weight:700">${risk.high} ⚠</span>` :
-      risk.med ? `<span style="background:#fffbeb;color:#92400e;border-radius:20px;font-size:10px;padding:1px 6px;font-weight:700">${risk.med}!</span>` : '';
+    if (search) cards = cards.filter(s => s.name.toLowerCase().includes(search) || (s.contact || '').toLowerCase().includes(search));
+
+    const badge = stage.id === 'lead' && cards.filter(s => {
+      const age = Math.round((now - new Date(s.created_at)) / 86400000);
+      return age >= 3;
+    }).length > 0 ? `<span style="background:#fffbeb;color:#92400e;border-radius:20px;font-size:10px;padding:1px 6px;font-weight:700">${cards.filter(s => Math.round((now - new Date(s.created_at)) / 86400000) >= 3).length}!</span>` : '';
+
     return `<div class="pipeline-col">
       <div class="pipeline-col-head" style="border-color:${stage.color}20;background:${stage.bg}">
         <span style="color:${stage.color}">${stage.label}</span>
@@ -137,22 +111,19 @@ export function renderPipeline() {
       </div>
       <div class="pipeline-col-body">
         ${cards.length ? cards.map(s => {
-      const { level, reasons } = calcRiskScore(s);
-      const riskCls = level === 'high' ? 'risk-high' : level === 'med' ? 'risk-med' : '';
-      const sub = studentSubscriptionStatus(s);
-      const subHint = sub ? (sub.daysLeft < 0 ? '<span style="font-size:10px;color:#b91c1c">просрочен</span>' : (sub.daysLeft <= 7 ? `<span style="font-size:10px;color:#92400e">${sub.daysLeft}д</span>` : '')) : '';
-      const mrr = s.price_per_hour && s.lessons_per_month ? fmt(s.price_per_hour * s.lessons_per_month) + ' ₽' : '';
-      return `<div class="pipeline-card ${riskCls}" onclick="openStudentDetail('${s.id}')">
+          const { level, reasons } = calcRiskScore(s);
+          const riskCls = level === 'high' ? 'risk-high' : level === 'med' ? 'risk-med' : '';
+          const contact = s.contact ? `<span style="font-size:10px;color:var(--hint)">${s.contact}</span>` : '';
+          return `<div class="pipeline-card ${riskCls}" onclick="openStudentDetail('${s.id}')">
             <div class="pipeline-card-name">${s.name}</div>
             <div style="font-size:11px;color:var(--muted)">${s.source || ''} · ${s.grade || ''}кл</div>
             <div class="pipeline-card-meta">
-              ${mrr ? `<span style="font-size:10px;color:var(--green);font-weight:600">${mrr}/мес</span>` : ''}
-              ${subHint}
+              ${contact}
               ${level !== 'low' ? `<span class="risk-badge ${level}" style="font-size:9px;padding:1px 5px">${reasons[0] || ''}</span>` : ''}
             </div>
           </div>`;
-    }).join('') : `<div class="pipeline-empty">Нет учеников</div>`}
-        ${role.isOwner ? `<div style="margin-top:4px"><button class="btn btn-sm" style="width:100%;justify-content:center;font-size:11px;color:var(--hint)" onclick="openStudentModal()"><i class="ti ti-plus"></i> Добавить</button></div>` : ''}
+        }).join('') : `<div class="pipeline-empty">Нет</div>`}
+        ${role.isOwner && !['stopped','exam_passed','left'].includes(stage.id) ? `<div style="margin-top:4px"><button class="btn btn-sm" style="width:100%;justify-content:center;font-size:11px;color:var(--hint)" onclick="openStudentModal()"><i class="ti ti-plus"></i></button></div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -176,8 +147,9 @@ export function openStudentModal(id) {
         <option value="trial_done" ${(v.crm_status === 'trial_done' || v.crm_status === 'trial') ? 'selected' : ''}>Пробник проведён</option>
         <option value="active" ${v.crm_status === 'active' ? 'selected' : ''}>Занимается</option>
         <option value="exam_passed" ${v.crm_status === 'exam_passed' ? 'selected' : ''}>Сдал экзамен</option>
-        <option value="stopped" ${v.crm_status === 'stopped' ? 'selected' : ''}>Отказался от занятий</option>
-        <option value="refused" ${v.crm_status === 'refused' ? 'selected' : ''}>Отказался</option>
+        <option value="stopped" ${v.crm_status === 'stopped' ? 'selected' : ''}>Отказался (не начал)</option>
+        <option value="left" ${v.crm_status === 'left' ? 'selected' : ''}>Ушел (бросил занятия)</option>
+        <option value="refused" ${v.crm_status === 'refused' ? 'selected' : ''}>Отказался (устаревший)</option>
       </select></div>
       <div class="fg"><label>Первый контакт</label><input class="fi" type="date" id="sf-first-contact" value="${v.first_contact_at || todayStr}"></div>
       <div class="fg"><label>Класс</label><select class="fi" id="sf-grade">${[7, 8, 9, 10, 11].map(x => `<option ${v.grade == x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
@@ -265,7 +237,7 @@ export async function confirmStatusChange(id, newStatus) {
 
 async function _commitSaveStudent(id, newStatus, history, existing, statusDate) {
   const todayStr = today();
-  const leftStatuses = ['stopped', 'refused'];
+  const leftStatuses = ['stopped', 'refused', 'left'];
   const left_at = leftStatuses.includes(newStatus) ? (existing?.left_at || statusDate || todayStr) : null;
   function fv(fieldId, fallback) { return (document.getElementById(fieldId) || {}).value ?? fallback; }
   const obj = {

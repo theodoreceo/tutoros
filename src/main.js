@@ -8,7 +8,7 @@ import { initSidebar } from './components/sidebar.js';
 import { closeModal } from './components/modal.js';
 import { toast } from './components/toast.js';
 
-import { renderDashboard } from './pages/dashboard.js';
+import { renderDashboard, setDashTab } from './pages/dashboard.js';
 import { renderHistoryPage, undoHistoryEntry } from './pages/history-page.js';
 import {
   renderStudents, renderCRMStudents, renderPipeline, setCRMView, setCRMStatusFilter,
@@ -175,6 +175,9 @@ window.openCreateHwModal = openCreateHwModal;
 window.updateHwLessonOpts = updateHwLessonOpts;
 window.saveNewHw = saveNewHw;
 window.changeHwStatus = changeHwStatus;
+
+// Dashboard
+window.setDashTab = setDashTab;
 
 // History
 window.undoHistoryEntry = undoHistoryEntry;
