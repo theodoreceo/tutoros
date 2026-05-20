@@ -362,7 +362,7 @@ const atasks = [
 const ALL_PAGE_IDS = ['dashboard','history','students','crm_students','groups','lessons_cal','homework','income','expenses','analytics','tasks','access'];
 
 const roles = [
-  { id:'r2', name:'Анна (куратор)',   role_type:'curator',  pages:['groups','lessons_cal','homework'], can_edit:true,  isOwner:false, pin:'1234', created_at:'2025-09-01T10:00:00Z' },
+  { id:'r2', name:'Анна (куратор)',   role_type:'curator',  pages:['curator_dash','groups','lessons_cal','homework'], can_edit:true,  isOwner:false, pin:'1234', created_at:'2025-09-01T10:00:00Z' },
   { id:'r3', name:'Дима (маркетолог)',role_type:'marketer', pages:['students','crm_students'],         can_edit:false, isOwner:false, pin:'5678', created_at:'2025-09-01T10:00:00Z' },
 ];
 

@@ -75,6 +75,13 @@ export function initLocalStorage() {
     TABLES.forEach(t => localStorage.setItem(KEY(t), JSON.stringify(SEED[t] || [])));
     localStorage.setItem(INIT_KEY, '1');
   }
+  // Backfill tables added after initial seed so existing users get them
+  ['assistant_groups', 'homework_assignments', 'homework_submissions'].forEach(t => {
+    const stored = JSON.parse(localStorage.getItem(KEY(t)) || '[]');
+    if (!stored.length && SEED[t]?.length) {
+      localStorage.setItem(KEY(t), JSON.stringify(SEED[t]));
+    }
+  });
   loadAll();
 }
 

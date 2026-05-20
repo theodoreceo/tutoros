@@ -4,6 +4,12 @@ import { ALL_PAGES, ROLE_TYPES } from '../utils/helpers.js';
 
 const OWNER_ROLE = { id: 'owner', name: 'Владелец', pages: ALL_PAGES.map(p => p.id), canEdit: true, isOwner: true };
 
+// Always derive pages from ROLE_TYPES so stale localStorage roles stay correct
+function buildRole(role) {
+  const rt = ROLE_TYPES[role?.role_type];
+  return { ...role, isOwner: false, ...(rt ? { pages: rt.pages } : {}) };
+}
+
 export function applyRoleUI(role) {
   if (!role) return;
   const el = document.getElementById('current-role-name');
@@ -50,7 +56,7 @@ export function restoreSession() {
     if (!raw) return false;
     const role = JSON.parse(raw);
     if (role.id === 'owner' || CACHE.roles.find(r => r.id === role.id)) {
-      applyRole(role.id === 'owner' ? OWNER_ROLE : { ...CACHE.roles.find(r => r.id === role.id), isOwner: false });
+      applyRole(role.id === 'owner' ? OWNER_ROLE : buildRole(CACHE.roles.find(r => r.id === role.id)));
       return true;
     }
   } catch { }
@@ -95,7 +101,7 @@ export function selectRole(id) {
       }
       const role = CACHE.roles.find(r => r.id === id);
       if (!role) return;
-      if (!role.pin) { applyRole({ ...role, isOwner: false }); closeModal(); return; }
+      if (!role.pin) { applyRole(buildRole(role)); closeModal(); return; }
       modal(`<div class="modal" style="max-width:340px">
         <div class="modal-title">PIN для: ${role.name}</div>
         <div class="fg"><label>Введите PIN</label><input class="fi" type="password" id="switch-pin" maxlength="8" autofocus></div>
@@ -116,7 +122,7 @@ export function confirmSwitch(id) {
       const role = CACHE.roles.find(r => r.id === id);
       if (!role) return;
       if (role.pin !== pin) { toast('Неверный PIN'); return; }
-      applyRole({ ...role, isOwner: false });
+      applyRole(buildRole(role));
       closeModal();
       toast(`Вы вошли как: ${role.name}`);
     });
