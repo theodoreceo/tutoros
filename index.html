@@ -361,13 +361,20 @@
         <!-- Overview tab -->
         <div id="an-tab-overview">
           <div id="an-overview-metrics" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-            <div id="an-key-metrics"></div>
-            <div id="an-funnel"></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:14px">
+            <div>
+              <div class="an-section">Ключевые метрики</div>
+              <div id="an-key-metrics" class="an-grid"></div>
+            </div>
+            <div>
+              <div class="an-section">Воронка</div>
+              <div id="an-funnel"></div>
+            </div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-            <div id="an-mrr-bars"></div>
-            <div id="an-mrr-stats"></div>
+          <div style="margin-bottom:14px">
+            <div class="an-section">Динамика MRR</div>
+            <div id="an-mrr-bars" class="mrr-bars"></div>
+            <div id="an-mrr-stats" style="margin-top:6px;font-size:12px;color:var(--muted)"></div>
           </div>
         </div>
         <!-- Channels tab -->
@@ -376,14 +383,24 @@
         </div>
         <!-- Detail tab -->
         <div id="an-tab-detail" style="display:none">
-          <div id="an-key3" style="margin-bottom:14px"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-            <div id="an-health-block"></div>
-            <div id="an-retention"></div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-            <div id="an-time-in-status"></div>
+          <div id="an-key3" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px"></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:14px">
             <div>
+              <div class="an-section">Health Score</div>
+              <div id="an-health-block"></div>
+            </div>
+            <div>
+              <div class="an-section">Когортное удержание</div>
+              <div id="an-retention"></div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">
+            <div>
+              <div class="an-section">Время в статусах</div>
+              <div id="an-time-in-status"></div>
+            </div>
+            <div>
+              <div class="an-section">Ушедшие ученики</div>
               <div id="an-churn-list"></div>
               <div id="an-churn-empty" class="empty" style="display:none">Нет оттока за период</div>
             </div>

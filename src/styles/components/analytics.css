@@ -8,7 +8,8 @@
 .an-val { font-size: 24px; font-weight: 700; line-height: 1.1; color: var(--text); }
 .an-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
 .an-hint { font-size: 10px; color: var(--hint); margin-top: 2px; }
-.an-section { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.an-section { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 16px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.an-section:first-child { margin-top: 0; }
 .an-period-bar { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
 .an-period-bar button { padding: 4px 12px; border-radius: var(--r); font-size: 12px; font-weight: 500; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; transition: all .12s; font-family: inherit; }
 .an-period-bar button:hover { border-color: var(--accent-mid); color: var(--text); }
@@ -21,8 +22,8 @@
 .funnel-fill { height: 8px; border-radius: 3px; background: var(--accent-mid); transition: .4s; }
 
 /* MRR bars */
-.mrr-bars { display: flex; align-items: flex-end; gap: 6px; height: 80px; margin-top: 8px; }
-.mrr-bar-w { display: flex; flex-direction: column; align-items: center; flex: 1; gap: 3px; }
+.mrr-bars { display: flex; align-items: flex-end; gap: 6px; height: 110px; }
+.mrr-bar-w { display: flex; flex-direction: column; align-items: center; flex: 1; gap: 2px; }
 .mrr-bar-b { width: 100%; border-radius: 3px 3px 0 0; background: var(--accent-light); min-height: 3px; transition: .3s; cursor: default; }
 .mrr-bar-b.cur { background: var(--accent-mid); }
 .mrr-bar-b.churn { background: var(--red-border); }
