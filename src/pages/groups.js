@@ -1,13 +1,48 @@
 import { CACHE, dbInsert, dbUpdate, dbDelete } from '../core/store.js';
 import { state } from '../core/state.js';
-import { uid, fmt, fmtDate, fmtDateLong, today, g, STATUS_CONFIG } from '../utils/helpers.js';
+import { uid, fmt, fmtDate, fmtDateLong, today, g, STATUS_CONFIG, dateStr } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { addHistoryEntry } from '../core/history.js';
 import { addEvent } from '../core/events.js';
 import { studentSubscriptionStatus, recalcRisk } from '../core/risk.js';
 
+function renderCuratorDash() {
+  const el = document.getElementById('curator-dash');
+  if (!el) return;
+  const role = state.currentRole || {};
+  const myGroupIds = role.isOwner
+    ? null
+    : new Set((CACHE.assistant_groups || []).filter(ag => ag.assistant_id === role.id).map(ag => ag.group_id));
+  const myGroups = myGroupIds
+    ? (CACHE.groups || []).filter(g => myGroupIds.has(g.id))
+    : (CACHE.groups || []);
+  if (!myGroups.length) { el.innerHTML = ''; return; }
+  const myGroupIdSet = new Set(myGroups.map(g => g.id));
+  const activeStudents = (CACHE.students || []).filter(s => s.crm_status === 'active' && myGroupIdSet.has(s.group_id)).length;
+  const todayStr = dateStr(new Date());
+  const in7d = new Date(); in7d.setDate(in7d.getDate() + 7);
+  const upcoming = (CACHE.lessons || []).filter(l => myGroupIdSet.has(l.group_id) && l.date >= todayStr && l.date <= dateStr(in7d)).length;
+  const myAssignmentIds = new Set(
+    (CACHE.homework_assignments || []).filter(a => myGroupIdSet.has(a.group_id)).map(a => a.id)
+  );
+  const pendingReview = (CACHE.homework_submissions || []).filter(s => s.status === 'submitted' && myAssignmentIds.has(s.assignment_id)).length;
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+    ${[
+      { icon: 'ti-sitemap',        label: 'Мои группы',     val: myGroups.length,  sub: 'назначено', color: '#7c3aed' },
+      { icon: 'ti-users',          label: 'Учеников',       val: activeStudents,   sub: 'активных в группах', color: '#16a34a' },
+      { icon: 'ti-calendar-event', label: 'Занятий (7 дн)', val: upcoming,         sub: 'ближайших', color: '#0891b2' },
+      { icon: 'ti-clipboard-check',label: 'ДЗ на проверке', val: pendingReview,    sub: 'ждут ответа', color: pendingReview ? '#d97706' : '#94a3b8' },
+    ].map(c => `<div class="card" style="padding:12px 14px;margin-bottom:0">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px"><i class="ti ${c.icon}" style="color:${c.color};margin-right:3px"></i>${c.label}</div>
+      <div style="font-size:22px;font-weight:700;color:${c.color}">${c.val}</div>
+      <div style="font-size:10px;color:var(--hint);margin-top:2px">${c.sub}</div>
+    </div>`).join('')}
+  </div>`;
+}
+
 export function renderGroups() {
+  renderCuratorDash();
   const el = document.getElementById('groups-list');
   if (!el) return;
   if (!(CACHE.groups || []).length) { el.innerHTML = '<div class="empty">Групп нет. Создайте первую!</div>'; return; }

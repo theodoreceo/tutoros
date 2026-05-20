@@ -68,7 +68,34 @@ export function renderStudents() {
 
 // Воронка — pipeline без активных, с поиском и 30-дневным скрытием ушедших
 export function renderCRMStudents() {
+  renderMarketingDash();
   renderPipeline();
+}
+
+function renderMarketingDash() {
+  const el = document.getElementById('marketing-dash');
+  if (!el) return;
+  const students = CACHE.students || [];
+  const now = new Date();
+  const weekAgo = new Date(now - 7 * 86400000);
+  const leads = students.filter(s => s.crm_status === 'lead');
+  const trials = students.filter(s => ['trial_scheduled', 'trial_done', 'trial'].includes(s.crm_status));
+  const active = students.filter(s => s.crm_status === 'active').length;
+  const stale = leads.filter(s => s.created_at && new Date(s.created_at) < weekAgo).length;
+  const newLeads7d = leads.filter(s => s.created_at && new Date(s.created_at) >= weekAgo).length;
+  const conv = students.length ? Math.round(active / students.length * 100) : 0;
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+    ${[
+      { icon: 'ti-user-question', label: 'Лидов', val: leads.length, sub: `+${newLeads7d} за 7 дней`, color: '#64748b' },
+      { icon: 'ti-star',          label: 'На пробном', val: trials.length, sub: 'trial + назначен', color: '#d97706' },
+      { icon: 'ti-trending-up',   label: 'Конверсия', val: conv + '%', sub: 'лид → активный', color: '#16a34a' },
+      { icon: 'ti-clock-x',       label: 'Просрочено', val: stale, sub: 'лидов без движения 7д', color: stale ? '#ef4444' : '#94a3b8' },
+    ].map(c => `<div class="card" style="padding:12px 14px;margin-bottom:0">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px"><i class="ti ${c.icon}" style="color:${c.color};margin-right:3px"></i>${c.label}</div>
+      <div style="font-size:22px;font-weight:700;color:${c.color}">${c.val}</div>
+      <div style="font-size:10px;color:var(--hint);margin-top:2px">${c.sub}</div>
+    </div>`).join('')}
+  </div>`;
 }
 
 export function renderPipeline() {

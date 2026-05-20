@@ -36,22 +36,26 @@
       <div class="sub">Управление практикой</div>
     </div>
     <div class="sb-nav" id="sidebar-nav">
-      <div class="sb-section">Обзор</div>
-      <div class="sb-item" data-pg="dashboard"><i class="ti ti-layout-dashboard"></i><span>Дашборд</span></div>
-      <div class="sb-item" data-pg="analytics" style="padding-left:28px;font-size:12px"><i class="ti ti-chart-bar" style="font-size:15px"></i><span>Аналитика</span></div>
-      <div class="sb-item" data-pg="tasks" style="padding-left:28px;font-size:12px"><i class="ti ti-clipboard-list" style="font-size:15px"></i><span>Задачи</span></div>
-      <div class="sb-item" data-pg="history" style="padding-left:28px;font-size:12px"><i class="ti ti-history" style="font-size:15px"></i><span>История</span></div>
-      <div class="sb-section">CRM</div>
-      <div class="sb-item" data-pg="students"><i class="ti ti-table"></i><span>CRM</span></div>
-      <div class="sb-item" data-pg="crm_students" style="padding-left:28px;font-size:12px"><i class="ti ti-layout-columns" style="font-size:15px"></i><span>Воронка</span></div>
-      <div class="sb-item" data-pg="groups" style="padding-left:28px;font-size:12px"><i class="ti ti-sitemap" style="font-size:15px"></i><span>Группы</span></div>
-      <div class="sb-item" data-pg="lessons_cal" style="padding-left:28px;font-size:12px"><i class="ti ti-calendar-event" style="font-size:15px"></i><span>Занятия</span></div>
-      <div class="sb-item" data-pg="homework" style="padding-left:28px;font-size:12px"><i class="ti ti-home-check" style="font-size:15px"></i><span>ДЗ&nbsp;<span id="hw-queue-badge" style="background:var(--red);color:#fff;border-radius:10px;padding:0 5px;font-size:10px;font-weight:700;display:none"></span></span></div>
-      <div class="sb-section" data-finance-section>Финансы</div>
-      <div class="sb-item" data-pg="income" data-finance-item><i class="ti ti-cash"></i><span>Доходы</span></div>
-      <div class="sb-item" data-pg="expenses" data-finance-item><i class="ti ti-receipt"></i><span>Расходы</span></div>
-      <div class="sb-section">Система</div>
-      <div class="sb-item" data-pg="access" data-owner-only><i class="ti ti-shield-lock"></i><span>Доступы</span></div>
+      <div class="sb-item" data-pg="dashboard" data-sb-section=""><i class="ti ti-layout-dashboard"></i><span>Дашборд</span></div>
+
+      <div class="sb-section" data-sb-group="marketing">Маркетинг</div>
+      <div class="sb-item" data-pg="students" data-sb-section="marketing"><i class="ti ti-table"></i><span>CRM</span></div>
+      <div class="sb-item" data-pg="crm_students" data-sb-section="marketing"><i class="ti ti-layout-columns"></i><span>Воронка</span></div>
+
+      <div class="sb-section" data-sb-group="studies">Ученики</div>
+      <div class="sb-item" data-pg="groups" data-sb-section="studies"><i class="ti ti-sitemap"></i><span>Группы</span></div>
+      <div class="sb-item" data-pg="lessons_cal" data-sb-section="studies"><i class="ti ti-calendar-event"></i><span>Занятия</span></div>
+      <div class="sb-item" data-pg="homework" data-sb-section="studies"><i class="ti ti-home-check"></i><span>ДЗ&nbsp;<span id="hw-queue-badge" style="background:var(--red);color:#fff;border-radius:10px;padding:0 5px;font-size:10px;font-weight:700;display:none"></span></span></div>
+
+      <div class="sb-section" data-sb-group="finance">Финансы</div>
+      <div class="sb-item" data-pg="income" data-sb-section="finance"><i class="ti ti-cash"></i><span>Доходы</span></div>
+      <div class="sb-item" data-pg="expenses" data-sb-section="finance"><i class="ti ti-receipt"></i><span>Расходы</span></div>
+      <div class="sb-item" data-pg="analytics" data-sb-section="finance"><i class="ti ti-chart-bar"></i><span>Аналитика</span></div>
+
+      <div class="sb-section" data-sb-group="system">Система</div>
+      <div class="sb-item" data-pg="history" data-sb-section="system"><i class="ti ti-history"></i><span>История</span></div>
+      <div class="sb-item" data-pg="tasks" data-sb-section="system"><i class="ti ti-clipboard-list"></i><span>Задачи</span></div>
+      <div class="sb-item" data-pg="access" data-sb-section="system"><i class="ti ti-shield-lock"></i><span>Доступы</span></div>
     </div>
     <div class="sb-footer">
       <div id="role-badge" style="background:rgba(247,243,238,.08);border-radius:6px;padding:7px 10px;margin-bottom:8px;cursor:pointer" onclick="promptSwitchRole()">
@@ -180,6 +184,7 @@
           <div class="ph-title">Воронка</div>
           <button class="btn btn-p btn-sm" onclick="openStudentModal()"><i class="ti ti-plus"></i> Добавить</button>
         </div>
+        <div id="marketing-dash" style="margin-bottom:16px"></div>
         <div style="margin-bottom:12px">
           <input class="fi" id="pipeline-search" placeholder="Поиск по имени или контакту..." style="max-width:260px" oninput="renderCRMStudents()">
         </div>
@@ -194,6 +199,7 @@
             <div class="ph-title">Группы</div>
             <button class="btn btn-p btn-sm" onclick="openGroupModal()"><i class="ti ti-plus"></i> Создать группу</button>
           </div>
+          <div id="curator-dash" style="margin-bottom:16px"></div>
           <div id="groups-list"></div>
         </div>
         <!-- Group detail view -->

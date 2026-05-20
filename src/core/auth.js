@@ -1,6 +1,6 @@
 import { CACHE } from './store.js';
 import { state } from './state.js';
-import { ALL_PAGES } from '../utils/helpers.js';
+import { ALL_PAGES, ROLE_TYPES } from '../utils/helpers.js';
 
 const OWNER_ROLE = { id: 'owner', name: 'Владелец', pages: ALL_PAGES.map(p => p.id), canEdit: true, isOwner: true };
 
@@ -8,9 +8,24 @@ export function applyRoleUI(role) {
   if (!role) return;
   const el = document.getElementById('current-role-name');
   if (el) el.textContent = role.name;
-  document.querySelectorAll('.sb-item').forEach(el => {
-    el.style.opacity = (role.isOwner || role.pages?.includes(el.dataset.pg)) ? '1' : '0.3';
+
+  document.querySelectorAll('.sb-item[data-pg]').forEach(item => {
+    const visible = role.isOwner || (role.pages || []).includes(item.dataset.pg);
+    item.style.display = visible ? '' : 'none';
   });
+
+  // Hide section headers when none of their items are visible
+  document.querySelectorAll('.sb-section[data-sb-group]').forEach(section => {
+    const group = section.dataset.sbGroup;
+    const hasVisible = [...document.querySelectorAll(`.sb-item[data-sb-section="${group}"]`)]
+      .some(item => item.style.display !== 'none');
+    section.style.display = hasVisible ? '' : 'none';
+  });
+
+  // Hide the dashboard item for non-owners (they have their own landing page)
+  const dashItem = document.querySelector('.sb-item[data-pg="dashboard"]');
+  if (dashItem) dashItem.style.display = role.isOwner ? '' : 'none';
+
   document.querySelectorAll('.owner-only').forEach(el => el.style.display = role.isOwner ? '' : 'none');
   document.querySelectorAll('.edit-only').forEach(el => el.style.display = (role.canEdit || role.isOwner) ? '' : 'none');
 }
@@ -21,7 +36,12 @@ export function applyRole(role) {
   document.getElementById('setup-screen')?.classList.remove('show');
   document.getElementById('app').style.display = 'flex';
   applyRoleUI(role);
-  import('./router.js').then(({ navigate }) => navigate('dashboard'));
+  import('./router.js').then(({ navigate }) => {
+    const homePage = role.isOwner
+      ? 'dashboard'
+      : (ROLE_TYPES[role.role_type]?.homePage || role.pages?.[0] || 'dashboard');
+    navigate(homePage);
+  });
 }
 
 export function restoreSession() {
@@ -51,11 +71,14 @@ export function promptSwitchRole() {
       <div class="modal-title">Войти как</div>
       <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Выбери роль. Для ассистентов нужен PIN.</p>
       <div style="display:flex;flex-direction:column;gap:8px">
-        ${roles.map(r => `<div class="card" style="cursor:pointer;padding:12px 16px;margin-bottom:0;transition:border-color .12s" onmouseover="this.style.borderColor='var(--accent-mid)'" onmouseout="this.style.borderColor=''" onclick="selectRole('${r.id}')">
+        ${roles.map(r => {
+          const rt = ROLE_TYPES[r.role_type];
+          const subtitle = r.isOwner ? 'Все разделы · без PIN' : `${rt?.label || 'Ассистент'} · ${r.pin ? 'нужен PIN' : 'без PIN'}`;
+          return `<div class="card" style="cursor:pointer;padding:12px 16px;margin-bottom:0;transition:border-color .12s" onmouseover="this.style.borderColor='var(--accent-mid)'" onmouseout="this.style.borderColor=''" onclick="selectRole('${r.id}')">
           <div style="font-weight:500;font-size:13px">${r.name}</div>
-          ${r.isOwner ? '<div style="font-size:11px;color:var(--muted)">Все разделы · без PIN</div>' :
-          `<div style="font-size:11px;color:var(--muted)">${(r.pages || []).map(p => ALL_PAGES.find(x => x.id === p)?.label || p).join(' · ')}</div>`}
-        </div>`).join('')}
+          <div style="font-size:11px;color:var(--muted)">${subtitle}</div>
+        </div>`;
+        }).join('')}
       </div>
     </div>`);
   });
