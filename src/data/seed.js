@@ -359,12 +359,56 @@ const atasks = [
 ];
 
 // ─── Roles ────────────────────────────────────────────────────────────────────
-const ALL_PAGE_IDS = ['dashboard','history','students','crm_students','groups','lessons_cal','income','expenses','analytics','tasks','access'];
+const ALL_PAGE_IDS = ['dashboard','history','students','crm_students','groups','lessons_cal','homework','income','expenses','analytics','tasks','access'];
 
 const roles = [
   { id:'r1', name:'Владелец',    pages: ALL_PAGE_IDS, canEdit:true,  isOwner:true,  pin:null,   created_at:'2025-09-01T10:00:00Z' },
-  { id:'r2', name:'Ассистент 1', pages:['dashboard','students','crm_students','groups','lessons_cal','tasks'], canEdit:true,  isOwner:false, pin:'1234', created_at:'2025-09-01T10:00:00Z' },
-  { id:'r3', name:'Педагог',     pages:['dashboard','groups','lessons_cal'], canEdit:false, isOwner:false, pin:'5678', created_at:'2025-09-01T10:00:00Z' },
+  { id:'r2', name:'Ассистент 1', pages:['dashboard','students','crm_students','groups','lessons_cal','homework','tasks'], canEdit:true,  isOwner:false, pin:'1234', created_at:'2025-09-01T10:00:00Z' },
+  { id:'r3', name:'Педагог',     pages:['dashboard','groups','lessons_cal','homework'], canEdit:false, isOwner:false, pin:'5678', created_at:'2025-09-01T10:00:00Z' },
+];
+
+// ─── Assistant ↔ Groups ───────────────────────────────────────────────────────
+const assistant_groups = [
+  { id:'ag1', assistant_id:'r2', group_id:'g1' },
+  { id:'ag2', assistant_id:'r2', group_id:'g2' },
+];
+
+// ─── Homework Assignments ─────────────────────────────────────────────────────
+const homework_assignments = [
+  { id:'ha1', group_id:'g1', lesson_id:null, topic:'Тригонометрия: формулы приведения',       description:'Задачи 1–15 из сборника Ященко, стр. 47',          due_date:daysAgo(3),       assigned_at:daysAgo(7)+'T18:30:00Z' },
+  { id:'ha2', group_id:'g1', lesson_id:null, topic:'Производная: задачи на экстремум',         description:'Вариант 3 полностью, задачи 13–16',                 due_date:daysFromNow(4),   assigned_at:daysAgo(3)+'T18:30:00Z' },
+  { id:'ha3', group_id:'g2', lesson_id:null, topic:'Показательные уравнения',                  description:'Самостоятельная работа, все 10 задач',               due_date:daysAgo(1),       assigned_at:daysAgo(6)+'T17:30:00Z' },
+  { id:'ha4', group_id:'g2', lesson_id:null, topic:'Логарифмы: сложные преобразования',        description:'Задачи повышенного уровня, стр. 84–85',             due_date:daysFromNow(6),   assigned_at:daysAgo(2)+'T17:30:00Z' },
+];
+
+// ─── Homework Submissions ─────────────────────────────────────────────────────
+const homework_submissions = [
+  // ha1 (g1, просрочено) — часть сдала, часть нет
+  { id:'hs1',  assignment_id:'ha1', student_id:'s1', submission_url:'https://t.me/c/123/456',      source:'telegram', submitted_at:daysAgo(4)+'T20:15:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs2',  assignment_id:'ha1', student_id:'s2', submission_url:'https://vk.com/doc123',       source:'vk',       submitted_at:daysAgo(5)+'T21:30:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs3',  assignment_id:'ha1', student_id:'s3', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'overdue',   score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs4',  assignment_id:'ha1', student_id:'s4', submission_url:'https://t.me/c/123/460',      source:'telegram', submitted_at:daysAgo(3)+'T19:45:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs5',  assignment_id:'ha1', student_id:'s5', submission_url:'https://docs.google.com/123', source:'web',      submitted_at:daysAgo(6)+'T22:00:00Z', status:'checked',   score:84,    comment:'Хорошая работа! Ошибки в знаках.', errors:['Формула sin(π−x) применена неверно','Потеряно решение в тригонометрическом уравнении'], checked_by:'r2', checked_at:daysAgo(5)+'T10:00:00Z' },
+  { id:'hs6',  assignment_id:'ha1', student_id:'s37',submission_url:'https://t.me/c/123/461',      source:'telegram', submitted_at:daysAgo(4)+'T20:00:00Z', status:'checked',   score:91,    comment:'Отлично, почти без ошибок.',      errors:['Опечатка в задаче 7'], checked_by:'r2', checked_at:daysAgo(3)+'T11:00:00Z' },
+
+  // ha2 (g1, в срок) — кто-то сдал, кто-то ещё нет
+  { id:'hs7',  assignment_id:'ha2', student_id:'s1', submission_url:'https://t.me/c/123/470',      source:'telegram', submitted_at:daysAgo(1)+'T21:00:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs8',  assignment_id:'ha2', student_id:'s2', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs9',  assignment_id:'ha2', student_id:'s3', submission_url:'https://t.me/c/123/471',      source:'telegram', submitted_at:daysAgo(1)+'T22:30:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs10', assignment_id:'ha2', student_id:'s4', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs11', assignment_id:'ha2', student_id:'s5', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+
+  // ha3 (g2, просрочено) — 2 сдали, 1 проверена, 1 не сдал
+  { id:'hs12', assignment_id:'ha3', student_id:'s6', submission_url:'https://t.me/c/456/201',      source:'telegram', submitted_at:daysAgo(2)+'T20:00:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs13', assignment_id:'ha3', student_id:'s7', submission_url:'https://vk.com/doc456',       source:'vk',       submitted_at:daysAgo(4)+'T18:00:00Z', status:'checked',   score:95,    comment:'Блестящая работа!',              errors:[], checked_by:'r2', checked_at:daysAgo(3)+'T09:00:00Z' },
+  { id:'hs14', assignment_id:'ha3', student_id:'s8', submission_url:'https://t.me/c/456/202',      source:'telegram', submitted_at:daysAgo(1)+'T23:00:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs15', assignment_id:'ha3', student_id:'s9', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'overdue',   score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+
+  // ha4 (g2, в срок) — только 1 сдала досрочно
+  { id:'hs16', assignment_id:'ha4', student_id:'s6', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs17', assignment_id:'ha4', student_id:'s7', submission_url:'https://docs.google.com/456', source:'web',      submitted_at:daysAgo(1)+'T14:00:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs18', assignment_id:'ha4', student_id:'s8', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs19', assignment_id:'ha4', student_id:'s9', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
 ];
 
 // ─── Export ───────────────────────────────────────────────────────────────────
@@ -383,4 +427,7 @@ export const SEED = {
   student_notes: [],
   hw_submissions: [],
   history_log: [],
+  homework_assignments,
+  homework_submissions,
+  assistant_groups,
 };
