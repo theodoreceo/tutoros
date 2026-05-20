@@ -123,6 +123,28 @@ export function renderDashboard() {
     if (age >= 3) actions.push({ level: 'notice', icon: 'ti-user-question', title: `Лид: ${s.name} — ${age} дн. без движения`, sub: `${s.source || ''}`, action: `openStudentDetail('${s.id}')`, actionLabel: 'Карточка' });
   });
 
+  // HW queue alerts
+  const role2 = state.currentRole || {};
+  const myGroupIds2 = role2.isOwner
+    ? null
+    : new Set((CACHE.assistant_groups || []).filter(ag => ag.assistant_id === role2.id).map(ag => ag.group_id));
+  const myAssignmentIds2 = new Set(
+    (CACHE.homework_assignments || [])
+      .filter(a => !myGroupIds2 || myGroupIds2.has(a.group_id))
+      .map(a => a.id)
+  );
+  const pendingReview = (CACHE.homework_submissions || []).filter(s =>
+    s.status === 'submitted' && myAssignmentIds2.has(s.assignment_id)
+  );
+  const overdueHw = (CACHE.homework_submissions || []).filter(s => {
+    if (s.status === 'checked') return false;
+    if (myAssignmentIds2.size && !myAssignmentIds2.has(s.assignment_id)) return false;
+    const asgn = (CACHE.homework_assignments || []).find(a => a.id === s.assignment_id);
+    return asgn?.due_date && new Date(asgn.due_date) < new Date();
+  });
+  if (pendingReview.length) actions.push({ level: 'important', icon: 'ti-clipboard-check', title: `${pendingReview.length} ДЗ ждут проверки`, sub: 'по вашим группам', action: `navigate('homework')`, actionLabel: 'Проверить' });
+  if (overdueHw.length) actions.push({ level: 'notice', icon: 'ti-clock-x', title: `${overdueHw.length} ДЗ просрочены`, sub: '', action: `navigate('homework')`, actionLabel: 'Посмотреть' });
+
   const actionsEl = document.getElementById('dash-actions');
   const countEl = document.getElementById('dash-action-count');
   if (countEl) countEl.textContent = actions.length ? `${actions.length} пунктов` : '';

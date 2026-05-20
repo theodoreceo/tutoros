@@ -274,12 +274,31 @@ export function openLessonFormModal(date, gid, existingId) {
       <i class="ti ti-users"></i> Ученики <span style="font-weight:400;font-style:normal;text-transform:none">(нажми на квадрат чтобы отметить отсутствие)</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:0;margin-bottom:12px" id="att-list">${attendeeRows}</div>
+    <div style="margin-bottom:14px;border-top:1px solid var(--border);padding-top:12px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
+        <input type="checkbox" id="lf-hw-assign" style="accent-color:var(--accent-mid)" onchange="toggleHwAssignBlock()">
+        <i class="ti ti-home-plus"></i> Дать домашнее задание
+      </label>
+      <div id="hw-assign-block" style="display:none;margin-top:10px">
+        <div class="form-row">
+          <div class="fg" style="grid-column:1/-1"><label>Тема задания</label><input class="fi" id="lf-hw-topic" placeholder="Тригонометрия: задачи на формулы приведения..."></div>
+        </div>
+        <div class="fg" style="margin-bottom:10px"><label>Описание / инструкция</label><textarea class="fi" id="lf-hw-desc" rows="2" placeholder="Подробности..."></textarea></div>
+        <div class="fg"><label>Дедлайн</label><input class="fi" type="date" id="lf-hw-due"></div>
+      </div>
+    </div>
     <div class="fg"><label>Заметка к занятию</label><textarea class="fi" id="lf-notes" rows="2">${v.notes || ''}</textarea></div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal()">Отмена</button>
       <button class="btn btn-p" onclick="saveLessonForm('${existingId || ''}')">Сохранить</button>
     </div>
   </div>`);
+}
+
+export function toggleHwAssignBlock() {
+  const checked = (document.getElementById('lf-hw-assign') || {}).checked;
+  const block = document.getElementById('hw-assign-block');
+  if (block) block.style.display = checked ? '' : 'none';
 }
 
 export function toggleAttendance(sid) {
@@ -347,6 +366,29 @@ export async function saveLessonForm(existingId) {
       for (const sid of presentIds) {
         const hwObj = { id: uid(), lesson_id: obj.id, group_id: state.currentGroupId, student_id: sid, hw_link, assigned_at: new Date().toISOString(), status: 'pending', checked_at: null };
         await dbInsert('hw_submissions', hwObj);
+      }
+    }
+
+    // Create homework assignment if requested
+    const hwAssign = !existingId && (document.getElementById('lf-hw-assign') || {}).checked;
+    if (hwAssign) {
+      const hwTopic = (document.getElementById('lf-hw-topic') || {}).value || topic;
+      const hwDesc = (document.getElementById('lf-hw-desc') || {}).value || '';
+      const hwDue = (document.getElementById('lf-hw-due') || {}).value || '';
+      const { db } = await import('../lib/db.js');
+      const assignment = await db.homeworks.createAssignment({
+        group_id: state.currentGroupId,
+        lesson_id: obj.id,
+        topic: hwTopic,
+        description: hwDesc,
+        due_date: hwDue,
+      });
+      const presentStudents = members.filter(s => student_attendance.find(a => a.student_id === s.id && a.present !== false));
+      for (const stu of presentStudents) {
+        await db.homeworks.createSubmission({
+          assignment_id: assignment.id,
+          student_id: stu.id,
+        });
       }
     }
 

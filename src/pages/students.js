@@ -393,9 +393,9 @@ export function openStudentDetail(id) {
       <button class="btn btn-p btn-sm" style="flex-shrink:0;align-self:flex-end" onclick="addStudentNote('${id}')"><i class="ti ti-send"></i></button>
     </div>
     <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">
-      <i class="ti ti-clipboard-list" style="margin-right:5px"></i>История домашних заданий
+      <i class="ti ti-clipboard-list" style="margin-right:5px"></i>Домашние задания
     </div>
-    <div style="max-height:160px;overflow-y:auto">${renderHwHistory(id)}</div>
+    <div style="max-height:220px;overflow-y:auto">${renderStudentHwTabInline(id)}</div>
     ${role.isOwner ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
       ${s.crm_status === 'lead' ? `<button class="btn btn-sm" onclick="closeModal();openStatusDateModal('${id}','trial_scheduled',CACHE.students.find(x=>x.id==='${id}'),new Date().toISOString().slice(0,10))"><i class="ti ti-calendar-check"></i> → Пробник назначен</button>` : ''}
       ${s.crm_status === 'trial_scheduled' ? `<button class="btn btn-sm" onclick="closeModal();openTrialFromCalendar('${id}')"><i class="ti ti-calendar-plus"></i> Назначить в календаре</button><button class="btn btn-sm btn-p" onclick="closeModal();openStatusDateModal('${id}','trial_done',CACHE.students.find(x=>x.id==='${id}'),new Date().toISOString().slice(0,10))"><i class="ti ti-star"></i> → Пробник проведён</button>` : ''}
@@ -502,25 +502,59 @@ export async function addStudentNote(studentId) {
   toast('Заметка добавлена');
 }
 
-function renderHwHistory(studentId) {
-  const hw = (CACHE.hw_submissions || []).filter(h => h.student_id === studentId)
+function renderStudentHwTabInline(studentId) {
+  // New-style assignments (with scores)
+  const newSubs = (CACHE.homework_submissions || []).filter(s => s.student_id === studentId)
+    .sort((a, b) => (b.submitted_at || b.assigned_at || '').localeCompare(a.submitted_at || a.assigned_at || ''));
+
+  // Old-style submissions (hw_submissions from group journal)
+  const oldSubs = (CACHE.hw_submissions || []).filter(h => h.student_id === studentId)
     .sort((a, b) => new Date(b.assigned_at) - new Date(a.assigned_at));
-  if (!hw.length) return '<div style="font-size:12px;color:var(--hint);padding:6px 0">Нет домашних заданий</div>';
+
+  if (!newSubs.length && !oldSubs.length) return '<div style="font-size:12px;color:var(--hint);padding:6px 0">Нет домашних заданий</div>';
+
+  const now = Date.now();
+  const month30ago = now - 30 * 86400000;
+  const scoredRecent = newSubs.filter(s => {
+    const d = s.checked_at || s.submitted_at;
+    return d && new Date(d).getTime() >= month30ago && s.score !== null;
+  });
+  const avgScore = scoredRecent.length ? Math.round(scoredRecent.reduce((acc, s) => acc + s.score, 0) / scoredRecent.length) : null;
+
+  const scoreColor = (v) => v === null ? 'var(--hint)' : v < 50 ? 'var(--red)' : v < 75 ? 'var(--amber)' : v < 90 ? 'var(--green)' : 'var(--accent-mid)';
+  const scoreText = (v) => v === null ? '—' : v < 50 ? 'Слабо' : v < 75 ? 'Удовлет.' : v < 90 ? 'Хорошо' : 'Отлично';
   const statusCfg = {
-    done: { color: 'var(--green)', icon: 'ti-check', label: 'Сдал' },
-    missing: { color: 'var(--red)', icon: 'ti-x', label: 'Не сдал' },
-    pending: { color: 'var(--amber)', icon: 'ti-clock', label: 'Ожидает' }
+    assigned: { label: 'Назначено', cls: 'b-gray' },
+    submitted: { label: 'Сдано', cls: 'b-bl' },
+    checked: { label: 'Проверено', cls: 'b-g' },
+    overdue: { label: 'Просрочено', cls: 'b-r' },
   };
-  return hw.map(h => {
+
+  return `${avgScore !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface2);border-radius:var(--r);margin-bottom:10px;font-size:12px">
+    <i class="ti ti-chart-bar" style="color:${scoreColor(avgScore)}"></i>
+    Средний балл за 30 дней: <b style="color:${scoreColor(avgScore)}">${avgScore}/100 — ${scoreText(avgScore)}</b>
+  </div>` : ''}
+  ${newSubs.length ? newSubs.map(sub => {
+    const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub.assignment_id);
+    const st = statusCfg[sub.status] || statusCfg.assigned;
+    const isOverdue = assignment?.due_date && new Date(assignment.due_date) < new Date() && sub.status !== 'checked';
+    return `<div class="hw-history-item">
+      <i class="ti ti-home-check" style="color:${sub.status === 'checked' ? 'var(--green)' : 'var(--muted)'}"></i>
+      <span style="flex:1;font-size:12px">${assignment ? assignment.topic || '—' : '—'}</span>
+      <span class="b ${st.cls}" style="font-size:10px">${st.label}</span>
+      ${sub.score !== null ? `<span style="font-size:11px;color:${scoreColor(sub.score)};font-weight:700">${sub.score}</span>` : ''}
+      ${isOverdue ? '<span class="b b-r" style="font-size:10px">просрочено</span>' : ''}
+    </div>`;
+  }).join('') : ''}
+  ${oldSubs.length ? `<div style="font-size:10px;color:var(--hint);margin:6px 0 4px;text-transform:uppercase;letter-spacing:.05em">Из журнала групп</div>` + oldSubs.map(h => {
     const l = (CACHE.lessons || []).find(x => x.id === h.lesson_id);
-    const cfg = statusCfg[h.status] || statusCfg.pending;
+    const cfg = { done: { color: 'var(--green)', icon: 'ti-check', label: 'Сдал' }, missing: { color: 'var(--red)', icon: 'ti-x', label: 'Не сдал' }, pending: { color: 'var(--amber)', icon: 'ti-clock', label: 'Ожидает' } }[h.status] || { color: 'var(--hint)', icon: 'ti-point', label: h.status };
     return `<div class="hw-history-item">
       <i class="ti ${cfg.icon}" style="color:${cfg.color};font-size:13px"></i>
       <span style="flex:1;font-size:12px">${l ? l.topic || l.date : 'Занятие'}</span>
       <span style="font-size:11px;color:${cfg.color};font-weight:600">${cfg.label}</span>
-      ${h.hw_link ? `<a href="${h.hw_link}" target="_blank" style="font-size:10px;color:var(--accent-mid)">ДЗ</a>` : ''}
     </div>`;
-  }).join('');
+  }).join('') : ''}`;
 }
 
 export function selectChip(el, hiddenId, value) {

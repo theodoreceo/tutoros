@@ -1,0 +1,368 @@
+import { CACHE } from '../core/store.js';
+import { db } from '../lib/db.js';
+import { state } from '../core/state.js';
+import { uid, fmtDate, today } from '../utils/helpers.js';
+import { modal, closeModal } from '../components/modal.js';
+import { toast } from '../components/toast.js';
+import { addHistoryEntry } from '../core/history.js';
+
+let _hwTab = 'queue';
+const _reviewErrors = [];
+
+function scoreLabel(score) {
+  if (score === null || score === undefined) return { text: '—', color: 'var(--hint)' };
+  if (score < 50) return { text: 'Слабо', color: 'var(--red)' };
+  if (score < 75) return { text: 'Удовлетворительно', color: 'var(--amber)' };
+  if (score < 90) return { text: 'Хорошо', color: 'var(--green)' };
+  return { text: 'Отлично', color: 'var(--accent-mid)' };
+}
+
+function sourceIcon(source) {
+  const icons = { telegram: 'ti-brand-telegram', vk: 'ti-brand-vk', web: 'ti-globe', manual: 'ti-edit' };
+  return icons[source] || 'ti-link';
+}
+
+function getMyAssistantId() {
+  const role = state.currentRole || {};
+  return role.isOwner ? null : role.id;
+}
+
+function isOverdue(assignment) {
+  return assignment?.due_date && new Date(assignment.due_date) < new Date();
+}
+
+export async function getHwQueueCount() {
+  const assistantId = getMyAssistantId();
+  const queue = await db.homeworks.getQueue(assistantId);
+  return queue.length;
+}
+
+export async function updateHwBadge() {
+  const badge = document.getElementById('hw-queue-badge');
+  if (!badge) return;
+  const count = await getHwQueueCount();
+  badge.textContent = count || '';
+  badge.style.display = count ? '' : 'none';
+}
+
+export function setHwTab(tab) {
+  _hwTab = tab;
+  document.querySelectorAll('.hw-tab').forEach((b, i) => b.classList.toggle('on', ['queue', 'all'][i] === tab));
+  document.getElementById('hw-tab-queue').style.display = tab === 'queue' ? '' : 'none';
+  document.getElementById('hw-tab-all').style.display = tab === 'all' ? '' : 'none';
+  if (tab === 'queue') renderHwQueue();
+  else renderAllHw();
+}
+
+export async function renderHomeworkPage() {
+  await renderHwQueue();
+  await updateHwBadge();
+  const queueEl = document.getElementById('hw-tab-queue');
+  const allEl = document.getElementById('hw-tab-all');
+  if (queueEl) queueEl.style.display = _hwTab === 'queue' ? '' : 'none';
+  if (allEl) allEl.style.display = _hwTab === 'all' ? '' : 'none';
+}
+
+async function renderHwQueue() {
+  const el = document.getElementById('hw-tab-queue');
+  if (!el) return;
+  const assistantId = getMyAssistantId();
+  const queue = await db.homeworks.getQueue(assistantId);
+  if (!queue.length) {
+    el.innerHTML = `<div class="card" style="text-align:center;padding:32px 20px;color:var(--hint)">
+      <i class="ti ti-circle-check" style="font-size:28px;display:block;margin-bottom:8px;color:var(--green);opacity:.7"></i>
+      Нет работ на проверке
+    </div>`;
+    return;
+  }
+  const rows = queue.map(sub => {
+    const stu = (CACHE.students || []).find(s => s.id === sub.student_id);
+    const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub.assignment_id);
+    const initials = stu ? stu.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?';
+    const submittedAgo = sub.submitted_at ? (() => {
+      const diff = Math.round((Date.now() - new Date(sub.submitted_at)) / 3600000);
+      if (diff < 1) return 'только что';
+      if (diff < 24) return `${diff}ч назад`;
+      return `${Math.round(diff / 24)}д назад`;
+    })() : '—';
+    const overdue = isOverdue(assignment);
+    return `<div class="card" style="display:flex;align-items:center;gap:14px;padding:12px 16px;margin-bottom:8px">
+      <div style="width:36px;height:36px;border-radius:50%;background:var(--accent-mid);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex-shrink:0">${initials}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600">${stu ? stu.name : '—'}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${assignment ? assignment.topic || '—' : '—'}</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:2px">
+          Сдано: ${submittedAgo}
+          ${overdue ? '<span class="b b-r" style="font-size:10px;margin-left:6px">просрочено</span>' : ''}
+          ${sub.submission_url ? `<i class="ti ${sourceIcon(sub.source)}" style="margin-left:8px;font-size:12px;color:var(--accent-mid)"></i>` : ''}
+        </div>
+      </div>
+      <button class="btn btn-sm btn-p" onclick="openReviewModal('${sub.id}')"><i class="ti ti-pencil-check"></i> Проверить</button>
+    </div>`;
+  }).join('');
+  el.innerHTML = rows;
+}
+
+async function renderAllHw() {
+  const el = document.getElementById('hw-tab-all');
+  if (!el) return;
+  const role = state.currentRole || {};
+  const assistantId = role.isOwner ? null : role.id;
+
+  let subs = CACHE.homework_submissions || [];
+  if (!role.isOwner && assistantId) {
+    const myGroups = await db.assistantGroups.getGroupsByAssistant(assistantId);
+    const groupIds = new Set(myGroups.map(ag => ag.group_id));
+    const myAssignmentIds = new Set(
+      (CACHE.homework_assignments || []).filter(a => groupIds.has(a.group_id)).map(a => a.id)
+    );
+    subs = subs.filter(s => myAssignmentIds.has(s.assignment_id));
+  }
+
+  const studentFilter = (document.getElementById('hw-all-student') || {}).value || '';
+  const statusFilter = (document.getElementById('hw-all-status') || {}).value || '';
+  if (studentFilter) subs = subs.filter(s => s.student_id === studentFilter);
+  if (statusFilter) subs = subs.filter(s => s.status === statusFilter);
+
+  subs = [...subs].sort((a, b) => {
+    const da = a.submitted_at || a.assigned_at || '';
+    const db2 = b.submitted_at || b.assigned_at || '';
+    return db2.localeCompare(da);
+  });
+
+  const stuOpts = (CACHE.students || []).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  const statusCfg = {
+    assigned: { label: 'Назначено', cls: 'b-gray' },
+    submitted: { label: 'Сдано', cls: 'b-bl' },
+    checked: { label: 'Проверено', cls: 'b-g' },
+    overdue: { label: 'Просрочено', cls: 'b-r' },
+  };
+
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <select class="fi" id="hw-all-student" style="max-width:200px" onchange="renderAllHwFiltered()">
+        <option value="">Все ученики</option>${stuOpts}
+      </select>
+      <select class="fi" id="hw-all-status" style="max-width:160px" onchange="renderAllHwFiltered()">
+        <option value="">Все статусы</option>
+        <option value="assigned">Назначено</option>
+        <option value="submitted">Сдано</option>
+        <option value="checked">Проверено</option>
+        <option value="overdue">Просрочено</option>
+      </select>
+    </div>
+    ${subs.length ? `<div class="card" style="padding:0;overflow-x:auto">
+      <table class="tbl">
+        <thead><tr><th>Ученик</th><th>Тема</th><th>Срок</th><th>Статус</th><th>Оценка</th><th>Проверил</th><th></th></tr></thead>
+        <tbody>
+          ${subs.map(sub => {
+            const stu = (CACHE.students || []).find(s => s.id === sub.student_id);
+            const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub.assignment_id);
+            const st = statusCfg[sub.status] || statusCfg.assigned;
+            const overdue = isOverdue(assignment);
+            const checker = sub.checked_by ? ((CACHE.roles || []).find(r => r.id === sub.checked_by) || {}).name || 'Владелец' : '—';
+            const { text: scoreText, color: scoreColor } = scoreLabel(sub.score);
+            return `<tr>
+              <td><b>${stu ? stu.name : '—'}</b></td>
+              <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${assignment ? assignment.topic || '—' : '—'}</td>
+              <td>${assignment?.due_date ? `<span style="color:${overdue && sub.status !== 'checked' ? 'var(--red)' : 'inherit'}">${fmtDate(assignment.due_date)}${overdue && sub.status !== 'checked' ? ' <i class="ti ti-alert-circle" style="font-size:11px"></i>' : ''}</span>` : '—'}</td>
+              <td><span class="b ${st.cls}">${st.label}</span></td>
+              <td style="color:${scoreColor};font-weight:600">${scoreText}</td>
+              <td style="font-size:12px;color:var(--muted)">${checker}</td>
+              <td>${sub.status === 'submitted' ? `<button class="btn btn-sm" onclick="openReviewModal('${sub.id}')">Проверить</button>` : ''}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>` : '<div class="empty">Нет домашних заданий по фильтру</div>'}
+  `;
+}
+
+export async function renderAllHwFiltered() {
+  await renderAllHw();
+}
+
+export async function openReviewModal(submissionId) {
+  const sub = await db.homeworks.getSubmission(submissionId);
+  if (!sub) { toast('Работа не найдена'); return; }
+  const stu = (CACHE.students || []).find(s => s.id === sub.student_id);
+  const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub.assignment_id);
+  _reviewErrors.length = 0;
+  if (sub.errors) _reviewErrors.push(...sub.errors);
+
+  const sourceOpts = [
+    { v: 'manual', l: 'Вручную' },
+    { v: 'telegram', l: 'Telegram' },
+    { v: 'vk', l: 'ВКонтакте' },
+    { v: 'web', l: 'Веб' },
+  ].map(o => `<option value="${o.v}" ${sub.source === o.v ? 'selected' : ''}>${o.l}</option>`).join('');
+
+  modal(`<div class="modal" style="max-width:560px">
+    <div class="modal-title"><i class="ti ti-pencil-check"></i> Проверка работы</div>
+    <div class="card" style="padding:10px 14px;margin-bottom:14px;background:var(--surface2)">
+      <div style="font-size:13px;font-weight:700">${stu ? stu.name : '—'}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">${assignment ? assignment.topic || '—' : '—'}</div>
+      ${assignment?.due_date ? `<div style="font-size:11px;color:var(--hint);margin-top:2px">Срок: ${fmtDate(assignment.due_date)}</div>` : ''}
+    </div>
+    <div class="form-row" style="margin-bottom:12px">
+      <div class="fg">
+        <label>Ссылка на работу</label>
+        <input class="fi" id="rv-url" value="${sub.submission_url || ''}" placeholder="https://...">
+      </div>
+      <div class="fg">
+        <label>Источник</label>
+        <select class="fi" id="rv-source">${sourceOpts}</select>
+      </div>
+    </div>
+    <div class="fg" style="margin-bottom:12px">
+      <label>Оценка <span style="color:var(--accent-mid);font-size:11px">0–100</span></label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input class="fi" type="number" id="rv-score" min="0" max="100" value="${sub.score ?? ''}" style="max-width:80px" oninput="updateScorePreview()">
+        <div style="flex:1">
+          <div class="prog" style="height:8px"><div class="prog-f" id="rv-score-bar" style="width:${sub.score ?? 0}%;background:var(--accent-mid)"></div></div>
+        </div>
+        <span id="rv-score-label" style="font-size:12px;font-weight:600;min-width:80px;text-align:right">${scoreLabel(sub.score).text}</span>
+      </div>
+    </div>
+    <div class="fg" style="margin-bottom:12px">
+      <label>Комментарий</label>
+      <textarea class="fi" id="rv-comment" rows="3" placeholder="Общий отзыв на работу...">${sub.comment || ''}</textarea>
+    </div>
+    <div class="fg" style="margin-bottom:16px">
+      <label style="display:flex;align-items:center;justify-content:space-between">
+        <span>Ошибки</span>
+        <button class="btn btn-sm" onclick="addReviewError()" type="button"><i class="ti ti-plus"></i> Добавить</button>
+      </label>
+      <div id="rv-errors-list">${renderErrorsList()}</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-p" onclick="saveReview('${submissionId}')">Сохранить проверку</button>
+    </div>
+  </div>`);
+  updateScorePreview();
+}
+
+function renderErrorsList() {
+  if (!_reviewErrors.length) return '<div style="font-size:12px;color:var(--hint);padding:6px 0">Ошибок нет</div>';
+  return _reviewErrors.map((e, i) => `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+      <input class="fi" style="flex:1" value="${e.replace(/"/g, '&quot;')}" oninput="updateReviewError(${i}, this.value)">
+      <button class="btn btn-sm btn-icon" onclick="removeReviewError(${i})" type="button"><i class="ti ti-x" style="color:var(--red)"></i></button>
+    </div>`).join('');
+}
+
+export function addReviewError() {
+  _reviewErrors.push('');
+  const el = document.getElementById('rv-errors-list');
+  if (el) el.innerHTML = renderErrorsList();
+}
+
+export function removeReviewError(idx) {
+  _reviewErrors.splice(idx, 1);
+  const el = document.getElementById('rv-errors-list');
+  if (el) el.innerHTML = renderErrorsList();
+}
+
+export function updateReviewError(idx, value) {
+  _reviewErrors[idx] = value;
+}
+
+export function updateScorePreview() {
+  const score = +(document.getElementById('rv-score') || {}).value;
+  const bar = document.getElementById('rv-score-bar');
+  const label = document.getElementById('rv-score-label');
+  if (!bar || !label) return;
+  const { text, color } = scoreLabel(isNaN(score) ? null : score);
+  bar.style.width = `${Math.min(100, Math.max(0, score || 0))}%`;
+  bar.style.background = color;
+  label.textContent = text;
+  label.style.color = color;
+}
+
+export async function saveReview(submissionId) {
+  const score = (document.getElementById('rv-score') || {}).value;
+  const comment = (document.getElementById('rv-comment') || {}).value || '';
+  const url = (document.getElementById('rv-url') || {}).value || '';
+  const source = (document.getElementById('rv-source') || {}).value || 'manual';
+  const role = state.currentRole || {};
+  const checkedBy = role.isOwner ? null : role.id;
+
+  const errors = _reviewErrors.filter(e => e.trim());
+  try {
+    // Update submission_url and source first
+    if (url || source) {
+      const { dbUpdate: du } = await import('../core/store.js');
+      await du('homework_submissions', submissionId, { submission_url: url, source });
+    }
+    await db.homeworks.saveReview(submissionId, {
+      score: score !== '' ? +score : null,
+      comment,
+      errors,
+      checkedBy,
+    });
+    const sub = await db.homeworks.getSubmission(submissionId);
+    const stu = (CACHE.students || []).find(s => s.id === sub?.student_id);
+    const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub?.assignment_id);
+    await addHistoryEntry('update', `Проверено ДЗ: ${stu?.name || '—'} · ${assignment?.topic || '—'}${score !== '' ? ' · ' + score + ' баллов' : ''}`, 'homework', submissionId, null);
+    closeModal();
+    if (_hwTab === 'queue') await renderHwQueue();
+    else await renderAllHw();
+    await updateHwBadge();
+    toast('Проверка сохранена');
+  } catch (err) {
+    toast('Ошибка: ' + err.message);
+  }
+}
+
+export function renderStudentHwTab(studentId) {
+  const subs = (CACHE.homework_submissions || []).filter(s => s.student_id === studentId)
+    .sort((a, b) => (b.submitted_at || b.assigned_at || '').localeCompare(a.submitted_at || a.assigned_at || ''));
+
+  const now = Date.now();
+  const month30ago = now - 30 * 86400000;
+  const recent = subs.filter(s => {
+    const d = s.checked_at || s.submitted_at || s.assigned_at;
+    return d && new Date(d).getTime() >= month30ago && s.score !== null;
+  });
+  const avgScore = recent.length ? Math.round(recent.reduce((acc, s) => acc + s.score, 0) / recent.length) : null;
+  const { text: avgLabel, color: avgColor } = scoreLabel(avgScore);
+
+  const statusCfg = {
+    assigned: { label: 'Назначено', cls: 'b-gray' },
+    submitted: { label: 'Сдано', cls: 'b-bl' },
+    checked: { label: 'Проверено', cls: 'b-g' },
+    overdue: { label: 'Просрочено', cls: 'b-r' },
+  };
+
+  if (!subs.length) return '<div style="font-size:12px;color:var(--hint);padding:8px 0">Нет заданий</div>';
+
+  return `${avgScore !== null ? `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2);border-radius:var(--r);margin-bottom:12px">
+      <i class="ti ti-chart-bar" style="font-size:20px;color:${avgColor}"></i>
+      <div>
+        <div style="font-size:11px;color:var(--muted)">Средний балл за 30 дней</div>
+        <div style="font-size:16px;font-weight:700;color:${avgColor}">${avgScore} / 100 <span style="font-size:12px;font-weight:400">${avgLabel}</span></div>
+      </div>
+    </div>` : ''}
+  <div class="card" style="padding:0">
+    <table class="tbl" style="font-size:12px">
+      <thead><tr><th>Тема</th><th>Срок</th><th>Статус</th><th>Оценка</th><th>Ошибки</th></tr></thead>
+      <tbody>
+        ${subs.map(sub => {
+          const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub.assignment_id);
+          const st = statusCfg[sub.status] || statusCfg.assigned;
+          const overdue = isOverdue(assignment);
+          const { text: scoreText, color: scoreColor } = scoreLabel(sub.score);
+          return `<tr>
+            <td>${assignment ? assignment.topic || '—' : '—'}</td>
+            <td>${assignment?.due_date ? `<span style="color:${overdue && sub.status !== 'checked' ? 'var(--red)' : 'inherit'}">${fmtDate(assignment.due_date)}</span>` : '—'}</td>
+            <td><span class="b ${st.cls}">${st.label}</span></td>
+            <td style="color:${scoreColor};font-weight:600">${scoreText}</td>
+            <td style="font-size:11px;color:var(--muted)">${(sub.errors || []).join(', ') || '—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}

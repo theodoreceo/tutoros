@@ -46,6 +46,7 @@
       <div class="sb-item" data-pg="crm_students" style="padding-left:28px;font-size:12px"><i class="ti ti-users" style="font-size:15px"></i><span>Ученики</span></div>
       <div class="sb-item" data-pg="groups" style="padding-left:28px;font-size:12px"><i class="ti ti-sitemap" style="font-size:15px"></i><span>Группы</span></div>
       <div class="sb-item" data-pg="lessons_cal" style="padding-left:28px;font-size:12px"><i class="ti ti-calendar-event" style="font-size:15px"></i><span>Занятия</span></div>
+      <div class="sb-item" data-pg="homework" style="padding-left:28px;font-size:12px"><i class="ti ti-home-check" style="font-size:15px"></i><span>ДЗ&nbsp;<span id="hw-queue-badge" style="background:var(--red);color:#fff;border-radius:10px;padding:0 5px;font-size:10px;font-weight:700;display:none"></span></span></div>
       <div class="sb-section" data-finance-section>Финансы</div>
       <div class="sb-item" data-pg="income" data-finance-item><i class="ti ti-cash"></i><span>Доходы</span></div>
       <div class="sb-item" data-pg="expenses" data-finance-item><i class="ti ti-receipt"></i><span>Расходы</span></div>
@@ -325,6 +326,19 @@
         <div id="cal-container"></div>
       </div>
 
+      <!-- ── HOMEWORK ─────────────────────────────────────────────────────────── -->
+      <div class="pg" id="pg-homework">
+        <div class="ph">
+          <div class="ph-title">Домашние задания</div>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+          <button class="btn btn-sm hw-tab on" onclick="setHwTab('queue')"><i class="ti ti-list-check"></i> Очередь</button>
+          <button class="btn btn-sm hw-tab" onclick="setHwTab('all')"><i class="ti ti-table"></i> Все ДЗ</button>
+        </div>
+        <div id="hw-tab-queue"></div>
+        <div id="hw-tab-all" style="display:none"></div>
+      </div>
+
       <!-- ── ANALYTICS ──────────────────────────────────────────────────────── -->
       <div class="pg" id="pg-analytics">
         <div class="ph">
@@ -383,6 +397,7 @@
           <button class="btn btn-p btn-sm" onclick="openRoleModal()"><i class="ti ti-plus"></i> Новая роль</button>
         </div>
         <div id="roles-list"></div>
+        <div id="assistant-groups-section" style="margin-top:20px"></div>
       </div>
 
     </div>

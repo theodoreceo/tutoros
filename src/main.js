@@ -26,7 +26,7 @@ import {
 import {
   setCalView, calNav, calToday, renderCalendar,
   openLessonFromCalendar, openLessonFormModal, toggleAttendance,
-  setCalHwStatus,
+  setCalHwStatus, toggleHwAssignBlock,
   saveLessonForm, openLessonCard, deleteLesson as calDeleteLesson, exportICS,
 } from './pages/calendar.js';
 import { renderIncome, openPaymentModal, savePayment, deletePayment } from './pages/income.js';
@@ -36,7 +36,12 @@ import {
   setTaskFilter, renderAssistantTasks, openAssistantTaskModal, editAssistantTask,
   saveAssistantTask, changeTaskStatus, deleteAssistantTask,
 } from './pages/tasks.js';
-import { renderAccess, openRoleModal, editRole, saveRole, deleteRole } from './pages/access.js';
+import { renderAccess, openRoleModal, editRole, saveRole, deleteRole, toggleAssistantGroup } from './pages/access.js';
+import {
+  renderHomeworkPage, setHwTab, openReviewModal, saveReview,
+  addReviewError, removeReviewError, updateScorePreview, renderAllHwFiltered,
+  updateHwBadge,
+} from './pages/homework.js';
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 
@@ -52,9 +57,12 @@ function init() {
   registerRenderer('income', renderIncome);
   registerRenderer('expenses', renderExpenses);
   registerRenderer('tasks', renderAssistantTasks);
+  registerRenderer('homework', renderHomeworkPage);
   registerRenderer('lessons_cal', renderCalendar);
   registerRenderer('analytics', renderAnalytics);
   registerRenderer('access', renderAccess);
+
+  updateHwBadge();
 
   const restored = restoreSession();
   if (!restored) {
@@ -122,6 +130,7 @@ window.exportICS = exportICS;
 
 window.setGroupHwStatus = setGroupHwStatus;
 window.setCalHwStatus = setCalHwStatus;
+window.toggleHwAssignBlock = toggleHwAssignBlock;
 
 // Income
 window.openPaymentModal = openPaymentModal;
@@ -152,6 +161,16 @@ window.openRoleModal = openRoleModal;
 window.editRole = editRole;
 window.saveRole = saveRole;
 window.deleteRole = deleteRole;
+window.toggleAssistantGroup = toggleAssistantGroup;
+
+// Homework
+window.setHwTab = setHwTab;
+window.openReviewModal = openReviewModal;
+window.saveReview = saveReview;
+window.addReviewError = addReviewError;
+window.removeReviewError = removeReviewError;
+window.updateScorePreview = updateScorePreview;
+window.renderAllHwFiltered = renderAllHwFiltered;
 
 // History
 window.undoHistoryEntry = undoHistoryEntry;

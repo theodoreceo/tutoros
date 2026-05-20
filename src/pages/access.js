@@ -6,24 +6,62 @@ import { toast } from '../components/toast.js';
 export function renderAccess() {
   const el = document.getElementById('roles-list');
   if (!el) return;
-  if (!(CACHE.roles || []).length) { el.innerHTML = '<div class="empty">Ролей нет. Создайте первую для ассистента.</div>'; return; }
-  el.innerHTML = CACHE.roles.map(r => {
-    const pages = (r.pages || []).map(p => ALL_PAGES.find(x => x.id === p)?.label || p);
-    return `<div class="card">
-      <div class="card-header">
-        <div>
-          <div style="font-size:14px;font-weight:600">${r.name}</div>
-          <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">${pages.map(p => `<span class="tag">${p}</span>`).join('')}</div>
+  if (!(CACHE.roles || []).length) { el.innerHTML = '<div class="empty">Ролей нет. Создайте первую для ассистента.</div>'; }
+  else {
+    el.innerHTML = CACHE.roles.map(r => {
+      const pages = (r.pages || []).map(p => ALL_PAGES.find(x => x.id === p)?.label || p);
+      return `<div class="card">
+        <div class="card-header">
+          <div>
+            <div style="font-size:14px;font-weight:600">${r.name}</div>
+            <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">${pages.map(p => `<span class="tag">${p}</span>`).join('')}</div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="b ${r.can_edit ? 'b-a' : 'b-gray'}">${r.can_edit ? 'Редактирование' : 'Только чтение'}</span>
+            <span class="b b-gray" title="PIN">🔑 ${r.pin || 'без PIN'}</span>
+            <button class="btn btn-sm btn-icon" onclick="editRole('${r.id}')"><i class="ti ti-edit"></i></button>
+            <button class="btn btn-sm btn-icon" onclick="deleteRole('${r.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>
+          </div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <span class="b ${r.can_edit ? 'b-a' : 'b-gray'}">${r.can_edit ? 'Редактирование' : 'Только чтение'}</span>
-          <span class="b b-gray" title="PIN">🔑 ${r.pin || 'без PIN'}</span>
-          <button class="btn btn-sm btn-icon" onclick="editRole('${r.id}')"><i class="ti ti-edit"></i></button>
-          <button class="btn btn-sm btn-icon" onclick="deleteRole('${r.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>
+      </div>`;
+    }).join('');
+  }
+  renderAssistantGroupsSection();
+}
+
+function renderAssistantGroupsSection() {
+  const el = document.getElementById('assistant-groups-section');
+  if (!el) return;
+  const roles = CACHE.roles || [];
+  if (!roles.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;margin-top:4px">
+      <i class="ti ti-sitemap"></i> Назначение на группы
+    </div>
+    ${roles.map(role => {
+      const myGroups = new Set((CACHE.assistant_groups || []).filter(ag => ag.assistant_id === role.id).map(ag => ag.group_id));
+      return `<div class="card" style="margin-bottom:10px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px">${role.name}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px">
+          ${(CACHE.groups || []).map(gr => {
+            const checked = myGroups.has(gr.id);
+            return `<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid ${checked ? 'var(--accent-mid)' : 'var(--border)'};border-radius:var(--r);cursor:pointer;font-size:13px;background:${checked ? 'var(--accent-bg)' : 'var(--surface)'}">
+              <input type="checkbox" ${checked ? 'checked' : ''} style="accent-color:var(--accent-mid)" onchange="toggleAssistantGroup('${role.id}','${gr.id}',this.checked)">
+              ${gr.name}
+            </label>`;
+          }).join('')}
+          ${!(CACHE.groups || []).length ? '<div style="font-size:12px;color:var(--hint)">Групп нет</div>' : ''}
         </div>
-      </div>
-    </div>`;
-  }).join('');
+      </div>`;
+    }).join('')}
+  `;
+}
+
+export async function toggleAssistantGroup(roleId, groupId, assign) {
+  const { db } = await import('../lib/db.js');
+  if (assign) await db.assistantGroups.assign(roleId, groupId);
+  else await db.assistantGroups.unassign(roleId, groupId);
+  renderAssistantGroupsSection();
 }
 
 export function openRoleModal(id) {
