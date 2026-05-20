@@ -99,9 +99,6 @@ export async function savePayment() {
     const updates = { paid: true };
     if (stu && ['lead', 'trial_scheduled', 'trial_done', 'trial'].includes(stu.crm_status)) updates.crm_status = 'active';
     await dbUpdate('students', p.student_id, updates);
-    if (!CACHE.payments) CACHE.payments = [];
-    CACHE.payments.unshift(p);
-    CACHE.students = (CACHE.students || []).map(s => s.id === p.student_id ? { ...s, ...updates } : s);
     await addHistoryEntry('insert', `Платёж +${fmt(p.amount)} ₽ · ${stu ? stu.name : ''}`, 'payment', p.id, { table: 'payments', action: 'insert', record_id: p.id, old_data: null });
     await addEvent('student', p.student_id, 'payment_added', { amount: p.amount });
     if (stu && updates.crm_status) await addEvent('student', p.student_id, 'status_changed', { from: stu.crm_status, to: 'active' });
@@ -113,7 +110,6 @@ export async function deletePayment(id) {
   if (!confirm('Удалить платёж?')) return;
   try {
     await dbDelete('payments', id);
-    CACHE.payments = (CACHE.payments || []).filter(x => x.id !== id);
     renderIncome(); toast('Удалено');
   } catch (e) { toast('Ошибка: ' + e.message); }
 }

@@ -65,8 +65,6 @@ export async function saveRole(id) {
   if (!pages.length) { toast('Выберите разделы'); return; }
   try {
     if (id) await dbUpdate('roles', id, obj); else await dbInsert('roles', obj);
-    if (id) CACHE.roles = (CACHE.roles || []).map(x => x.id === id ? obj : x);
-    else { if (!CACHE.roles) CACHE.roles = []; CACHE.roles.push(obj); }
     closeModal(); renderAccess(); toast('Роль сохранена');
   } catch (e) { toast('Ошибка: ' + e.message); }
 }
@@ -75,7 +73,6 @@ export async function deleteRole(id) {
   if (!confirm('Удалить роль?')) return;
   try {
     await dbDelete('roles', id);
-    CACHE.roles = (CACHE.roles || []).filter(x => x.id !== id);
     renderAccess(); toast('Удалено');
   } catch (e) { toast('Ошибка: ' + e.message); }
 }

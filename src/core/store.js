@@ -47,36 +47,35 @@ function save(table) {
 }
 
 export async function dbInsert(table, record) {
-  const rows = JSON.parse(localStorage.getItem(KEY(table)) || '[]');
-  rows.push(record);
-  localStorage.setItem(KEY(table), JSON.stringify(rows));
+  CACHE[table].push(record);
+  save(table);
 }
 
 export async function dbUpdate(table, id, patch) {
-  const rows = (JSON.parse(localStorage.getItem(KEY(table)) || '[]')).map(r => r.id === id ? { ...r, ...patch } : r);
-  localStorage.setItem(KEY(table), JSON.stringify(rows));
+  CACHE[table] = CACHE[table].map(r => r.id === id ? { ...r, ...patch } : r);
+  save(table);
 }
 
 export async function dbDelete(table, id) {
-  const rows = (JSON.parse(localStorage.getItem(KEY(table)) || '[]')).filter(r => r.id !== id);
-  localStorage.setItem(KEY(table), JSON.stringify(rows));
+  CACHE[table] = CACHE[table].filter(r => r.id !== id);
+  save(table);
 }
 
 export function dbFind(table, id) {
   return CACHE[table].find(r => r.id === id) || null;
 }
 
+const INIT_KEY = 'tutoros_initialized';
+
 export function initLocalStorage() {
-  // Demo mode: always reseed so relative dates stay fresh on every load
-  TABLES.forEach(t => {
-    const data = SEED[t] || [];
-    localStorage.setItem(KEY(t), JSON.stringify(data));
-  });
+  if (!localStorage.getItem(INIT_KEY)) {
+    TABLES.forEach(t => localStorage.setItem(KEY(t), JSON.stringify(SEED[t] || [])));
+    localStorage.setItem(INIT_KEY, '1');
+  }
   loadAll();
 }
 
 export function clearDemoData() {
-  TABLES.forEach(t => {
-    localStorage.setItem(KEY(t), JSON.stringify(SEED[t] || []));
-  });
+  TABLES.forEach(t => localStorage.setItem(KEY(t), JSON.stringify(SEED[t] || [])));
+  localStorage.removeItem(INIT_KEY);
 }

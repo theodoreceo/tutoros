@@ -291,8 +291,6 @@ async function _commitSaveStudent(id, newStatus, history, existing, statusDate) 
   if (!obj.name) { toast('Введите имя'); return; }
   try {
     if (id) await dbUpdate('students', id, obj); else await dbInsert('students', obj);
-    if (id) CACHE.students = (CACHE.students || []).map(x => x.id === id ? obj : x);
-    else { if (!CACHE.students) CACHE.students = []; CACHE.students.push(obj); }
     const action = id ? 'update' : 'insert';
     const desc = id ? `Изменён ученик: ${obj.name}${existing && existing.crm_status !== newStatus ? ' (статус: ' + STATUS_CONFIG[newStatus]?.label + ')' : ''}` : `Добавлен ученик: ${obj.name}`;
     await addHistoryEntry(action, desc, 'student', obj.id, { table: 'students', action, record_id: obj.id, old_data: existing || null });
@@ -311,7 +309,6 @@ export async function deleteStudent(id) {
   if (!confirm('Удалить ученика?')) return;
   try {
     await dbDelete('students', id);
-    CACHE.students = (CACHE.students || []).filter(x => x.id !== id);
     renderStudents(); renderPipeline(); toast('Удалено');
   } catch (e) { toast('Ошибка: ' + e.message); }
 }
@@ -454,13 +451,10 @@ export async function scheduleTrialLesson(studentId) {
       task_ids: [], notes: 'Пробное занятие', created_at: new Date().toISOString()
     };
     await dbInsert('lessons', lesson);
-    if (!CACHE.lessons) CACHE.lessons = [];
-    CACHE.lessons.push(lesson);
   }
   const history = [...(s.status_history || []), { status: 'trial_scheduled', date }];
   const updates = { crm_status: 'trial_scheduled', status_history: history };
   await dbUpdate('students', studentId, updates);
-  CACHE.students = (CACHE.students || []).map(x => x.id === studentId ? { ...x, ...updates } : x);
   await addHistoryEntry('trial_scheduled', `Пробник назначен: ${s.name} на ${date}`, 'student', studentId, { table: 'students', action: 'update', record_id: studentId, old_data: { crm_status: s.crm_status, status_history: s.status_history } });
   closeModal();
   renderPipeline();
@@ -502,8 +496,6 @@ export async function addStudentNote(studentId) {
   const role = state.currentRole || {};
   const note = { id: uid(), student_id: studentId, text, author: role.name || 'Владелец', created_at: new Date().toISOString() };
   await dbInsert('student_notes', note);
-  if (!CACHE.student_notes) CACHE.student_notes = [];
-  CACHE.student_notes.push(note);
   ta.value = '';
   const thread = document.getElementById('notes-thread-' + studentId);
   if (thread) thread.innerHTML = renderNotesThread(studentId);

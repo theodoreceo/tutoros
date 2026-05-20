@@ -229,7 +229,7 @@ export function openLessonFormModal(date, gid, existingId) {
     const stu = (CACHE.students || []).find(s => s.id === h.student_id);
     return `<div class="hw-row">
           <span style="flex:1;font-size:13px">${stu ? stu.name : '?'}</span>
-          <button class="hw-status-btn pending" id="hwbtn-${h.id}" onclick="setHwStatus('${h.id}',this)">— не проверено</button>
+          <button class="hw-status-btn pending" id="hwbtn-${h.id}" onclick="setCalHwStatus('${h.id}',this)">— не проверено</button>
         </div>`;
   }).join('')}
     </div>` : '';
@@ -293,7 +293,7 @@ export function toggleAttendance(sid) {
   if (lbl) lbl.textContent = absent ? 'отсутствует' : 'присутствует';
 }
 
-export function setHwStatus(hwId, btn) {
+export function setCalHwStatus(hwId, btn) {
   const states = ['pending', 'done', 'missing'];
   const labels = { pending: '— не проверено', done: '✓ сделал', missing: '✗ не сделал' };
   const curIdx = states.indexOf(states.find(s => btn.classList.contains(s)) || 'pending');
@@ -335,13 +335,11 @@ export async function saveLessonForm(existingId) {
   };
 
   try {
-    if (existingId) { await dbUpdate('lessons', existingId, obj); CACHE.lessons = (CACHE.lessons || []).map(x => x.id === existingId ? obj : x); }
-    else { await dbInsert('lessons', obj); if (!CACHE.lessons) CACHE.lessons = []; CACHE.lessons.push(obj); }
+    if (existingId) await dbUpdate('lessons', existingId, obj);
+    else await dbInsert('lessons', obj);
 
     for (const [hwId, status] of Object.entries(_hwBtnStates)) {
       await dbUpdate('hw_submissions', hwId, { status, checked_at: new Date().toISOString() });
-      const idx = (CACHE.hw_submissions || []).findIndex(h => h.id === hwId);
-      if (idx >= 0) CACHE.hw_submissions[idx] = { ...CACHE.hw_submissions[idx], status, checked_at: new Date().toISOString() };
     }
 
     if (hw_link && !existingId) {
@@ -349,8 +347,6 @@ export async function saveLessonForm(existingId) {
       for (const sid of presentIds) {
         const hwObj = { id: uid(), lesson_id: obj.id, group_id: state.currentGroupId, student_id: sid, hw_link, assigned_at: new Date().toISOString(), status: 'pending', checked_at: null };
         await dbInsert('hw_submissions', hwObj);
-        if (!CACHE.hw_submissions) CACHE.hw_submissions = [];
-        CACHE.hw_submissions.push(hwObj);
       }
     }
 
@@ -420,7 +416,6 @@ export async function deleteLesson(id) {
   try {
     const l = (CACHE.lessons || []).find(x => x.id === id);
     await dbDelete('lessons', id);
-    CACHE.lessons = (CACHE.lessons || []).filter(x => x.id !== id);
     await addHistoryEntry('delete', `Удалено занятие: ${l?.topic || '—'} · ${l?.date || ''}`, 'lesson', id, { table: 'lessons', action: 'delete', record_id: id, old_data: l });
     renderCalendar();
     toast('Удалено');

@@ -118,8 +118,6 @@ export async function saveExpense() {
   if (!e.amount) { toast('Введите сумму'); return; }
   try {
     await dbInsert('expenses', e);
-    if (!CACHE.expenses) CACHE.expenses = [];
-    CACHE.expenses.unshift(e);
     await addHistoryEntry('insert', `Расход −${fmt(e.amount)} ₽ · ${e.category}${e.note ? ' (' + e.note + ')' : ''}`, 'expense', e.id, { table: 'expenses', action: 'insert', record_id: e.id, old_data: null });
     closeModal(); renderExpenses(); toast('Расход добавлен');
   } catch (err) { toast('Ошибка: ' + err.message); }
@@ -129,7 +127,6 @@ export async function deleteExpense(id) {
   if (!confirm('Удалить?')) return;
   try {
     await dbDelete('expenses', id);
-    CACHE.expenses = (CACHE.expenses || []).filter(x => x.id !== id);
     renderExpenses(); toast('Удалено');
   } catch (e) { toast('Ошибка: ' + e.message); }
 }

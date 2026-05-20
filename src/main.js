@@ -21,12 +21,12 @@ import {
   renderGroups, openGroupModal, editGroup, saveGroup, deleteGroup,
   openGroupDetail, closeGroupDetail, renderGroupDetail, renderLessonJournal,
   openLessonModal, saveLesson, deleteLesson,
-  setHwStatus as groupsSetHwStatus,
+  setGroupHwStatus,
 } from './pages/groups.js';
 import {
   setCalView, calNav, calToday, renderCalendar,
   openLessonFromCalendar, openLessonFormModal, toggleAttendance,
-  setHwStatus as calSetHwStatus,
+  setCalHwStatus,
   saveLessonForm, openLessonCard, deleteLesson as calDeleteLesson, exportICS,
 } from './pages/calendar.js';
 import { renderIncome, openPaymentModal, savePayment, deletePayment } from './pages/income.js';
@@ -120,11 +120,8 @@ window.saveLessonForm = saveLessonForm;
 window.openLessonCard = openLessonCard;
 window.exportICS = exportICS;
 
-// setHwStatus dispatch — groups version takes 4 string args, calendar takes 2 (second is element)
-window.setHwStatus = function(...args) {
-  if (args.length === 4) return groupsSetHwStatus(...args);
-  return calSetHwStatus(...args);
-};
+window.setGroupHwStatus = setGroupHwStatus;
+window.setCalHwStatus = setCalHwStatus;
 
 // Income
 window.openPaymentModal = openPaymentModal;

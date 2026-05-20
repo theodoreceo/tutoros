@@ -14,9 +14,7 @@ export async function addHistoryEntry(action, description, entityType, entityId,
     undo_data: undoData || null,
   };
   await dbInsert('history_log', entry);
-  if (!CACHE.history_log) CACHE.history_log = [];
-  CACHE.history_log.unshift(entry);
-  if (CACHE.history_log.length > 500) CACHE.history_log.pop();
+  if (CACHE.history_log.length > 500) CACHE.history_log.shift();
 }
 
 export async function undoHistoryEntry(id) {
