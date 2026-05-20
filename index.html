@@ -29,8 +29,9 @@
 <!-- ── APP SHELL ────────────────────────────────────────────────────────────── -->
 <div class="app" id="app" style="display:none">
 
+  <div class="sb-overlay" id="sb-overlay" onclick="closeSidebar()"></div>
   <!-- SIDEBAR -->
-  <nav class="sidebar">
+  <nav class="sidebar" id="sidebar">
     <div class="sb-logo">
       <div class="name">теорема <em>федора</em></div>
       <div class="sub">Управление практикой</div>
@@ -74,7 +75,12 @@
   <!-- MAIN -->
   <div class="main">
     <div class="topbar">
-      <div class="topbar-title" id="page-title">Дашборд</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="hamburger" onclick="toggleSidebar()" aria-label="Меню">
+          <i class="ti ti-menu-2"></i>
+        </button>
+        <div class="topbar-title" id="page-title">Дашборд</div>
+      </div>
       <div style="display:flex;align-items:center;gap:8px">
         <span id="realtime-badge" style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px">
           <i class="ti ti-database"></i> localStorage
@@ -92,8 +98,8 @@
 
         <!-- ── TAB: Ученики ── -->
         <div id="dash-tab-students">
-          <div id="dash-pulse" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px"></div>
-          <div style="display:grid;grid-template-columns:1fr 320px;gap:14px;align-items:start">
+          <div id="dash-pulse" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px"></div>
+          <div class="dash-grid" style="display:grid;grid-template-columns:1fr 320px;gap:14px;align-items:start">
             <div>
               <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
                 <i class="ti ti-calendar-event" style="margin-right:4px"></i>Ближайшие занятия

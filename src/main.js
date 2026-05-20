@@ -179,6 +179,18 @@ window.changeHwStatus = changeHwStatus;
 // Dashboard
 window.setDashTab = setDashTab;
 
+// Mobile sidebar
+window.toggleSidebar = () => {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sb-overlay');
+  const open = sb?.classList.toggle('open');
+  ov?.classList.toggle('show', open);
+};
+window.closeSidebar = () => {
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('sb-overlay')?.classList.remove('show');
+};
+
 // History
 window.undoHistoryEntry = undoHistoryEntry;
 

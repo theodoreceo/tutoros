@@ -67,3 +67,72 @@
 /* Pages */
 .pg { display: none; }
 .pg.on { display: block; }
+
+/* ── Mobile ── */
+.hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: background .12s;
+}
+.hamburger:hover { background: var(--surface2); }
+
+.sb-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 199;
+}
+.sb-overlay.show { display: block; }
+
+@media (max-width: 640px) {
+  .hamburger { display: flex; }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform .25s cubic-bezier(.4,0,.2,1);
+    box-shadow: none;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0,0,0,.35);
+  }
+
+  .topbar { padding: 0 14px; height: 48px; }
+  .content { padding: 14px; }
+
+  .ph { flex-wrap: wrap; gap: 8px; padding-bottom: 12px; }
+  .ph-title { font-size: 17px !important; }
+
+  /* Pulse cards smaller */
+  .pulse-card .p-val { font-size: 20px !important; }
+
+  /* Tables: horizontal scroll */
+  .tbl { min-width: 600px; }
+  .tbl th, .tbl td { padding: 8px 10px; font-size: 12px; }
+
+  /* Pipeline board: wrap on mobile */
+  #pipeline-board { flex-direction: column; overflow-x: visible; }
+  #pipeline-board > div { min-width: unset !important; width: 100% !important; }
+
+  /* Grid 2-col → 1-col */
+  .form-row { grid-template-columns: 1fr !important; }
+  .dash-grid { grid-template-columns: 1fr !important; }
+
+  /* Modal: full width */
+  .modal { width: 100% !important; max-width: 100% !important; border-radius: 16px 16px 0 0 !important; margin-top: auto; }
+  .modal-wrap { align-items: flex-end !important; padding: 0 !important; }
+}
