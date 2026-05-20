@@ -40,7 +40,7 @@ import { renderAccess, openRoleModal, editRole, saveRole, deleteRole, toggleAssi
 import {
   renderHomeworkPage, setHwTab, openReviewModal, saveReview,
   addReviewError, removeReviewError, updateScorePreview, renderAllHwFiltered,
-  updateHwBadge,
+  updateHwBadge, openCreateHwModal, updateHwLessonOpts, saveNewHw, changeHwStatus,
 } from './pages/homework.js';
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
@@ -171,6 +171,10 @@ window.addReviewError = addReviewError;
 window.removeReviewError = removeReviewError;
 window.updateScorePreview = updateScorePreview;
 window.renderAllHwFiltered = renderAllHwFiltered;
+window.openCreateHwModal = openCreateHwModal;
+window.updateHwLessonOpts = updateHwLessonOpts;
+window.saveNewHw = saveNewHw;
+window.changeHwStatus = changeHwStatus;
 
 // History
 window.undoHistoryEntry = undoHistoryEntry;

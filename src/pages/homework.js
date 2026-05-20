@@ -169,7 +169,16 @@ async function renderAllHw() {
               <td><span class="b ${st.cls}">${st.label}</span></td>
               <td style="color:${scoreColor};font-weight:600">${scoreText}</td>
               <td style="font-size:12px;color:var(--muted)">${checker}</td>
-              <td>${sub.status === 'submitted' ? `<button class="btn btn-sm" onclick="openReviewModal('${sub.id}')">Проверить</button>` : ''}</td>
+              <td style="white-space:nowrap">
+                ${sub.status === 'submitted' ? `
+                  <button class="btn btn-sm btn-p" onclick="openReviewModal('${sub.id}')">Проверить</button>
+                  <button class="btn btn-sm" onclick="changeHwStatus('${sub.id}','assigned')" title="Вернуть в статус Назначено"><i class="ti ti-rotate-left"></i></button>
+                ` : sub.status === 'checked' ? `
+                  <button class="btn btn-sm" onclick="openReviewModal('${sub.id}')"><i class="ti ti-edit"></i> Изменить</button>
+                ` : sub.status === 'assigned' || sub.status === 'overdue' ? `
+                  <button class="btn btn-sm" onclick="changeHwStatus('${sub.id}','submitted')"><i class="ti ti-upload"></i> Принять</button>
+                ` : ''}
+              </td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -310,6 +319,116 @@ export async function saveReview(submissionId) {
     else await renderAllHw();
     await updateHwBadge();
     toast('Проверка сохранена');
+  } catch (err) {
+    toast('Ошибка: ' + err.message);
+  }
+}
+
+function getLessonOptsForGroup(groupId) {
+  const lessons = (CACHE.lessons || [])
+    .filter(l => l.group_id === groupId)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  return lessons.map(l => `<option value="${l.id}">${fmtDate(l.date)} · ${l.topic || 'Без темы'}</option>`).join('');
+}
+
+export async function openCreateHwModal() {
+  const role = state.currentRole || {};
+  const assistantId = role.isOwner ? null : role.id;
+
+  let availableGroups = CACHE.groups || [];
+  if (!role.isOwner && assistantId) {
+    const myGroups = await db.assistantGroups.getGroupsByAssistant(assistantId);
+    const groupIds = new Set(myGroups.map(ag => ag.group_id));
+    availableGroups = availableGroups.filter(g => groupIds.has(g.id));
+  }
+  if (!availableGroups.length) { toast('Нет доступных групп'); return; }
+
+  const groupOpts = availableGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+  const firstGroupId = availableGroups[0].id;
+  const lessonOpts = getLessonOptsForGroup(firstGroupId);
+
+  modal(`<div class="modal" style="max-width:560px">
+    <div class="modal-title"><i class="ti ti-home-plus"></i> Новое домашнее задание</div>
+    <div class="fg" style="margin-bottom:12px">
+      <label>Группа</label>
+      <select class="fi" id="nhw-group" onchange="updateHwLessonOpts()">${groupOpts}</select>
+    </div>
+    <div class="fg" style="margin-bottom:12px">
+      <label>Занятие <span style="font-weight:400;color:var(--hint)">(опционально)</span></label>
+      <select class="fi" id="nhw-lesson"><option value="">— не привязывать к занятию —</option>${lessonOpts}</select>
+    </div>
+    <div class="fg" style="margin-bottom:12px">
+      <label>Тема задания</label>
+      <input class="fi" id="nhw-topic" placeholder="Тригонометрия: формулы приведения...">
+    </div>
+    <div class="fg" style="margin-bottom:12px">
+      <label>Описание / инструкция</label>
+      <textarea class="fi" id="nhw-desc" rows="2" placeholder="Подробности задания..."></textarea>
+    </div>
+    <div class="fg" style="margin-bottom:16px">
+      <label>Дедлайн</label>
+      <input class="fi" type="date" id="nhw-due">
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">
+      <i class="ti ti-info-circle"></i> ДЗ автоматически назначится всем активным ученикам группы
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-p" onclick="saveNewHw()"><i class="ti ti-check"></i> Создать</button>
+    </div>
+  </div>`);
+}
+
+export function updateHwLessonOpts() {
+  const groupId = (document.getElementById('nhw-group') || {}).value;
+  const sel = document.getElementById('nhw-lesson');
+  if (!sel) return;
+  sel.innerHTML = `<option value="">— не привязывать к занятию —</option>${getLessonOptsForGroup(groupId)}`;
+}
+
+export async function saveNewHw() {
+  const groupId = (document.getElementById('nhw-group') || {}).value;
+  const lessonId = (document.getElementById('nhw-lesson') || {}).value || null;
+  const topic = ((document.getElementById('nhw-topic') || {}).value || '').trim();
+  const desc = (document.getElementById('nhw-desc') || {}).value || '';
+  const due = (document.getElementById('nhw-due') || {}).value || '';
+
+  if (!groupId) { toast('Выберите группу'); return; }
+  if (!topic) { toast('Укажите тему'); return; }
+
+  try {
+    const assignment = await db.homeworks.createAssignment({
+      group_id: groupId,
+      lesson_id: lessonId,
+      topic,
+      description: desc,
+      due_date: due,
+    });
+    const students = (CACHE.students || []).filter(s => s.group_id === groupId && ['active', 'trial'].includes(s.crm_status));
+    for (const stu of students) {
+      await db.homeworks.createSubmission({ assignment_id: assignment.id, student_id: stu.id });
+    }
+    closeModal();
+    toast(`ДЗ назначено ${students.length} ученикам`);
+    await renderHomeworkPage();
+    await updateHwBadge();
+  } catch (err) {
+    toast('Ошибка: ' + err.message);
+  }
+}
+
+export async function changeHwStatus(submissionId, newStatus) {
+  try {
+    const { dbUpdate } = await import('../core/store.js');
+    await dbUpdate('homework_submissions', submissionId, {
+      status: newStatus,
+      ...(newStatus === 'submitted' ? { submitted_at: new Date().toISOString() } : {}),
+    });
+    if (_hwTab === 'queue') await renderHwQueue();
+    else await renderAllHw();
+    await updateHwBadge();
+    const labels = { assigned: 'Назначено', submitted: 'Сдано', checked: 'Проверено', overdue: 'Просрочено' };
+    toast(`Статус: ${labels[newStatus] || newStatus}`);
   } catch (err) {
     toast('Ошибка: ' + err.message);
   }
