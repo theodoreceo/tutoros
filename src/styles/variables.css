@@ -1,28 +1,40 @@
 :root {
-  --bg: #f7f6f3;
-  --surface: #fff;
-  --surface2: #eef1f7;
-  --border: #d8dde8;
-  --accent: #05337D;
-  --accent2: #0a4099;
-  --accent-light: #dde6f5;
-  --accent-mid: #2a5cb8;
-  --text: #1a1917;
-  --muted: #6b6860;
-  --hint: #a09d96;
-  --red: #b91c1c;
-  --red-bg: #fef2f2;
-  --red-border: #fecaca;
-  --amber: #92400e;
-  --amber-bg: #fffbeb;
-  --amber-border: #fde68a;
-  --green: #05337D;
-  --green-bg: #dde6f5;
-  --green-border: #93b0e0;
-  --blue: #1e3a5f;
-  --blue-bg: #eff6ff;
-  --blue-border: #bfdbfe;
-  --r: 8px;
+  /* ── Палитра «Теорема Фёдора» ───────────────────────────────────────────── */
+  /* молоко #f7f3ee · слоновая #ede8e0 · песок #d8d0c4                       */
+  /* верблюд #c2b5a5 · мускатный #9a8f82 · кофе #5a5048 · уголь #1a1714     */
+
+  --bg:           #f7f3ee;   /* молоко — основной фон */
+  --surface:      #ffffff;   /* белые карточки */
+  --surface2:     #ede8e0;   /* слоновая — вторичные поверхности */
+  --border:       #d8d0c4;   /* песок — границы */
+
+  --accent:       #5a5048;   /* кофе — кнопки, акценты */
+  --accent2:      #1a1714;   /* уголь — ховер кнопок */
+  --accent-light: #ede8e0;   /* слоновая — светлый тинт */
+  --accent-mid:   #9a8f82;   /* мускатный — средний акцент */
+
+  --text:         #1a1714;   /* уголь — основной текст */
+  --muted:        #5a5048;   /* кофе — приглушённый */
+  --hint:         #9a8f82;   /* мускатный — подсказки */
+
+  /* Семантические цвета (сохраняют смысл, но с тёплым оттенком) */
+  --red:          #a83228;
+  --red-bg:       #f8eeec;
+  --red-border:   #d4a8a0;
+
+  --amber:        #7a5c2e;
+  --amber-bg:     #faf5ec;
+  --amber-border: #d4b98a;
+
+  --green:        #3d6b4f;
+  --green-bg:     #edf4f0;
+  --green-border: #a4c4b2;
+
+  --blue:         #3b5268;
+  --blue-bg:      #edf1f5;
+  --blue-border:  #b0c2d4;
+
+  --r:  8px;
   --rl: 12px;
-  --sw: 210px;
+  --sw: 220px;
 }

@@ -137,6 +137,11 @@ async function renderAllHw() {
     checked: { label: 'Проверено', cls: 'b-g' },
     overdue: { label: 'Просрочено', cls: 'b-r' },
   };
+  const hwTypeCfg = {
+    brief:    { label: 'Краткий',   cls: 'b-gray' },
+    detailed: { label: 'Подробный', cls: 'b-bl' },
+    trial:    { label: 'Пробник',   cls: 'b-a' },
+  };
 
   el.innerHTML = `
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
@@ -153,18 +158,20 @@ async function renderAllHw() {
     </div>
     ${subs.length ? `<div class="card" style="padding:0;overflow-x:auto">
       <table class="tbl">
-        <thead><tr><th>Ученик</th><th>Тема</th><th>Срок</th><th>Статус</th><th>Оценка</th><th>Проверил</th><th></th></tr></thead>
+        <thead><tr><th>Ученик</th><th>Тема</th><th>Тип</th><th>Срок</th><th>Статус</th><th>Оценка</th><th>Проверил</th><th></th></tr></thead>
         <tbody>
           ${subs.map(sub => {
             const stu = (CACHE.students || []).find(s => s.id === sub.student_id);
             const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub.assignment_id);
             const st = statusCfg[sub.status] || statusCfg.assigned;
+            const ht = hwTypeCfg[assignment?.hw_type] || hwTypeCfg.detailed;
             const overdue = isOverdue(assignment);
             const checker = sub.checked_by ? ((CACHE.roles || []).find(r => r.id === sub.checked_by) || {}).name || 'Владелец' : '—';
             const { text: scoreText, color: scoreColor } = scoreLabel(sub.score);
             return `<tr>
               <td><b>${stu ? stu.name : '—'}</b></td>
-              <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${assignment ? assignment.topic || '—' : '—'}</td>
+              <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${assignment ? assignment.topic || '—' : '—'}${assignment?.is_advanced ? ' <span class="b b-a" style="font-size:10px">Сложный</span>' : ''}</td>
+              <td><span class="b ${ht.cls}">${ht.label}</span></td>
               <td>${assignment?.due_date ? `<span style="color:${overdue && sub.status !== 'checked' ? 'var(--red)' : 'inherit'}">${fmtDate(assignment.due_date)}${overdue && sub.status !== 'checked' ? ' <i class="ti ti-alert-circle" style="font-size:11px"></i>' : ''}</span>` : '—'}</td>
               <td><span class="b ${st.cls}">${st.label}</span></td>
               <td style="color:${scoreColor};font-weight:600">${scoreText}</td>
@@ -365,10 +372,24 @@ export async function openCreateHwModal() {
       <label>Описание / инструкция</label>
       <textarea class="fi" id="nhw-desc" rows="2" placeholder="Подробности задания..."></textarea>
     </div>
-    <div class="fg" style="margin-bottom:16px">
-      <label>Дедлайн</label>
-      <input class="fi" type="date" id="nhw-due">
+    <div class="form-row" style="margin-bottom:12px">
+      <div class="fg">
+        <label>Тип задания</label>
+        <select class="fi" id="nhw-type">
+          <option value="detailed">Подробный ответ</option>
+          <option value="brief">Краткий ответ</option>
+          <option value="trial">Пробник</option>
+        </select>
+      </div>
+      <div class="fg" style="margin-bottom:16px">
+        <label>Дедлайн</label>
+        <input class="fi" type="date" id="nhw-due">
+      </div>
     </div>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-bottom:16px">
+      <input type="checkbox" id="nhw-advanced" style="accent-color:var(--accent-mid)">
+      <span>Сложный уровень <span style="color:var(--hint);font-weight:400">(не влияет на риски и % выполнения)</span></span>
+    </label>
     <div style="font-size:12px;color:var(--muted);margin-bottom:16px">
       <i class="ti ti-info-circle"></i> ДЗ автоматически назначится всем активным ученикам группы
     </div>
@@ -392,6 +413,8 @@ export async function saveNewHw() {
   const topic = ((document.getElementById('nhw-topic') || {}).value || '').trim();
   const desc = (document.getElementById('nhw-desc') || {}).value || '';
   const due = (document.getElementById('nhw-due') || {}).value || '';
+  const hw_type = (document.getElementById('nhw-type') || {}).value || 'detailed';
+  const is_advanced = (document.getElementById('nhw-advanced') || {}).checked || false;
 
   if (!groupId) { toast('Выберите группу'); return; }
   if (!topic) { toast('Укажите тему'); return; }
@@ -403,6 +426,8 @@ export async function saveNewHw() {
       topic,
       description: desc,
       due_date: due,
+      hw_type,
+      is_advanced,
     });
     const students = (CACHE.students || []).filter(s => s.group_id === groupId && ['active', 'trial'].includes(s.crm_status));
     for (const stu of students) {
