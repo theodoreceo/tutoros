@@ -103,9 +103,16 @@ async function _seedDatabase() {
 
 export async function initSupabase() {
   await _loadAll();
-  if (!CACHE.groups.length) {
-    console.log('Empty DB — seeding…');
-    await _seedDatabase();
+  // Never auto-seed in production — call seedDemoData() explicitly from setup screen
+}
+
+export async function seedDemoData() {
+  for (const t of SEED_ORDER) {
+    const records = SEED[t] || [];
+    if (!records.length) continue;
+    const { error } = await supabase.from(t).insert(records);
+    if (error) console.warn(`Seed ${t}:`, error.message);
+    else CACHE[t] = [...(CACHE[t] || []), ...records];
   }
 }
 
@@ -113,6 +120,9 @@ export async function clearDemoData() {
   for (const t of DELETE_ORDER) {
     const { error } = await supabase.from(t).delete().not('id', 'is', null);
     if (error) console.warn(`Clear ${t}:`, error.message);
+    else CACHE[t] = [];
   }
-  await _seedDatabase();
+  if (import.meta.env.DEV) {
+    await seedDemoData();
+  }
 }

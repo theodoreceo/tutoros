@@ -1,6 +1,6 @@
 import './styles/index.css';
 
-import { initSupabase, clearDemoData } from './core/store.js';
+import { initSupabase, clearDemoData, seedDemoData } from './core/store.js';
 import { state } from './core/state.js';
 import { restoreSession, selectRole, applyRoleUI, logout, promptSwitchRole, confirmSwitch } from './core/auth.js';
 import { navigate, registerRenderer, setupNav } from './core/router.js';
@@ -56,6 +56,16 @@ async function init() {
   }
   if (loadingEl) loadingEl.style.display = 'none';
 
+  // Sync status indicator
+  const syncDot = document.getElementById('sync-dot');
+  const syncLabel = document.getElementById('sync-label');
+  if (syncDot) syncDot.style.background = '#22c55e';
+  if (syncLabel) syncLabel.textContent = 'Supabase · онлайн';
+
+  // Hide demo reset button in production
+  const resetBtn = document.getElementById('demo-reset-btn');
+  if (resetBtn && import.meta.env.PROD) resetBtn.style.display = 'none';
+
   initSidebar();
 
   registerRenderer('dashboard', renderDashboard);
@@ -91,6 +101,11 @@ window.promptSwitchRole = promptSwitchRole;
 window.confirmSwitch = confirmSwitch;
 window.selectRole = selectRole;
 window.clearDemoData = async () => { if (confirm('Сбросить все данные?')) { await clearDemoData(); location.reload(); } };
+window.seedDemoData = async () => {
+  if (!confirm('Загрузить тестовые данные в пустую базу?')) return;
+  await seedDemoData();
+  location.reload();
+};
 
 // Students
 window.renderStudents = renderStudents;
