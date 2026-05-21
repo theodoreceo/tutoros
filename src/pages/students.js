@@ -388,6 +388,18 @@ export function openStudentDetail(id) {
       <div class="met" style="padding:10px 12px"><div class="met-label">Абонемент</div><div class="met-val" style="font-size:14px;padding-top:4px">${subBadge}</div></div>
     </div>
     ${hwBlock}
+    <div style="background:var(--surface2,var(--surface));border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <i class="ti ti-brand-telegram" style="font-size:18px;color:#2aabee;flex-shrink:0"></i>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Telegram</div>
+        <div style="font-size:12px">${s.telegram_id ? '<span class="b b-g"><i class="ti ti-check" style="font-size:10px"></i> Привязан</span>' : '<span class="b b-gray">Не привязан</span>'}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <span style="font-size:11px;color:var(--muted)">Код:</span>
+        <code style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace">${s.reg_token || '—'}</code>
+        ${s.reg_token ? `<button class="btn btn-sm" onclick="copyRegToken('${s.reg_token}')" title="Скопировать код"><i class="ti ti-copy"></i></button>` : ''}
+      </div>
+    </div>
     <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">
       <i class="ti ti-timeline" style="margin-right:5px"></i>Timeline
     </div>
@@ -572,6 +584,10 @@ function renderStudentHwTabInline(studentId) {
       <span style="font-size:11px;color:${cfg.color};font-weight:600">${cfg.label}</span>
     </div>`;
   }).join('') : ''}`;
+}
+
+export function copyRegToken(token) {
+  navigator.clipboard.writeText(token).then(() => toast('Код скопирован'));
 }
 
 export function selectChip(el, hiddenId, value) {
