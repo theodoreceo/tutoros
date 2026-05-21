@@ -1,8 +1,12 @@
 import './styles/index.css';
 
+import { supabase } from './lib/supabase.js';
 import { initSupabase, clearDemoData, seedDemoData, isDemoMode, setDemoMode } from './core/store.js';
 import { state } from './core/state.js';
-import { restoreSession, selectRole, applyRoleUI, logout, promptSwitchRole, confirmSwitch } from './core/auth.js';
+import {
+  restoreSession, selectRole, applyRoleUI, logout, promptSwitchRole, confirmSwitch,
+  showLoginForm, showRegisterForm, handleLogin, handleRegister,
+} from './core/auth.js';
 import { navigate, registerRenderer, setupNav } from './core/router.js';
 import { initSidebar } from './components/sidebar.js';
 import { closeModal } from './components/modal.js';
@@ -36,7 +40,7 @@ import {
   setTaskFilter, renderAssistantTasks, openAssistantTaskModal, editAssistantTask,
   saveAssistantTask, changeTaskStatus, deleteAssistantTask,
 } from './pages/tasks.js';
-import { renderAccess, openRoleModal, editRole, saveRole, deleteRole, toggleAssistantGroup } from './pages/access.js';
+import { renderAccess, openRoleModal, editRole, saveRole, deleteRole, toggleAssistantGroup, openInviteModal, createInvite } from './pages/access.js';
 import {
   renderHomeworkPage, setHwTab, openReviewModal, saveReview,
   addReviewError, removeReviewError, updateScorePreview, renderAllHwFiltered,
@@ -62,19 +66,8 @@ function _updateModeUI() {
 
 async function init() {
   const loadingEl = document.getElementById('loading-screen');
-  try {
-    await initSupabase();
-  } catch (err) {
-    if (loadingEl) loadingEl.innerHTML = `<div style="color:#ef4444;font-size:14px"><b>Ошибка подключения к базе данных</b><br><span style="font-size:12px;opacity:.7">${err.message}</span></div>`;
-    return;
-  }
-  if (loadingEl) loadingEl.style.display = 'none';
-
-  // Sync status indicator
-  _updateModeUI();
 
   initSidebar();
-
   registerRenderer('dashboard', renderDashboard);
   registerRenderer('history', renderHistoryPage);
   registerRenderer('students', renderStudents);
@@ -89,11 +82,45 @@ async function init() {
   registerRenderer('access', renderAccess);
   registerRenderer('curator_dash', renderCuratorDashPage);
 
-  updateHwBadge();
-
-  const restored = restoreSession();
-  if (!restored) {
+  const showSetup = (formFn) => {
+    if (loadingEl) loadingEl.style.display = 'none';
     document.getElementById('setup-screen')?.classList.add('show');
+    formFn();
+  };
+
+  if (isDemoMode()) {
+    try { await initSupabase(); } catch (err) {
+      if (loadingEl) loadingEl.innerHTML = `<div style="color:#ef4444;font-size:14px"><b>Ошибка загрузки данных</b><br><span style="font-size:12px;opacity:.7">${err.message}</span></div>`;
+      return;
+    }
+    if (loadingEl) loadingEl.style.display = 'none';
+    _updateModeUI();
+    updateHwBadge();
+    const restored = await restoreSession();
+    if (!restored) showSetup(promptSwitchRole);
+    return;
+  }
+
+  // Production: check for invite token in URL first
+  const inviteToken = new URLSearchParams(window.location.search).get('invite');
+
+  // Check existing Supabase session
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (session) {
+    try { await initSupabase(); } catch (err) {
+      if (loadingEl) loadingEl.innerHTML = `<div style="color:#ef4444;font-size:14px"><b>Ошибка подключения к базе данных</b><br><span style="font-size:12px;opacity:.7">${err.message}</span></div>`;
+      return;
+    }
+    if (loadingEl) loadingEl.style.display = 'none';
+    _updateModeUI();
+    updateHwBadge();
+    const restored = await restoreSession();
+    if (!restored) showSetup(showLoginForm);
+  } else if (inviteToken) {
+    showSetup(() => showRegisterForm(inviteToken));
+  } else {
+    showSetup(showLoginForm);
   }
 }
 
@@ -107,6 +134,10 @@ window.logout = logout;
 window.promptSwitchRole = promptSwitchRole;
 window.confirmSwitch = confirmSwitch;
 window.selectRole = selectRole;
+window.showLoginForm = showLoginForm;
+window.showRegisterForm = showRegisterForm;
+window.handleLogin = handleLogin;
+window.handleRegister = handleRegister;
 window.clearDemoData = async () => { if (confirm('Сбросить все данные?')) { await clearDemoData(); location.reload(); } };
 window.seedDemoData = async () => {
   if (!confirm('Загрузить тестовые данные в пустую базу?')) return;
@@ -205,6 +236,8 @@ window.editRole = editRole;
 window.saveRole = saveRole;
 window.deleteRole = deleteRole;
 window.toggleAssistantGroup = toggleAssistantGroup;
+window.openInviteModal = openInviteModal;
+window.createInvite = createInvite;
 
 // Homework
 window.setHwTab = setHwTab;

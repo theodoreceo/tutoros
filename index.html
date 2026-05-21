@@ -71,9 +71,14 @@
       <div class="sb-item" data-pg="access" data-sb-section="system"><i class="ti ti-shield-lock"></i><span>Доступы</span></div>
     </div>
     <div class="sb-footer">
-      <div id="role-badge" style="background:rgba(247,243,238,.08);border-radius:6px;padding:7px 10px;margin-bottom:8px;cursor:pointer" onclick="promptSwitchRole()">
+      <div id="role-badge" style="background:rgba(247,243,238,.08);border-radius:6px;padding:7px 10px;margin-bottom:8px">
         <div style="font-size:10px;color:rgba(247,243,238,.35);margin-bottom:1px">Текущая роль</div>
         <div style="font-size:12px;color:#f7f3ee;font-weight:500" id="current-role-name">Владелец</div>
+      </div>
+      <div style="margin-bottom:8px">
+        <button onclick="logout()" style="width:100%;font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid rgba(247,243,238,.15);background:rgba(247,243,238,.06);color:rgba(247,243,238,.45);cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:4px">
+          <i class="ti ti-logout" style="font-size:12px"></i> Выйти
+        </button>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <div id="sync-status" style="font-size:11px;color:rgba(247,243,238,.3);display:flex;align-items:center;gap:4px">

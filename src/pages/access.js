@@ -1,27 +1,45 @@
-import { CACHE, dbInsert, dbUpdate, dbDelete } from '../core/store.js';
+import { supabase } from '../lib/supabase.js';
+import { CACHE, dbInsert, dbUpdate, dbDelete, isDemoMode } from '../core/store.js';
 import { uid, g, ALL_PAGES, ROLE_TYPES } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 
+function assistantRoles() {
+  return (CACHE.roles || []).filter(r => r.role_type !== 'owner');
+}
+
 export function renderAccess() {
   const el = document.getElementById('roles-list');
   if (!el) return;
-  if (!(CACHE.roles || []).length) { el.innerHTML = '<div class="empty">Ассистентов нет. Добавьте первого.</div>'; }
-  else {
-    el.innerHTML = CACHE.roles.map(r => {
+
+  const roles = assistantRoles();
+  if (!roles.length) {
+    el.innerHTML = '<div class="empty">Ассистентов нет. Добавьте первого.</div>';
+  } else {
+    el.innerHTML = roles.map(r => {
       const rt = ROLE_TYPES[r.role_type];
       const roleLabel = rt?.label || 'Ассистент';
       const roleIcon = rt?.icon || 'ti-user';
+      const linked = !!r.user_id;
       return `<div class="card">
         <div class="card-header">
           <div>
             <div style="font-size:14px;font-weight:600">${r.name}</div>
-            <div style="margin-top:4px;display:flex;align-items:center;gap:6px">
+            <div style="margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <span class="b b-bl"><i class="ti ${roleIcon}" style="font-size:10px"></i> ${roleLabel}</span>
-              <span class="b b-gray" title="PIN"><i class="ti ti-key" style="font-size:10px"></i> ${r.pin || 'без PIN'}</span>
+              ${isDemoMode()
+                ? `<span class="b b-gray" title="PIN"><i class="ti ti-key" style="font-size:10px"></i> ${r.pin || 'без PIN'}</span>`
+                : linked
+                  ? `<span class="b b-g"><i class="ti ti-check" style="font-size:10px"></i> Аккаунт привязан</span>`
+                  : `<span class="b b-r"><i class="ti ti-clock" style="font-size:10px"></i> Ожидает регистрации</span>`
+              }
             </div>
           </div>
           <div style="display:flex;gap:6px;align-items:center">
+            ${!isDemoMode() && !linked
+              ? `<button class="btn btn-sm" onclick="openInviteModal('${r.id}')" title="Пригласить"><i class="ti ti-mail"></i> Пригласить</button>`
+              : ''
+            }
             <button class="btn btn-sm btn-icon" onclick="editRole('${r.id}')"><i class="ti ti-edit"></i></button>
             <button class="btn btn-sm btn-icon" onclick="deleteRole('${r.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>
           </div>
@@ -35,7 +53,7 @@ export function renderAccess() {
 function renderAssistantGroupsSection() {
   const el = document.getElementById('assistant-groups-section');
   if (!el) return;
-  const roles = CACHE.roles || [];
+  const roles = assistantRoles();
   if (!roles.length) { el.innerHTML = ''; return; }
   el.innerHTML = `
     <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;margin-top:4px">
@@ -73,7 +91,7 @@ export function openRoleModal(id) {
   modal(`<div class="modal"><div class="modal-title">${r ? 'Редактировать ассистента' : 'Добавить ассистента'}</div>
     <div class="form-row">
       <div class="fg"><label>Имя</label><input class="fi" id="rf-name" value="${v.name}" placeholder="Анна"></div>
-      <div class="fg"><label>PIN-код</label><input class="fi" id="rf-pin" value="${v.pin || ''}" placeholder="1234" maxlength="8"></div>
+      ${isDemoMode() ? `<div class="fg"><label>PIN-код</label><input class="fi" id="rf-pin" value="${v.pin || ''}" placeholder="1234" maxlength="8"></div>` : ''}
     </div>
     <div class="fg">
       <label style="margin-bottom:8px;display:block">Роль</label>
@@ -96,7 +114,8 @@ export async function saveRole(id) {
   const roleTypeEl = document.querySelector('input[name="role_type"]:checked');
   const roleType = roleTypeEl?.value || 'curator';
   const pages = ROLE_TYPES[roleType]?.pages || [];
-  const obj = { id: id || uid(), name: g('rf-name'), pin: g('rf-pin'), pages, role_type: roleType, can_edit: false };
+  const obj = { id: id || uid(), name: g('rf-name'), pages, role_type: roleType, can_edit: false };
+  if (isDemoMode()) obj.pin = g('rf-pin');
   if (!obj.name) { toast('Введите имя'); return; }
   try {
     if (id) await dbUpdate('roles', id, obj); else await dbInsert('roles', obj);
@@ -110,4 +129,69 @@ export async function deleteRole(id) {
     await dbDelete('roles', id);
     renderAccess(); toast('Удалено');
   } catch (e) { toast('Ошибка: ' + e.message); }
+}
+
+// ── Invite system (production mode only) ─────────────────────────────────────
+
+export function openInviteModal(roleId) {
+  const role = (CACHE.roles || []).find(r => r.id === roleId);
+  if (!role) return;
+  modal(`<div class="modal" style="max-width:420px">
+    <div class="modal-title"><i class="ti ti-mail" style="margin-right:6px"></i>Пригласить ассистента</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+      Роль: <strong>${role.name}</strong> (${ROLE_TYPES[role.role_type]?.label || role.role_type})
+    </p>
+    <div id="invite-form-body">
+      <div class="fg">
+        <label>Email ассистента</label>
+        <input class="fi" type="email" id="invite-email" placeholder="assistant@example.com">
+      </div>
+      <div id="invite-result"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn btn-p" id="invite-submit-btn" onclick="createInvite('${roleId}')">Создать ссылку</button>
+    </div>
+  </div>`);
+  setTimeout(() => document.getElementById('invite-email')?.focus(), 50);
+}
+
+export async function createInvite(roleId) {
+  const email = (document.getElementById('invite-email')?.value || '').trim();
+  if (!email) { toast('Введите email'); return; }
+
+  const btn = document.getElementById('invite-submit-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Создание...'; }
+
+  const { data, error } = await supabase
+    .from('invites')
+    .insert({ email, role_id: roleId })
+    .select()
+    .single();
+
+  if (error) {
+    toast('Ошибка: ' + error.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Создать ссылку'; }
+    return;
+  }
+
+  const inviteUrl = `${window.location.origin}${window.location.pathname}?invite=${data.token}`;
+  const resultEl = document.getElementById('invite-result');
+  const formBody = document.getElementById('invite-form-body');
+
+  if (formBody) formBody.innerHTML = `
+    <div style="background:var(--surface-alt,var(--surface));border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-top:4px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Ссылка для <strong>${email}</strong>:</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input class="fi" value="${inviteUrl}" readonly onclick="this.select()" style="font-size:12px;font-family:monospace">
+        <button class="btn btn-sm" onclick="navigator.clipboard.writeText('${inviteUrl}').then(()=>toast('Скопировано'))">
+          <i class="ti ti-copy"></i>
+        </button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">
+        <i class="ti ti-info-circle"></i> Ссылка одноразовая. Отправь её ассистенту вручную.
+      </div>
+    </div>
+  `;
+  if (btn) btn.style.display = 'none';
 }
