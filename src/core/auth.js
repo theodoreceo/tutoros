@@ -203,10 +203,19 @@ export async function handleRegister(event) {
   btn.textContent = 'Создание аккаунта...';
   errorEl.style.display = 'none';
 
-  const { error: signUpError } = await supabase.auth.signUp({ email, password });
+  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
 
   if (signUpError) {
     errorEl.textContent = signUpError.message;
+    errorEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = inviteToken ? 'Принять приглашение' : 'Зарегистрироваться как владелец';
+    return;
+  }
+
+  if (!signUpData.session) {
+    errorEl.style.color = 'var(--muted)';
+    errorEl.textContent = 'Письмо с подтверждением отправлено на ' + email + '. Подтверди email — затем войди через форму входа. Или отключи "Confirm email" в Supabase Auth Settings и зарегистрируйся снова.';
     errorEl.style.display = 'block';
     btn.disabled = false;
     btn.textContent = inviteToken ? 'Принять приглашение' : 'Зарегистрироваться как владелец';
