@@ -1,6 +1,6 @@
 import './styles/index.css';
 
-import { initSupabase, clearDemoData, seedDemoData } from './core/store.js';
+import { initSupabase, clearDemoData, seedDemoData, isDemoMode, setDemoMode } from './core/store.js';
 import { state } from './core/state.js';
 import { restoreSession, selectRole, applyRoleUI, logout, promptSwitchRole, confirmSwitch } from './core/auth.js';
 import { navigate, registerRenderer, setupNav } from './core/router.js';
@@ -46,6 +46,20 @@ import { renderCuratorDashPage } from './pages/curator-dash.js';
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 
+function _updateModeUI() {
+  const demo = isDemoMode();
+  const dot = document.getElementById('sync-dot');
+  const label = document.getElementById('sync-label');
+  const btn = document.getElementById('demo-toggle');
+  if (dot) dot.style.background = demo ? '#f59e0b' : '#22c55e';
+  if (label) label.textContent = demo ? 'Демо-режим' : 'Supabase · онлайн';
+  if (btn) {
+    btn.textContent = demo ? 'Выйти из демо' : 'Демо';
+    btn.style.color = demo ? '#f59e0b' : 'rgba(247,243,238,.5)';
+    btn.style.borderColor = demo ? 'rgba(245,158,11,.4)' : 'rgba(247,243,238,.2)';
+  }
+}
+
 async function init() {
   const loadingEl = document.getElementById('loading-screen');
   try {
@@ -57,14 +71,7 @@ async function init() {
   if (loadingEl) loadingEl.style.display = 'none';
 
   // Sync status indicator
-  const syncDot = document.getElementById('sync-dot');
-  const syncLabel = document.getElementById('sync-label');
-  if (syncDot) syncDot.style.background = '#22c55e';
-  if (syncLabel) syncLabel.textContent = 'Supabase · онлайн';
-
-  // Hide demo reset button in production
-  const resetBtn = document.getElementById('demo-reset-btn');
-  if (resetBtn && import.meta.env.PROD) resetBtn.style.display = 'none';
+  _updateModeUI();
 
   initSidebar();
 
@@ -104,6 +111,15 @@ window.clearDemoData = async () => { if (confirm('Сбросить все дан
 window.seedDemoData = async () => {
   if (!confirm('Загрузить тестовые данные в пустую базу?')) return;
   await seedDemoData();
+  location.reload();
+};
+window.toggleDemoMode = () => {
+  const going = !isDemoMode();
+  const msg = going
+    ? 'Включить демо-режим?\n\nДанные из вашей базы не изменятся — вы просто увидите тестовые данные.'
+    : 'Выйти из демо-режима и вернуться к реальной базе данных?';
+  if (!confirm(msg)) return;
+  setDemoMode(going);
   location.reload();
 };
 

@@ -27,7 +27,19 @@ export const TABLES = [
   'history_log', 'homework_assignments', 'homework_submissions', 'assistant_groups',
 ];
 
-// Expense categories stay in localStorage (UI config, not data)
+// ── Demo mode ────────────────────────────────────────────────────────────────
+// In demo mode CACHE is loaded from SEED; all writes are in-memory only (no DB).
+
+const DEMO_KEY = 'tutoros_demo_mode';
+export const isDemoMode = () => localStorage.getItem(DEMO_KEY) === '1';
+
+export function setDemoMode(enabled) {
+  if (enabled) localStorage.setItem(DEMO_KEY, '1');
+  else localStorage.removeItem(DEMO_KEY);
+}
+
+// ── Expense categories (UI config, stays in localStorage) ─────────────────────
+
 export function getExpenseCategories() {
   try { return JSON.parse(localStorage.getItem('tutoros_expense_cats') || 'null'); } catch { return null; }
 }
@@ -41,21 +53,29 @@ export function expenseCats() {
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
 export async function dbInsert(table, record) {
-  const { error } = await supabase.from(table).insert(record);
-  if (error) throw new Error(`[${table}] insert: ${error.message}`);
   CACHE[table] = [...(CACHE[table] || []), record];
+  if (!isDemoMode()) {
+    const { error } = await supabase.from(table).insert(record);
+    if (error) { CACHE[table] = CACHE[table].filter(r => r !== record); throw new Error(`[${table}] insert: ${error.message}`); }
+  }
 }
 
 export async function dbUpdate(table, id, patch) {
-  const { error } = await supabase.from(table).update(patch).eq('id', id);
-  if (error) throw new Error(`[${table}] update: ${error.message}`);
+  const prev = CACHE[table];
   CACHE[table] = (CACHE[table] || []).map(r => r.id === id ? { ...r, ...patch } : r);
+  if (!isDemoMode()) {
+    const { error } = await supabase.from(table).update(patch).eq('id', id);
+    if (error) { CACHE[table] = prev; throw new Error(`[${table}] update: ${error.message}`); }
+  }
 }
 
 export async function dbDelete(table, id) {
-  const { error } = await supabase.from(table).delete().eq('id', id);
-  if (error) throw new Error(`[${table}] delete: ${error.message}`);
+  const prev = CACHE[table];
   CACHE[table] = (CACHE[table] || []).filter(r => r.id !== id);
+  if (!isDemoMode()) {
+    const { error } = await supabase.from(table).delete().eq('id', id);
+    if (error) { CACHE[table] = prev; throw new Error(`[${table}] delete: ${error.message}`); }
+  }
 }
 
 export function dbFind(table, id) {
@@ -64,7 +84,6 @@ export function dbFind(table, id) {
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 
-// FK-safe insert order
 const SEED_ORDER = [
   'groups', 'roles', 'students', 'payments', 'expenses',
   'lessons', 'homework_assignments', 'homework_submissions',
@@ -72,7 +91,6 @@ const SEED_ORDER = [
   'tasks', 'atasks', 'hw_submissions', 'modules', 'folders',
 ];
 
-// FK-safe delete order (children first)
 const DELETE_ORDER = [
   'history_log', 'events', 'hw_submissions', 'atasks', 'tasks',
   'student_notes', 'homework_submissions', 'assistant_groups',
@@ -91,19 +109,12 @@ async function _loadAll() {
   for (const [t, data] of results) CACHE[t] = data;
 }
 
-async function _seedDatabase() {
-  for (const t of SEED_ORDER) {
-    const records = SEED[t] || [];
-    if (!records.length) continue;
-    const { error } = await supabase.from(t).insert(records);
-    if (error) console.warn(`Seed ${t}:`, error.message);
-    else CACHE[t] = records;
-  }
-}
-
 export async function initSupabase() {
+  if (isDemoMode()) {
+    for (const t of TABLES) CACHE[t] = (SEED[t] || []).map(r => ({ ...r }));
+    return;
+  }
   await _loadAll();
-  // Never auto-seed in production — call seedDemoData() explicitly from setup screen
 }
 
 export async function seedDemoData() {
@@ -121,8 +132,5 @@ export async function clearDemoData() {
     const { error } = await supabase.from(t).delete().not('id', 'is', null);
     if (error) console.warn(`Clear ${t}:`, error.message);
     else CACHE[t] = [];
-  }
-  if (import.meta.env.DEV) {
-    await seedDemoData();
   }
 }
