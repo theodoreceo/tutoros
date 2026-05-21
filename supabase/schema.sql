@@ -1,222 +1,123 @@
 -- TutorOS Database Schema
 -- Run this in Supabase SQL Editor (Dashboard → SQL Editor → New query)
 
--- ── Groups ────────────────────────────────────────────────────────────────────
-create table if not exists groups (
-  id text primary key,
-  name text not null,
-  schedule text,
-  price_per_student numeric default 0,
-  capacity integer,
-  type text,
-  created_at timestamptz default now()
+drop table if exists history_log, hw_submissions, atasks, tasks, student_notes,
+  homework_submissions, assistant_groups, events, payments, homework_assignments,
+  lessons, students, expenses, modules, folders, groups, roles cascade;
+
+create table groups (
+  id text primary key, name text, schedule text,
+  price_per_student numeric default 0, capacity integer,
+  type text, created_at text
 );
 
--- ── Roles (assistants) ────────────────────────────────────────────────────────
-create table if not exists roles (
-  id text primary key,
-  name text not null,
-  role_type text,
-  pages jsonb default '[]'::jsonb,
-  can_edit boolean default false,
-  pin text,
-  created_at timestamptz default now()
+create table roles (
+  id text primary key, name text, pin text,
+  pages jsonb default '[]', can_edit boolean default false,
+  "canEdit" boolean default false, "isOwner" boolean default false,
+  role_type text, group_ids jsonb default '[]', created_at text
 );
 
--- ── Students ─────────────────────────────────────────────────────────────────
-create table if not exists students (
-  id text primary key,
-  name text not null,
-  contact text,
-  grade text,
-  group_id text references groups(id) on delete set null,
-  format text default 'group',
-  crm_status text default 'lead',
-  price_per_hour numeric,
-  lessons_per_month integer,
-  paid boolean default false,
-  trial_score numeric,
-  target_score numeric,
-  source text,
-  notes text,
-  risk_reset_at timestamptz,
-  left_at text,
-  first_contact_at text,
-  status_history jsonb default '[]'::jsonb,
-  created_at timestamptz default now()
+create table students (
+  id text primary key, name text, contact text, grade text,
+  group_id text, format text, crm_status text,
+  price_per_hour numeric default 0, lessons_per_month numeric default 0,
+  paid boolean default false, trial_score numeric, target_score numeric,
+  source text, notes text, created_at text, first_contact_at text,
+  left_at text, status_history jsonb default '[]', risk_reset_at text
 );
 
--- ── Payments ─────────────────────────────────────────────────────────────────
-create table if not exists payments (
-  id text primary key,
-  student_id text references students(id) on delete cascade,
-  amount numeric default 0,
-  date text,
-  sub_end text,
-  note text,
-  created_at timestamptz default now()
+create table payments (
+  id text primary key, student_id text, date text,
+  amount numeric default 0, method text, period text,
+  sub_end text, note text, created_at text
 );
 
--- ── Expenses ─────────────────────────────────────────────────────────────────
-create table if not exists expenses (
-  id text primary key,
-  amount numeric default 0,
-  date text,
-  category text,
-  note text,
-  channel text,
-  created_at timestamptz default now()
+create table expenses (
+  id text primary key, date text, category text,
+  amount numeric default 0, note text, channel text, created_at text
 );
 
--- ── Lessons ──────────────────────────────────────────────────────────────────
-create table if not exists lessons (
-  id text primary key,
-  group_id text references groups(id) on delete cascade,
-  date text,
-  start_time text,
-  duration integer default 60,
-  topic text,
-  lesson_link text,
-  materials_link text,
-  homework_link text,
-  led_by text,
-  task_ids jsonb default '[]'::jsonb,
-  notes text,
-  student_attendance jsonb default '[]'::jsonb,
-  created_at timestamptz default now()
+create table lessons (
+  id text primary key, group_id text, date text, time text,
+  topic text, hw_text text, hw text, hw_link text, materials_link text,
+  student_attendance jsonb default '[]', led_by text,
+  notes text, absent_ids jsonb default '[]', task_ids jsonb default '[]',
+  difficulty text, mood text, created_at text
 );
 
--- ── Homework Assignments ──────────────────────────────────────────────────────
-create table if not exists homework_assignments (
-  id text primary key,
-  group_id text references groups(id) on delete cascade,
-  lesson_id text,
-  topic text,
-  description text,
-  due_date text,
-  hw_type text default 'detailed',
-  is_advanced boolean default false,
-  correct_answer text,
-  assigned_at timestamptz default now(),
-  created_at timestamptz default now()
+create table homework_assignments (
+  id text primary key, group_id text, lesson_id text,
+  title text, topic text, description text, due_date text,
+  assigned_at text, hw_type text default 'detailed',
+  is_advanced boolean default false, correct_answer text
 );
 
--- ── Homework Submissions ──────────────────────────────────────────────────────
-create table if not exists homework_submissions (
-  id text primary key,
-  assignment_id text references homework_assignments(id) on delete cascade,
-  student_id text references students(id) on delete cascade,
-  status text default 'assigned',
-  submission_url text,
-  source text default 'manual',
-  score numeric,
-  comment text,
-  errors jsonb default '[]'::jsonb,
-  checked_by text,
-  checked_at timestamptz,
-  submitted_at timestamptz,
-  created_at timestamptz default now()
+create table homework_submissions (
+  id text primary key, assignment_id text, student_id text,
+  submission_url text, source text default 'manual',
+  submitted_at text, status text default 'assigned',
+  score numeric, comment text, errors jsonb default '[]',
+  checked_by text, checked_at text
 );
 
--- ── Assistant ↔ Groups (many-to-many) ────────────────────────────────────────
-create table if not exists assistant_groups (
-  id text primary key,
-  assistant_id text references roles(id) on delete cascade,
-  group_id text references groups(id) on delete cascade,
-  unique(assistant_id, group_id)
+create table assistant_groups (
+  id text primary key, role_id text, assistant_id text, group_id text
 );
 
--- ── Events (student timeline) ─────────────────────────────────────────────────
-create table if not exists events (
-  id text primary key,
-  entity_type text,
-  entity_id text,
-  event_type text,
-  payload jsonb default '{}'::jsonb,
-  created_at timestamptz default now()
+create table events (
+  id text primary key, student_id text, date text, type text, text text,
+  entity_type text, entity_id text, payload jsonb
 );
 
--- ── Student Notes ─────────────────────────────────────────────────────────────
-create table if not exists student_notes (
-  id text primary key,
-  student_id text references students(id) on delete cascade,
-  text text,
-  author text,
-  created_at timestamptz default now()
+create table student_notes (
+  id text primary key, student_id text, date text, text text, author text
 );
 
--- ── History Log ──────────────────────────────────────────────────────────────
-create table if not exists history_log (
-  id text primary key,
-  action text,
-  description text,
-  entity_type text,
-  entity_id text,
-  payload jsonb,
-  role_id text,
-  created_at timestamptz default now()
+create table tasks (
+  id text primary key, title text, description text, student_id text,
+  type text, due_date text, done boolean default false,
+  status text, created_at text
 );
 
--- ── Tasks ────────────────────────────────────────────────────────────────────
-create table if not exists tasks (
-  id text primary key,
-  title text,
-  description text,
-  status text default 'open',
-  assigned_to text,
-  due_date text,
-  created_at timestamptz default now()
+create table atasks (
+  id text primary key, role_id text, title text, description text,
+  assignee text, comment text, deadline text,
+  status text default 'assigned', created_at text
 );
 
--- ── Assistant Tasks ───────────────────────────────────────────────────────────
-create table if not exists atasks (
-  id text primary key,
-  title text,
-  description text,
-  status text default 'open',
-  assigned_to text,
-  priority text,
-  due_date text,
-  created_at timestamptz default now()
+create table hw_submissions (
+  id text primary key, assignment_id text, student_id text,
+  group_id text, assigned_at text, status text,
+  submitted_at text, reviewed_at text
 );
 
--- ── Legacy HW submissions ────────────────────────────────────────────────────
-create table if not exists hw_submissions (
-  id text primary key,
-  lesson_id text,
-  student_id text,
-  status text default 'pending',
-  created_at timestamptz default now()
+create table history_log (
+  id text primary key, action text, description text,
+  entity_type text, entity_id text, actor text,
+  timestamp text, undo_data jsonb
 );
 
--- ── Modules & Folders (structure, kept for completeness) ─────────────────────
-create table if not exists modules (
-  id text primary key,
-  name text,
-  created_at timestamptz default now()
+create table modules (
+  id text primary key, group_id text, title text, order_num numeric
 );
 
-create table if not exists folders (
-  id text primary key,
-  name text,
-  created_at timestamptz default now()
+create table folders (
+  id text primary key, group_id text, module_id text, title text, color text
 );
 
--- ── Disable RLS (internal tool — add policies before going public) ────────────
-alter table groups              disable row level security;
-alter table roles               disable row level security;
-alter table students            disable row level security;
-alter table payments            disable row level security;
-alter table expenses            disable row level security;
-alter table lessons             disable row level security;
-alter table homework_assignments disable row level security;
-alter table homework_submissions disable row level security;
-alter table assistant_groups    disable row level security;
-alter table events              disable row level security;
-alter table student_notes       disable row level security;
-alter table history_log         disable row level security;
-alter table tasks               disable row level security;
-alter table atasks              disable row level security;
-alter table hw_submissions      disable row level security;
-alter table modules             disable row level security;
-alter table folders             disable row level security;
+-- RLS: разрешить всё для anon
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'groups','students','payments','expenses','modules','tasks','roles',
+    'folders','lessons','atasks','events','student_notes','hw_submissions',
+    'history_log','homework_assignments','homework_submissions','assistant_groups'
+  ] loop
+    execute format('alter table %I enable row level security', t);
+    execute format(
+      'create policy "anon_all" on %I for all to anon using (true) with check (true)', t
+    );
+  end loop;
+end $$;
