@@ -1,7 +1,5 @@
 -- ── MIGRATION: Telegram Bot integration ──────────────────────────────────────
 -- Run in Supabase SQL Editor AFTER migration_auth.sql.
--- PREREQUISITE: Enable pg_cron extension first:
---   Dashboard → Database → Extensions → pg_cron → Enable
 
 -- 1. Extend students with Telegram fields
 ALTER TABLE students
@@ -23,31 +21,12 @@ CREATE TABLE IF NOT EXISTS bot_sessions (
 );
 ALTER TABLE bot_sessions ENABLE ROW LEVEL SECURITY;
 
--- 4. Outbound reminder queue (filled by pg_cron, drained by Vercel cron /api/remind)
-CREATE TABLE IF NOT EXISTS pending_reminders (
-  id          bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  telegram_id bigint      NOT NULL,
-  message     text        NOT NULL,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  sent_at     timestamptz
+-- 4. Sent-reminders log (dedup: prevents double-sending if cron runs twice)
+--    Populated and drained by Vercel cron /api/remind (no pg_cron needed)
+CREATE TABLE IF NOT EXISTS sent_reminders (
+  student_id    text        NOT NULL,
+  assignment_id text        NOT NULL,
+  sent_date     date        NOT NULL DEFAULT CURRENT_DATE,
+  PRIMARY KEY (student_id, assignment_id, sent_date)
 );
-ALTER TABLE pending_reminders ENABLE ROW LEVEL SECURITY;
-
--- 5. pg_cron job: enqueue deadline reminders daily at 09:00 UTC
---    due_date is stored as text 'YYYY-MM-DD' throughout the app
-SELECT cron.schedule(
-  'hw-reminder-enqueue',
-  '0 9 * * *',
-  $$
-    INSERT INTO pending_reminders (telegram_id, message)
-    SELECT
-      s.telegram_id,
-      'Напоминание: завтра дедлайн по ДЗ «' || a.topic || '». Не забудь сдать!'
-    FROM homework_submissions sub
-    JOIN homework_assignments a ON a.id = sub.assignment_id
-    JOIN students             s ON s.id = sub.student_id
-    WHERE a.due_date    = to_char(CURRENT_DATE + INTERVAL '1 day', 'YYYY-MM-DD')
-      AND sub.status    = 'assigned'
-      AND s.telegram_id IS NOT NULL;
-  $$
-);
+ALTER TABLE sent_reminders ENABLE ROW LEVEL SECURITY;
