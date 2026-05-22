@@ -273,27 +273,34 @@ export async function handleRegister(event) {
   window.location.reload();
 }
 
-// ── Demo-mode: role switching (unchanged) ─────────────────────────────────────
+// ── Demo-mode: role switching ─────────────────────────────────────────────────
 
 export function promptSwitchRole() {
   if (!isDemoMode()) return;
-  const roles = [{ ...OWNER_ROLE, name: 'Владелец (полный доступ)', pin: null }, ...CACHE.roles.filter(r => r.role_type !== 'owner')];
-  import('../components/modal.js').then(({ modal, closeModal }) => {
-    modal(`<div class="modal" style="max-width:400px">
-      <div class="modal-title">Войти как</div>
-      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Выбери роль. Для ассистентов нужен PIN.</p>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${roles.map(r => {
-          const rt = ROLE_TYPES[r.role_type];
-          const subtitle = r.isOwner ? 'Все разделы · без PIN' : `${rt?.label || 'Ассистент'} · ${r.pin ? 'нужен PIN' : 'без PIN'}`;
-          return `<div class="card" style="cursor:pointer;padding:12px 16px;margin-bottom:0;transition:border-color .12s" onmouseover="this.style.borderColor='var(--accent-mid)'" onmouseout="this.style.borderColor=''" onclick="selectRole('${r.id}')">
-            <div style="font-weight:500;font-size:13px">${r.name}</div>
+  const container = document.getElementById('setup-roles');
+  if (!container) return;
+  const allRoles = [
+    { ...OWNER_ROLE, name: 'Владелец' },
+    ...CACHE.roles.filter(r => r.role_type !== 'owner'),
+  ];
+  container.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">
+    ${allRoles.map(r => {
+      const rt = ROLE_TYPES[r.role_type];
+      const icon = r.isOwner ? 'ti-crown' : (rt?.icon || 'ti-user');
+      const subtitle = r.isOwner ? 'Все разделы' : (rt?.label || 'Ассистент');
+      return `<div class="card" style="cursor:pointer;padding:12px 16px;margin-bottom:0;transition:border-color .12s"
+        onmouseover="this.style.borderColor='var(--accent-mid)'" onmouseout="this.style.borderColor=''"
+        onclick="devSwitchRole('${r.id}')">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i class="ti ${icon}" style="font-size:18px;color:var(--accent-mid);flex-shrink:0"></i>
+          <div>
+            <div style="font-weight:600;font-size:13px">${r.name}</div>
             <div style="font-size:11px;color:var(--muted)">${subtitle}</div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`);
-  });
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 export function selectRole(id) {
