@@ -388,32 +388,40 @@ async function finishHwCreation(chatId, tid, curator, data) {
   const is_advanced = data.hw_type === 'detailed_hard';
 
   const assignmentId = botId();
-  await sbInsert('homework_assignments', {
-    id:          assignmentId,
-    group_id:    data.group_id,
-    lesson_id:   null,
-    topic:       data.topic,
-    description: '',
-    due_date:    data.due_date ?? '',
-    hw_type,
-    is_advanced,
-    correct_answer: null,
-    assigned_at: new Date().toISOString(),
-    file_id:     data.file_id ?? null,
-    answers:     data.answers     ? JSON.stringify(data.answers)     : null,
-    task_config: data.task_config ? JSON.stringify(data.task_config) : null,
-  });
+  try {
+    await sbInsert('homework_assignments', {
+      id:             assignmentId,
+      group_id:       data.group_id,
+      lesson_id:      null,
+      topic:          data.topic,
+      description:    '',
+      due_date:       data.due_date ?? '',
+      hw_type,
+      is_advanced,
+      correct_answer: null,
+      assigned_at:    new Date().toISOString(),
+      file_id:        data.file_id ?? null,
+      answers:        data.answers     ?? null,
+      task_config:    data.task_config ?? null,
+    });
+  } catch (err) {
+    await setSession(tid, { step: 'curator' });
+    return send(chatId, `❌ Ошибка при создании задания:\n<code>${err.message}</code>`);
+  }
 
   const students = await sbSelect('students',
     `group_id=eq.${data.group_id}&crm_status=in.(active,trial)`);
 
+  let subErrors = 0;
   for (const stu of students) {
-    await sbInsert('homework_submissions', {
-      id: botId(), assignment_id: assignmentId, student_id: stu.id,
-      status: 'assigned', source: 'telegram',
-      submitted_at: null, score: null, comment: '', errors: [],
-      checked_by: null, checked_at: null, submission_url: '',
-    });
+    try {
+      await sbInsert('homework_submissions', {
+        id: botId(), assignment_id: assignmentId, student_id: stu.id,
+        status: 'assigned', source: 'telegram',
+        submitted_at: null, score: null, comment: '', errors: [],
+        checked_by: null, checked_at: null, submission_url: '',
+      });
+    } catch { subErrors++; }
   }
 
   await setSession(tid, { step: 'curator' });
@@ -428,10 +436,12 @@ async function finishHwCreation(chatId, tid, curator, data) {
     ? `\nБаллов за задания: <code>${data.task_config.join(', ')}</code> (сумма: ${data.task_config.reduce((a, b) => a + b, 0)})`
     : '';
 
+  const warnLine = subErrors ? `\n⚠️ Ошибок при создании записей: ${subErrors}` : '';
   return send(chatId,
     `✅ ДЗ создано!\nГруппа: <b>${data.group_name}</b>\nТема: <b>${data.topic}</b>\n` +
     `Тип: <b>${typeLabel}</b>\nДедлайн: <b>${data.due_date || 'не указан'}</b>\n` +
-    `Учеников: <b>${students.length}</b>${extra}`);
+    `Учеников: <b>${students.length}</b>${extra}${warnLine}\n\n` +
+    `В TutorOS обнови страницу (F5) чтобы увидеть ДЗ.`);
 }
 
 // ── Callback handler ──────────────────────────────────────────────────────────
