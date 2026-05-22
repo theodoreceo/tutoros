@@ -286,11 +286,26 @@ export async function openReviewModal(submissionId) {
     { v: 'web', l: 'Веб' },
   ].map(o => `<option value="${o.v}" ${sub.source === o.v ? 'selected' : ''}>${o.l}</option>`).join('');
 
-  const filesBlock = (sub.submitted_files?.length)
-    ? `<div style="margin-bottom:12px;padding:8px 12px;background:var(--surface2);border-radius:var(--r);font-size:12px;color:var(--muted)">
-        <i class="ti ti-files" style="margin-right:6px"></i>Прикреплено файлов из Telegram: <b>${sub.submitted_files.length}</b>
-        <span style="font-size:11px"> — файлы отправлены кураторам в Telegram</span>
-       </div>` : '';
+  const files = sub.submitted_files || [];
+  const filesBlock = files.length
+    ? `<div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">
+          <i class="ti ti-files"></i> Файлы ученика (${files.length})
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start">
+          ${files.map((f, i) => f.type === 'photo'
+            ? `<a href="/api/tgfile?id=${f.file_id}" target="_blank" style="display:block;flex-shrink:0">
+                 <img src="/api/tgfile?id=${f.file_id}"
+                   style="max-height:130px;max-width:170px;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;object-fit:cover;display:block"
+                   onerror="this.parentElement.innerHTML='<span style=\\'font-size:11px;color:var(--muted)\\'>Фото ${i + 1} недоступно</span>'">
+               </a>`
+            : `<a href="/api/tgfile?id=${f.file_id}" target="_blank" class="btn btn-sm" style="text-decoration:none">
+                 <i class="ti ti-file-type-pdf" style="color:#e74c3c"></i> Файл ${i + 1}
+               </a>`
+          ).join('')}
+        </div>
+       </div>`
+    : '';
 
   const scoreBlock = taskConfig
     ? `<div class="fg" style="margin-bottom:12px">
