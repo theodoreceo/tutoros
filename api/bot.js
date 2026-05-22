@@ -118,7 +118,7 @@ async function handleText(msg) {
     }
     if (curator) {
       await setSession(tid, { step: 'curator' });
-      return send(chatId, `Привет, <b>${curator.name}</b>!\n\n/newdz — создать домашнее задание\n/unlink — отвязать аккаунт`);
+      return send(chatId, `Привет, <b>${curator.name}</b>!\n\n/newdz — создать ДЗ\n/mydz — мои ДЗ\n/unlink — отвязать аккаунт`);
     }
     await setSession(tid, {});
     return send(chatId, `Добро пожаловать в бот TutorOS!\n\nВведи регистрационный код для подключения.\nКод есть в TutorOS: карточка ученика или страница Доступ.`);
@@ -153,7 +153,25 @@ async function handleText(msg) {
   // Curator commands
   if (curator) {
     if (text === '/newdz') return startHwCreation(chatId, tid, curator);
+    if (text === '/mydz')  return showMyDz(chatId, tid, curator, 0);
+    if (text === '/help')  return send(chatId, '/newdz — создать ДЗ\n/mydz — мои ДЗ\n/unlink — отвязать аккаунт');
     const sess = await getSession(tid);
+    if (typeof sess.step === 'string' && sess.step.startsWith('edit_hw_topic:')) {
+      const hwId = sess.step.slice('edit_hw_topic:'.length);
+      await sbPatch('homework_assignments', `id=eq.${hwId}`, { topic: text });
+      await setSession(tid, { step: 'curator' });
+      return send(chatId, `✅ Тема обновлена: <b>${text}</b>`, kbd([[{ text: '← Назад к ДЗ', callback_data: `dz:${hwId}` }]]));
+    }
+    if (typeof sess.step === 'string' && sess.step.startsWith('edit_hw_date:')) {
+      const hwId = sess.step.slice('edit_hw_date:'.length);
+      const due = text === '-' ? '' : text;
+      if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) {
+        return send(chatId, 'Неверный формат. Введи ГГГГ-ММ-ДД или «-»:');
+      }
+      await sbPatch('homework_assignments', `id=eq.${hwId}`, { due_date: due });
+      await setSession(tid, { step: 'curator' });
+      return send(chatId, `✅ Дедлайн обновлён: <b>${due || 'не указан'}</b>`, kbd([[{ text: '← Назад к ДЗ', callback_data: `dz:${hwId}` }]]));
+    }
     return handleCuratorStep(chatId, tid, curator, sess, text, null);
   }
 
@@ -444,6 +462,64 @@ async function finishHwCreation(chatId, tid, curator, data) {
     `В TutorOS обнови страницу (F5) чтобы увидеть ДЗ.`);
 }
 
+// ── Curator: list my DZ ───────────────────────────────────────────────────────
+
+async function showMyDz(chatId, tid, curator, offset) {
+  let assignments;
+  if (curator.role_type === 'owner' || curator['isOwner']) {
+    assignments = await sbSelect('homework_assignments',
+      `order=assigned_at.desc&limit=10&offset=${offset}`);
+  } else {
+    const agRows = await sbSelect('assistant_groups', `assistant_id=eq.${curator.id}`);
+    if (!agRows.length) return send(chatId, 'Нет назначенных групп.');
+    const gIds = agRows.map(ag => ag.group_id);
+    assignments = await sbSelect('homework_assignments',
+      `group_id=in.(${gIds.join(',')})&order=assigned_at.desc&limit=10&offset=${offset}`);
+  }
+
+  if (!assignments.length) return send(chatId, offset === 0 ? 'ДЗ не найдено.' : 'Больше ДЗ нет.');
+
+  const typeEmoji = { brief: '🔢', detailed: '📝', trial: '📋' };
+  const lines   = assignments.map((a, i) =>
+    `${offset + i + 1}. ${typeEmoji[a.hw_type] || '📝'} <b>${a.topic || '—'}</b>${a.due_date ? ` · ${a.due_date}` : ''}`
+  );
+  const buttons = assignments.map(a => [{ text: (a.topic || '—').slice(0, 40), callback_data: `dz:${a.id}` }]);
+
+  const nav = [];
+  if (offset > 0) nav.push({ text: '← Назад', callback_data: `dz_pg:${offset - 10}` });
+  if (assignments.length === 10) nav.push({ text: 'Ещё →', callback_data: `dz_pg:${offset + 10}` });
+  if (nav.length) buttons.push(nav);
+
+  return send(chatId, `Домашние задания:\n\n${lines.join('\n')}\n\nВыбери для управления:`, kbd(buttons));
+}
+
+async function showDzDetail(chatId, hwId) {
+  const a = await sbOne('homework_assignments', `id=eq.${hwId}`);
+  if (!a) return send(chatId, 'ДЗ не найдено.');
+
+  const groups      = await sbSelect('groups', `id=eq.${a.group_id}&select=name`);
+  const groupName   = groups[0]?.name || '—';
+  const subsCount   = await sbSelect('homework_submissions',
+    `assignment_id=eq.${hwId}&select=status`);
+  const submitted   = subsCount.filter(s => ['submitted', 'checked'].includes(s.status)).length;
+  const typeLabel   = a.hw_type === 'brief' ? '🔢 Краткий' : a.hw_type === 'trial' ? '📋 Пробник' : '📝 Подробный';
+  const advLabel    = a.is_advanced ? ' (сложный)' : '';
+
+  const text =
+    `<b>${a.topic || '—'}</b>\n` +
+    `Группа: ${groupName}\n` +
+    `Тип: ${typeLabel}${advLabel}\n` +
+    `Дедлайн: ${a.due_date || 'не указан'}\n` +
+    `Сдано: ${submitted}/${subsCount.length}`;
+
+  return send(chatId, text, kbd([
+    [{ text: '✏️ Изменить тему',    callback_data: `dz_et:${hwId}` },
+     { text: '📅 Изменить дедлайн', callback_data: `dz_ed:${hwId}` }],
+    [{ text: '🗑️ Удалить ДЗ',      callback_data: `dz_del:${hwId}` }],
+    [{ text: '← К списку',          callback_data: 'dz_pg:0' }],
+  ]));
+}
+
 // ── Callback handler ──────────────────────────────────────────────────────────
 
 async function handleCallback(cq) {
@@ -457,6 +533,44 @@ async function handleCallback(cq) {
     sbOne('roles',    `telegram_id=eq.${tid}`),
     getSession(tid),
   ]);
+
+  // /mydz navigation and management
+  if (data.startsWith('dz_pg:') && curator) {
+    return showMyDz(chatId, tid, curator, parseInt(data.slice(6), 10) || 0);
+  }
+  if (data.startsWith('dz:') && curator) {
+    return showDzDetail(chatId, data.slice(3));
+  }
+  if (data.startsWith('dz_et:') && curator) {
+    const hwId = data.slice(6);
+    await setSession(tid, { step: `edit_hw_topic:${hwId}` });
+    return send(chatId, 'Введи новую тему:');
+  }
+  if (data.startsWith('dz_ed:') && curator) {
+    const hwId = data.slice(6);
+    await setSession(tid, { step: `edit_hw_date:${hwId}` });
+    return send(chatId, 'Введи новый дедлайн (ГГГГ-ММ-ДД) или «-» чтобы убрать:');
+  }
+  if (data.startsWith('dz_del:') && curator) {
+    const hwId = data.slice(7);
+    const a = await sbOne('homework_assignments', `id=eq.${hwId}&select=topic`);
+    return send(chatId, `Удалить ДЗ «<b>${a?.topic || hwId}</b>» и все записи учеников?`,
+      kbd([[{ text: '✅ Да, удалить', callback_data: `dz_delok:${hwId}` },
+             { text: '❌ Отмена',     callback_data: `dz:${hwId}` }]]));
+  }
+  if (data.startsWith('dz_delok:') && curator) {
+    const hwId = data.slice(9);
+    // Delete submissions first, then assignment
+    const subs = await sbSelect('homework_submissions', `assignment_id=eq.${hwId}&select=id`);
+    for (const s of subs) {
+      await fetch(`${SUPABASE_URL}/rest/v1/homework_submissions?id=eq.${s.id}`,
+        { method: 'DELETE', headers: SB });
+    }
+    await fetch(`${SUPABASE_URL}/rest/v1/homework_assignments?id=eq.${hwId}`,
+      { method: 'DELETE', headers: SB });
+    await setSession(tid, { step: 'curator' });
+    return send(chatId, '✅ ДЗ удалено.');
+  }
 
   // Unlink
   if (data === 'unlink:confirm') {

@@ -47,20 +47,23 @@ export async function updateHwBadge() {
 
 export function setHwTab(tab) {
   _hwTab = tab;
-  document.querySelectorAll('.hw-tab').forEach((b, i) => b.classList.toggle('on', ['queue', 'all'][i] === tab));
-  document.getElementById('hw-tab-queue').style.display = tab === 'queue' ? '' : 'none';
-  document.getElementById('hw-tab-all').style.display = tab === 'all' ? '' : 'none';
-  if (tab === 'queue') renderHwQueue();
-  else renderAllHw();
+  document.querySelectorAll('.hw-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  document.getElementById('hw-tab-queue').style.display   = tab === 'queue'   ? '' : 'none';
+  document.getElementById('hw-tab-overdue').style.display = tab === 'overdue' ? '' : 'none';
+  document.getElementById('hw-tab-all').style.display     = tab === 'all'     ? '' : 'none';
+  if (tab === 'queue')        renderHwQueue();
+  else if (tab === 'overdue') renderOverdueHw();
+  else                        renderAllHw();
 }
 
 export async function renderHomeworkPage() {
-  await renderHwQueue();
   await updateHwBadge();
-  const queueEl = document.getElementById('hw-tab-queue');
-  const allEl = document.getElementById('hw-tab-all');
-  if (queueEl) queueEl.style.display = _hwTab === 'queue' ? '' : 'none';
-  if (allEl) allEl.style.display = _hwTab === 'all' ? '' : 'none';
+  if (_hwTab === 'queue')        await renderHwQueue();
+  else if (_hwTab === 'overdue') await renderOverdueHw();
+  else                           await renderAllHw();
+  document.getElementById('hw-tab-queue').style.display   = _hwTab === 'queue'   ? '' : 'none';
+  document.getElementById('hw-tab-overdue').style.display = _hwTab === 'overdue' ? '' : 'none';
+  document.getElementById('hw-tab-all').style.display     = _hwTab === 'all'     ? '' : 'none';
 }
 
 async function renderHwQueue() {
@@ -101,6 +104,67 @@ async function renderHwQueue() {
     </div>`;
   }).join('');
   el.innerHTML = rows;
+}
+
+async function renderOverdueHw() {
+  const el = document.getElementById('hw-tab-overdue');
+  if (!el) return;
+  const role = state.currentRole || {};
+  const assistantId = role.isOwner ? null : role.id;
+
+  let subs = (CACHE.homework_submissions || []).filter(s => s.status === 'assigned');
+  if (!role.isOwner && assistantId) {
+    const myGroups = await db.assistantGroups.getGroupsByAssistant(assistantId);
+    const groupIds = new Set(myGroups.map(ag => ag.group_id));
+    const myIds = new Set((CACHE.homework_assignments || []).filter(a => groupIds.has(a.group_id)).map(a => a.id));
+    subs = subs.filter(s => myIds.has(s.assignment_id));
+  }
+
+  subs = [...subs].sort((a, b) => {
+    const aDate = (CACHE.homework_assignments || []).find(x => x.id === a.assignment_id)?.due_date || '';
+    const bDate = (CACHE.homework_assignments || []).find(x => x.id === b.assignment_id)?.due_date || '';
+    return aDate.localeCompare(bDate);
+  });
+
+  if (!subs.length) {
+    el.innerHTML = `<div class="card" style="text-align:center;padding:32px 20px;color:var(--hint)">
+      <i class="ti ti-circle-check" style="font-size:28px;display:block;margin-bottom:8px;color:var(--green);opacity:.7"></i>
+      Нет несданных заданий
+    </div>`;
+    return;
+  }
+
+  const statusCfg = {
+    assigned: { label: 'Не сдано', cls: 'b-gray' },
+    overdue:  { label: 'Просрочено', cls: 'b-r' },
+  };
+  const hwTypeCfg = {
+    brief:    { label: 'Краткий', cls: 'b-gray' },
+    detailed: { label: 'Подробный', cls: 'b-bl' },
+    trial:    { label: 'Пробник', cls: 'b-a' },
+  };
+
+  el.innerHTML = `<div class="card" style="padding:0;overflow-x:auto">
+    <table class="tbl">
+      <thead><tr><th>Ученик</th><th>Тема</th><th>Тип</th><th>Срок</th><th>Статус</th></tr></thead>
+      <tbody>
+        ${subs.map(sub => {
+          const stu = (CACHE.students || []).find(s => s.id === sub.student_id);
+          const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub.assignment_id);
+          const overdue = isOverdue(assignment);
+          const st = overdue ? statusCfg.overdue : statusCfg.assigned;
+          const ht = hwTypeCfg[assignment?.hw_type] || hwTypeCfg.detailed;
+          return `<tr>
+            <td><b>${stu?.name || '—'}</b></td>
+            <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${assignment?.topic || '—'}</td>
+            <td><span class="b ${ht.cls}">${ht.label}</span></td>
+            <td>${assignment?.due_date ? `<span style="color:${overdue ? 'var(--red)' : 'inherit'}">${fmtDate(assignment.due_date)}</span>` : '—'}</td>
+            <td><span class="b ${st.cls}">${st.label}</span></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
 }
 
 async function renderAllHw() {
@@ -177,14 +241,16 @@ async function renderAllHw() {
               <td style="color:${scoreColor};font-weight:600">${scoreText}</td>
               <td style="font-size:12px;color:var(--muted)">${checker}</td>
               <td style="white-space:nowrap">
-                ${sub.status === 'submitted' ? `
-                  <button class="btn btn-sm btn-p" onclick="openReviewModal('${sub.id}')">Проверить</button>
-                  <button class="btn btn-sm" onclick="changeHwStatus('${sub.id}','assigned')" title="Вернуть в статус Назначено"><i class="ti ti-rotate-left"></i></button>
-                ` : sub.status === 'checked' ? `
-                  <button class="btn btn-sm" onclick="openReviewModal('${sub.id}')"><i class="ti ti-edit"></i> Изменить</button>
-                ` : sub.status === 'assigned' || sub.status === 'overdue' ? `
-                  <button class="btn btn-sm" onclick="changeHwStatus('${sub.id}','submitted')"><i class="ti ti-upload"></i> Принять</button>
-                ` : ''}
+                ${assignment?.hw_type === 'brief' ? '' :
+                  sub.status === 'submitted' ? `
+                    <button class="btn btn-sm btn-p" onclick="openReviewModal('${sub.id}')">Проверить</button>
+                    <button class="btn btn-sm" onclick="changeHwStatus('${sub.id}','assigned')" title="Вернуть"><i class="ti ti-rotate-left"></i></button>
+                  ` : sub.status === 'checked' ? `
+                    <button class="btn btn-sm" onclick="openReviewModal('${sub.id}')"><i class="ti ti-edit"></i> Изменить</button>
+                  ` : sub.status === 'assigned' || sub.status === 'overdue' ? `
+                    <button class="btn btn-sm" onclick="changeHwStatus('${sub.id}','submitted')"><i class="ti ti-upload"></i> Принять</button>
+                  ` : ''
+                }
               </td>
             </tr>`;
           }).join('')}

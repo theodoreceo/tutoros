@@ -333,13 +333,14 @@
       <div class="pg" id="pg-homework">
         <div class="ph">
           <div class="ph-title">Домашние задания</div>
-          <button class="btn btn-p btn-sm" onclick="openCreateHwModal()"><i class="ti ti-plus"></i> Создать ДЗ</button>
         </div>
         <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
-          <button class="btn btn-sm hw-tab on" onclick="setHwTab('queue')"><i class="ti ti-list-check"></i> Очередь</button>
-          <button class="btn btn-sm hw-tab" onclick="setHwTab('all')"><i class="ti ti-table"></i> Все ДЗ</button>
+          <button class="btn btn-sm hw-tab on" data-tab="queue"   onclick="setHwTab('queue')"><i class="ti ti-list-check"></i> Очередь на проверку</button>
+          <button class="btn btn-sm hw-tab"    data-tab="overdue" onclick="setHwTab('overdue')"><i class="ti ti-clock-exclamation"></i> Несданные</button>
+          <button class="btn btn-sm hw-tab"    data-tab="all"     onclick="setHwTab('all')"><i class="ti ti-table"></i> Все ДЗ</button>
         </div>
         <div id="hw-tab-queue"></div>
+        <div id="hw-tab-overdue" style="display:none"></div>
         <div id="hw-tab-all" style="display:none"></div>
       </div>
 
