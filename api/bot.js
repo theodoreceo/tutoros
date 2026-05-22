@@ -167,10 +167,11 @@ async function handleText(msg) {
     }
     if (typeof sess.step === 'string' && sess.step.startsWith('edit_hw_date:')) {
       const hwId = sess.step.slice('edit_hw_date:'.length);
-      const due  = text === '-' ? '' : text;
-      if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) {
-        return send(chatId, 'Неверный формат. Введи ГГГГ-ММ-ДД или «-»:');
+      const raw  = text === '-' ? '' : text;
+      if (raw && !/^\d{2}\.\d{2}\.\d{4}$/.test(raw)) {
+        return send(chatId, 'Неверный формат. Введи ДД.ММ.ГГГГ или «-»:');
       }
+      const due = raw ? raw.split('.').reverse().join('-') : '';
       await sbPatch('homework_assignments', `id=eq.${hwId}`, { due_date: due });
       await setSession(tid, { step: 'curator' });
       return send(chatId, `✅ Дедлайн обновлён: <b>${due || 'не указан'}</b>`, kbd([[{ text: '← Назад к ДЗ', callback_data: `dz:${hwId}` }]]));
@@ -390,14 +391,15 @@ async function handleCuratorStep(chatId, tid, curator, sess, text) {
   switch (sess.step) {
     case 'await_topic':
       await setSession(tid, { step: 'await_date', data: { ...sess.data, topic: text } });
-      return send(chatId, 'Введи дедлайн (ГГГГ-ММ-ДД) или «-» без дедлайна:');
+      return send(chatId, 'Введи дедлайн (ДД.ММ.ГГГГ) или «-» без дедлайна:');
 
     case 'await_date': {
       const due = text === '-' ? '' : text;
-      if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) {
-        return send(chatId, 'Неверный формат. Введи ГГГГ-ММ-ДД или «-»:');
+      if (due && !/^\d{2}\.\d{2}\.\d{4}$/.test(due)) {
+        return send(chatId, 'Неверный формат. Введи ДД.ММ.ГГГГ или «-»:');
       }
-      await setSession(tid, { step: 'await_hwtype', data: { ...sess.data, due_date: due } });
+      const dueFmt = due ? due.split('.').reverse().join('-') : '';
+      await setSession(tid, { step: 'await_hwtype', data: { ...sess.data, due_date: dueFmt } });
       return send(chatId, 'Выбери тип задания:',
         kbd([
           [{ text: '🔢 Краткий ответ',         callback_data: 'hwtype:brief'         }],
@@ -624,7 +626,7 @@ async function handleCallback(cq) {
   if (data.startsWith('dz_ed:') && curator) {
     const hwId = data.slice(6);
     await setSession(tid, { step: `edit_hw_date:${hwId}` });
-    return send(chatId, 'Введи новый дедлайн (ГГГГ-ММ-ДД) или «-» чтобы убрать:');
+    return send(chatId, 'Введи новый дедлайн (ДД.ММ.ГГГГ) или «-» чтобы убрать:');
   }
   if (data.startsWith('dz_del:') && curator) {
     const hwId = data.slice(7);
