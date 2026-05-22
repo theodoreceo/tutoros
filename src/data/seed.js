@@ -344,22 +344,8 @@ const lessons = (() => {
   return ls;
 })();
 
-// ─── Assistant Tasks ──────────────────────────────────────────────────────────
-const atasks = [
-  { id:'at1', title:'Проверить домашние работы', description:'Проверить ДЗ по тригонометрии у группы 11А', assignee:'Ассистент 1', deadline: daysFromNow(3), status:'assigned',    created_at: daysAgo(2)+'T10:00:00Z' },
-  { id:'at2', title:'Составить расписание на июнь', description:'Согласовать время с учениками и составить таблицу', assignee:'Ассистент 1', deadline: daysFromNow(10), status:'in_progress', created_at: daysAgo(5)+'T10:00:00Z' },
-  { id:'at3', title:'Позвонить лидам', description:'Связаться с новыми лидами из Авито, предложить пробное', assignee:'Ассистент 1', deadline: daysFromNow(1), status:'assigned',    created_at: daysAgo(1)+'T10:00:00Z' },
-  { id:'at4', title:'Обновить базу знаний', description:'Добавить новые варианты ЕГЭ 2026 в систему', assignee:'Ассистент 1', deadline: daysFromNow(7), status:'in_progress', created_at: daysAgo(3)+'T10:00:00Z' },
-  { id:'at5', title:'Напомнить об оплате', description:'Напомнить ученикам без оплаты об абонементе', assignee:'Ассистент 1', deadline: daysFromNow(2), status:'assigned',    created_at: daysAgo(1)+'T10:00:00Z' },
-  { id:'at6', title:'Отчёт за апрель', description:'Подготовить сводку по доходам и расходам за апрель', assignee:'Ассистент 1', deadline: daysAgo(2),      status:'done',        created_at: daysAgo(7)+'T10:00:00Z' },
-  { id:'at7', title:'Разослать ДЗ', description:'Разослать домашнее задание после занятий группе 11Б', assignee:'Ассистент 1', deadline: daysAgo(1),      status:'done',        created_at: daysAgo(3)+'T10:00:00Z' },
-  { id:'at8', title:'Обновить карточки учеников', description:'Проверить и обновить контакты учеников 9А', assignee:'Ассистент 1', deadline: daysFromNow(5), status:'assigned',    created_at: daysAgo(1)+'T10:00:00Z' },
-  { id:'at9', title:'Записать новый урок', description:'Записать видеоурок по интегралам для пропустивших', assignee:'Ассистент 1', deadline: daysFromNow(8), status:'assigned',    created_at: daysAgo(2)+'T10:00:00Z' },
-  { id:'at10',title:'Проверить посещаемость', description:'Свести данные о посещаемости за апрель по всем группам', assignee:'Ассистент 1', deadline: daysAgo(3), status:'done', created_at: daysAgo(6)+'T10:00:00Z' },
-];
-
 // ─── Roles ────────────────────────────────────────────────────────────────────
-const ALL_PAGE_IDS = ['dashboard','history','students','crm_students','groups','lessons_cal','homework','income','expenses','analytics','tasks','access'];
+const ALL_PAGE_IDS = ['dashboard','history','students','crm_students','groups','lessons_cal','homework','income','expenses','analytics','access'];
 
 const roles = [
   { id:'r2', name:'Анна (куратор)',   role_type:'curator',  pages:['curator_dash','groups','lessons_cal','homework'], can_edit:true,  isOwner:false, pin:'1234', created_at:'2025-09-01T10:00:00Z' },
@@ -417,9 +403,7 @@ export const SEED = {
   payments,
   expenses,
   lessons,
-  atasks,
   roles,
-  tasks: [],
   modules: [],
   folders: [],
   events: [],

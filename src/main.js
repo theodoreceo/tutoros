@@ -37,10 +37,6 @@ import {
 import { renderIncome, openPaymentModal, savePayment, deletePayment } from './pages/income.js';
 import { renderExpenses, openExpenseModal, toggleChannelField, addExpenseCategory, saveExpense, deleteExpense } from './pages/expenses.js';
 import { renderAnalytics, setAnTab, setAnPeriod } from './pages/analytics.js';
-import {
-  setTaskFilter, renderAssistantTasks, openAssistantTaskModal, editAssistantTask,
-  saveAssistantTask, changeTaskStatus, deleteAssistantTask,
-} from './pages/tasks.js';
 import { renderAccess, openRoleModal, editRole, saveRole, deleteRole, toggleAssistantGroup, openInviteModal, createInvite } from './pages/access.js';
 import {
   renderHomeworkPage, renderHwStudentsPage, setHwTab, openReviewModal, saveReview,
@@ -76,7 +72,6 @@ async function init() {
   registerRenderer('groups', renderGroups);
   registerRenderer('income', renderIncome);
   registerRenderer('expenses', renderExpenses);
-  registerRenderer('tasks', renderAssistantTasks);
   registerRenderer('homework', renderHomeworkPage);
   registerRenderer('hw_students', renderHwStudentsPage);
   registerRenderer('lessons_cal', renderCalendar);
@@ -223,14 +218,6 @@ window.deleteExpense = deleteExpense;
 // Analytics
 window.setAnTab = setAnTab;
 window.setAnPeriod = setAnPeriod;
-
-// Tasks
-window.setTaskFilter = setTaskFilter;
-window.openAssistantTaskModal = openAssistantTaskModal;
-window.editAssistantTask = editAssistantTask;
-window.saveAssistantTask = saveAssistantTask;
-window.changeTaskStatus = changeTaskStatus;
-window.deleteAssistantTask = deleteAssistantTask;
 
 // Access
 window.openRoleModal = openRoleModal;

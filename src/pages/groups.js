@@ -223,7 +223,6 @@ export function renderLessonJournal(lessons) {
       const s = (CACHE.students || []).find(x => x.id === a.student_id);
       return s ? s.name.split(' ')[0] : '?';
     });
-    const taskNames = (l.task_ids || []).map(id => { const t = (CACHE.tasks || []).find(x => x.id === id); return t ? t.title : '?'; });
     const diffMap = { easy: 'chip-easy', medium: 'chip-medium', hard: 'chip-hard' };
     const diffLabel = { easy: '😊 Лёгкое', medium: '🤔 Среднее', hard: '🔥 Сложное' };
     const moodMap = { good: 'chip-mood-good', neutral: 'chip-mood-neutral', bad: 'chip-mood-bad' };
@@ -278,7 +277,6 @@ export function renderLessonJournal(lessons) {
       </div>
       <div class="lesson-meta">
         ${absentNames.length ? absentNames.map(n => `<span class="absent-chip"><i class="ti ti-user-off"></i> ${n}</span>`).join('') : `<span style="font-size:11px;color:var(--muted)"><i class="ti ti-users"></i> Все присутствовали</span>`}
-        ${taskNames.map(n => `<span class="task-chip"><i class="ti ti-list-check"></i> ${n}</span>`).join('')}
       </div>
       ${l.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"><i class="ti ti-notes" style="font-size:11px"></i> ${l.notes}</div>` : ''}
       ${hwBlock}
@@ -292,17 +290,12 @@ export function openLessonModal(id) {
   if (!gr) { toast('Группа не выбрана'); return; }
   const members = (CACHE.students || []).filter(s => s.group_id === state.currentGroupId);
   const todayStr = today();
-  const v = l || { date: todayStr, topic: '', task_ids: [], absent_ids: [], notes: '' };
+  const v = l || { date: todayStr, topic: '', absent_ids: [], notes: '' };
   const memberChecks = members.length ? members.map(s => `
     <label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:13px;background:var(--surface)">
       <input type="checkbox" class="absent-check" data-id="${s.id}" ${(v.absent_ids || []).includes(s.id) ? 'checked' : ''} style="accent-color:var(--red)">
       ${s.name}
     </label>`).join('') : '<div style="color:var(--hint);font-size:13px">В группе нет учеников</div>';
-  const taskChecks = (CACHE.tasks || []).length ? (CACHE.tasks || []).map(t => `
-    <label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:13px;background:var(--surface)">
-      <input type="checkbox" class="task-check" data-id="${t.id}" ${(v.task_ids || []).includes(t.id) ? 'checked' : ''} style="accent-color:var(--accent)">
-      ${t.title}
-    </label>`).join('') : '<div style="color:var(--hint);font-size:13px">Банк задач пуст</div>';
   modal(`<div class="modal" style="max-width:600px"><div class="modal-title">${l ? 'Редактировать занятие' : 'Добавить занятие'}</div>
     <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">Группа: ${gr.name}</div>
     <div class="form-row">
@@ -341,10 +334,6 @@ export function openLessonModal(id) {
         <input type="hidden" id="lf-hw" value="${v.hw || 'assigned'}">
       </div>
     </div>
-    <div class="fg" style="margin-bottom:12px">
-      <label style="margin-bottom:6px;display:flex;align-items:center;gap:4px"><i class="ti ti-list-check" style="color:var(--accent)"></i> Задачи из банка</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--surface2);border-radius:8px;padding:10px 12px;max-height:160px;overflow-y:auto">${taskChecks}</div>
-    </div>
     <div class="fg"><label>Заметка <span style="font-size:11px;color:var(--hint);font-weight:400">(необязательно)</span></label><textarea class="fi" id="lf-notes" placeholder="Что разобрали, кому что объяснить...">${v.notes || ''}</textarea></div>
     <div class="modal-footer"><button class="btn" onclick="closeModal()">Отмена</button><button class="btn btn-p" onclick="saveLesson('${id || ''}')">Сохранить</button></div>
   </div>`);
@@ -352,11 +341,10 @@ export function openLessonModal(id) {
 
 export async function saveLesson(id) {
   const absent_ids = [...document.querySelectorAll('.absent-check:checked')].map(el => el.dataset.id);
-  const task_ids = [...document.querySelectorAll('.task-check:checked')].map(el => el.dataset.id);
   const difficulty = (document.getElementById('lf-difficulty') || {}).value || 'medium';
   const mood = (document.getElementById('lf-mood') || {}).value || 'neutral';
   const hw = (document.getElementById('lf-hw') || {}).value || 'assigned';
-  const obj = { id: id || uid(), group_id: state.currentGroupId, date: g('lf-date'), topic: g('lf-topic'), absent_ids, task_ids, difficulty, mood, hw, notes: g('lf-notes'), created_at: new Date().toISOString() };
+  const obj = { id: id || uid(), group_id: state.currentGroupId, date: g('lf-date'), topic: g('lf-topic'), absent_ids, difficulty, mood, hw, notes: g('lf-notes'), created_at: new Date().toISOString() };
   if (!obj.date) { toast('Укажите дату'); return; }
   if (!obj.topic) { toast('Укажите тему'); return; }
   try {

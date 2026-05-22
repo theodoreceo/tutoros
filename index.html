@@ -112,27 +112,18 @@
         <!-- ── TAB: Ученики ── -->
         <div id="dash-tab-students">
           <div id="dash-pulse" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px"></div>
-          <div class="dash-grid" style="display:grid;grid-template-columns:1fr 320px;gap:14px;align-items:start">
-            <div>
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
-                <i class="ti ti-calendar-event" style="margin-right:4px"></i>Ближайшие занятия
-              </div>
-              <div id="dash-today" style="margin-bottom:18px"></div>
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-                <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">
-                  <i class="ti ti-circle-check" style="margin-right:4px"></i>Требует действия
-                </div>
-                <span id="dash-action-count" style="font-size:11px;color:var(--hint)"></span>
-              </div>
-              <div id="dash-actions" style="margin-bottom:18px"></div>
+          <div>
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+              <i class="ti ti-calendar-event" style="margin-right:4px"></i>Ближайшие занятия
             </div>
-            <div>
-              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
-                <i class="ti ti-clipboard-list" style="margin-right:4px"></i>Задачи ассистентам
-                <button class="btn btn-sm" style="float:right;margin-top:-2px" onclick="navigate('tasks')">Все <i class="ti ti-arrow-right" style="font-size:11px"></i></button>
+            <div id="dash-today" style="margin-bottom:18px"></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">
+                <i class="ti ti-circle-check" style="margin-right:4px"></i>Требует действия
               </div>
-              <div id="dashboard-tasks"></div>
+              <span id="dash-action-count" style="font-size:11px;color:var(--hint)"></span>
             </div>
+            <div id="dash-actions" style="margin-bottom:18px"></div>
           </div>
         </div>
 
@@ -271,29 +262,6 @@
             <tbody id="expenses-tbody"></tbody>
           </table>
           <div id="expenses-empty" class="empty" style="display:none">Расходов нет</div>
-        </div>
-      </div>
-
-      <!-- ── TASKS ──────────────────────────────────────────────────────────── -->
-      <div class="pg" id="pg-tasks">
-        <div class="ph">
-          <div class="ph-title">Задачи</div>
-          <button class="btn btn-p btn-sm" onclick="openAssistantTaskModal()"><i class="ti ti-plus"></i> Новая задача</button>
-        </div>
-        <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
-          <button class="btn btn-sm task-tab on" onclick="setTaskFilter('')">Все</button>
-          <button class="btn btn-sm task-tab" onclick="setTaskFilter('assigned')">Назначено</button>
-          <button class="btn btn-sm task-tab" onclick="setTaskFilter('in_progress')">В процессе</button>
-          <button class="btn btn-sm task-tab" onclick="setTaskFilter('done')">Выполнено</button>
-        </div>
-        <div class="card" style="padding:0;overflow-x:auto">
-          <table class="tbl">
-            <thead>
-              <tr><th>Задача</th><th>Комментарий</th><th>Ассистент</th><th>Дедлайн</th><th>Статус</th><th></th></tr>
-            </thead>
-            <tbody id="assistant-tasks-tbody"></tbody>
-          </table>
-          <div id="assistant-tasks-empty" class="empty" style="display:none">Задач нет</div>
         </div>
       </div>
 

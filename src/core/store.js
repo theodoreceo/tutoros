@@ -7,11 +7,9 @@ export const CACHE = {
   payments: [],
   expenses: [],
   modules: [],
-  tasks: [],
   roles: [],
   folders: [],
   lessons: [],
-  atasks: [],
   events: [],
   student_notes: [],
   hw_submissions: [],
@@ -22,8 +20,8 @@ export const CACHE = {
 };
 
 export const TABLES = [
-  'groups', 'students', 'payments', 'expenses', 'modules', 'tasks', 'roles',
-  'folders', 'lessons', 'atasks', 'events', 'student_notes', 'hw_submissions',
+  'groups', 'students', 'payments', 'expenses', 'modules', 'roles',
+  'folders', 'lessons', 'events', 'student_notes', 'hw_submissions',
   'history_log', 'homework_assignments', 'homework_submissions', 'assistant_groups',
 ];
 
@@ -88,11 +86,11 @@ const SEED_ORDER = [
   'groups', 'roles', 'students', 'payments', 'expenses',
   'lessons', 'homework_assignments', 'homework_submissions',
   'assistant_groups', 'events', 'student_notes', 'history_log',
-  'tasks', 'atasks', 'hw_submissions', 'modules', 'folders',
+  'hw_submissions', 'modules', 'folders',
 ];
 
 const DELETE_ORDER = [
-  'history_log', 'events', 'hw_submissions', 'atasks', 'tasks',
+  'history_log', 'events', 'hw_submissions',
   'student_notes', 'homework_submissions', 'assistant_groups',
   'payments', 'homework_assignments', 'lessons',
   'students', 'expenses', 'modules', 'folders',

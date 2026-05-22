@@ -180,27 +180,6 @@ export function renderDashboard() {
     }
   }
 
-  // Tasks
-  const tasksEl = document.getElementById('dashboard-tasks');
-  if (tasksEl) {
-    const tasks = (CACHE.atasks || []).filter(t => t.status !== 'done').slice(0, 6);
-    if (!tasks.length) { tasksEl.innerHTML = '<div style="font-size:12px;color:var(--hint);padding:8px 0">Открытых задач нет</div>'; }
-    else {
-      const st = { assigned: { label: 'Назначено', cls: 'b-gray' }, in_progress: { label: 'В процессе', cls: 'b-a' }, done: { label: 'Выполнено', cls: 'b-g' } };
-      tasksEl.innerHTML = tasks.map(t => {
-        const s = st[t.status] || st.assigned;
-        const overdue = t.deadline && new Date(t.deadline) < new Date();
-        return `<div style="display:flex;align-items:flex-start;gap:8px;padding:9px 10px;margin-bottom:6px;border-radius:var(--r);background:var(--surface);border:1px solid var(--border)">
-          <span class="b ${s.cls}" style="font-size:10px;flex-shrink:0;margin-top:1px">${s.label}</span>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.title}</div>
-            ${t.assignee ? `<div style="font-size:11px;color:var(--accent-mid);margin-top:2px"><i class="ti ti-user" style="font-size:10px"></i> ${t.assignee}</div>` : '<div style="font-size:11px;color:var(--hint);margin-top:2px">Не назначено</div>'}
-          </div>
-          ${t.deadline ? `<div style="font-size:11px;color:${overdue ? 'var(--red)' : 'var(--hint)'};flex-shrink:0">${fmtDate(t.deadline)}</div>` : ''}
-        </div>`;
-      }).join('');
-    }
-  }
 
   // Funnel
   const funnelEl = document.getElementById('dash-funnel');
