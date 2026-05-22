@@ -1,5 +1,6 @@
 import { CACHE } from '../core/store.js';
 import { fmt, fmtDate, thisMonth, lastMonth } from '../utils/helpers.js';
+import { calculateForecast } from '../core/forecast.js';
 
 let _anTab = 'overview';
 let _anMonths = 1;
@@ -207,6 +208,42 @@ export function renderAnalytics() {
   const avgGrowth = mrrGrowthMonths.length ? Math.round(mrrGrowthMonths.reduce((a, b) => a + b, 0) / mrrGrowthMonths.length) : null;
   const mrrStatsEl = document.getElementById('an-mrr-stats');
   if (mrrStatsEl) mrrStatsEl.innerHTML = `Ср. рост MRR / мес: <b>${avgGrowth !== null ? (avgGrowth >= 0 ? '+' : '') + avgGrowth + '%' : '—'}</b> &nbsp;·&nbsp; Пик: <b>${fmt(Math.max(...mTotals))} ₽</b>`;
+
+  // Revenue forecast
+  const forecastEl = document.getElementById('an-forecast');
+  if (forecastEl) {
+    const { months: fc, retentionRate, usingDefault } = calculateForecast(3);
+    forecastEl.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:${usingDefault ? '10px' : '0'}">
+        ${fc.map((m, i) => {
+          const pct = m.total ? Math.round(m.guaranteed / m.total * 100) : 0;
+          return `<div class="card" style="padding:14px 16px;margin-bottom:0">
+            <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">
+              ${m.label}${i === 0 ? ' <span style="color:var(--accent-mid)">· текущий</span>' : ''}
+            </div>
+            <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:10px">${fmt(m.total)} ₽</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:3px;display:flex;align-items:center;gap:5px">
+              <span style="width:9px;height:9px;border-radius:2px;background:var(--green);flex-shrink:0;display:inline-block"></span>
+              Гарантированная: <b style="color:var(--text)">${fmt(m.guaranteed)} ₽</b>
+              <span style="color:var(--hint)">${m.guaranteedCount} уч.</span>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:5px">
+              <span style="width:9px;height:9px;border-radius:2px;background:var(--accent-mid);flex-shrink:0;display:inline-block;opacity:.7"></span>
+              Вероятная: <b style="color:var(--text)">${fmt(m.probable)} ₽</b>
+              <span style="color:var(--hint)">${m.probableCount} уч.</span>
+            </div>
+            <div style="height:6px;border-radius:3px;overflow:hidden;background:var(--surface2);display:flex">
+              <div style="flex:${m.guaranteed || 0};background:var(--green);min-width:${m.guaranteed ? 2 : 0}px"></div>
+              <div style="flex:${m.probable || 0};background:var(--accent-mid);opacity:.7;min-width:${m.probable ? 2 : 0}px"></div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      ${usingDefault ? `<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.18);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--amber);display:flex;align-items:center;gap:7px">
+        <i class="ti ti-info-circle" style="font-size:13px;flex-shrink:0"></i>
+        Retention рассчитан по умолчанию (75%) — данных пока недостаточно (нужно минимум 30 платежей в истории)
+      </div>` : `<div style="font-size:11px;color:var(--hint);text-align:right">Retention: ${Math.round(retentionRate * 100)}% (из реальных данных)</div>`}`;
+  }
 
   // Key 3
   const k3 = document.getElementById('an-key3');
