@@ -32,8 +32,13 @@ const DEMO_KEY = 'tutoros_demo_mode';
 export const isDemoMode = () => localStorage.getItem(DEMO_KEY) === '1';
 
 export function setDemoMode(enabled) {
-  if (enabled) localStorage.setItem(DEMO_KEY, '1');
-  else localStorage.removeItem(DEMO_KEY);
+  if (enabled) {
+    localStorage.setItem(DEMO_KEY, '1');
+    localStorage.removeItem('tutoros_role'); // always pick role fresh on demo entry
+  } else {
+    localStorage.removeItem(DEMO_KEY);
+    localStorage.removeItem('tutoros_role');
+  }
 }
 
 // ── Expense categories (UI config, stays in localStorage) ─────────────────────
