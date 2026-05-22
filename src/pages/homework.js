@@ -7,7 +7,6 @@ import { toast } from '../components/toast.js';
 import { addHistoryEntry } from '../core/history.js';
 
 let _hwTab = 'queue';
-const _reviewErrors = [];
 let _reviewMaxScore = 100;
 
 function scoreDisplay(sub, assignment) {
@@ -272,19 +271,9 @@ export async function openReviewModal(submissionId) {
   if (!sub) { toast('Работа не найдена'); return; }
   const stu        = (CACHE.students || []).find(s => s.id === sub.student_id);
   const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub.assignment_id);
-  _reviewErrors.length = 0;
-  if (sub.errors) _reviewErrors.push(...sub.errors);
-
   const taskConfig = Array.isArray(assignment?.task_config) && assignment.task_config.length
     ? assignment.task_config : null;
   _reviewMaxScore  = taskConfig ? taskConfig.reduce((a, b) => a + b, 0) : 100;
-
-  const sourceOpts = [
-    { v: 'manual', l: 'Вручную' },
-    { v: 'telegram', l: 'Telegram' },
-    { v: 'vk', l: 'ВКонтакте' },
-    { v: 'web', l: 'Веб' },
-  ].map(o => `<option value="${o.v}" ${sub.source === o.v ? 'selected' : ''}>${o.l}</option>`).join('');
 
   const files = sub.submitted_files || [];
   const filesBlock = files.length
@@ -343,27 +332,10 @@ export async function openReviewModal(submissionId) {
       ${assignment?.due_date ? `<div style="font-size:11px;color:var(--hint);margin-top:2px">Срок: ${fmtDate(assignment.due_date)}</div>` : ''}
     </div>
     ${filesBlock}
-    <div class="form-row" style="margin-bottom:12px">
-      <div class="fg">
-        <label>Ссылка на работу</label>
-        <input class="fi" id="rv-url" value="${sub.submission_url || ''}" placeholder="https://...">
-      </div>
-      <div class="fg">
-        <label>Источник</label>
-        <select class="fi" id="rv-source">${sourceOpts}</select>
-      </div>
-    </div>
     ${scoreBlock}
     <div class="fg" style="margin-bottom:12px">
       <label>Комментарий</label>
       <textarea class="fi" id="rv-comment" rows="3" placeholder="Общий отзыв на работу...">${sub.comment || ''}</textarea>
-    </div>
-    <div class="fg" style="margin-bottom:16px">
-      <label style="display:flex;align-items:center;justify-content:space-between">
-        <span>Ошибки</span>
-        <button class="btn btn-sm" onclick="addReviewError()" type="button"><i class="ti ti-plus"></i> Добавить</button>
-      </label>
-      <div id="rv-errors-list">${renderErrorsList()}</div>
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal()">Отмена</button>
@@ -371,31 +343,6 @@ export async function openReviewModal(submissionId) {
     </div>
   </div>`);
   updateScorePreview();
-}
-
-function renderErrorsList() {
-  if (!_reviewErrors.length) return '<div style="font-size:12px;color:var(--hint);padding:6px 0">Ошибок нет</div>';
-  return _reviewErrors.map((e, i) => `
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-      <input class="fi" style="flex:1" value="${e.replace(/"/g, '&quot;')}" oninput="updateReviewError(${i}, this.value)">
-      <button class="btn btn-sm btn-icon" onclick="removeReviewError(${i})" type="button"><i class="ti ti-x" style="color:var(--red)"></i></button>
-    </div>`).join('');
-}
-
-export function addReviewError() {
-  _reviewErrors.push('');
-  const el = document.getElementById('rv-errors-list');
-  if (el) el.innerHTML = renderErrorsList();
-}
-
-export function removeReviewError(idx) {
-  _reviewErrors.splice(idx, 1);
-  const el = document.getElementById('rv-errors-list');
-  if (el) el.innerHTML = renderErrorsList();
-}
-
-export function updateReviewError(idx, value) {
-  _reviewErrors[idx] = value;
 }
 
 export function updateScorePreview() {
@@ -428,11 +375,8 @@ export function updateTotalScore() {
 
 export async function saveReview(submissionId) {
   const comment   = (document.getElementById('rv-comment') || {}).value || '';
-  const url       = (document.getElementById('rv-url') || {}).value || '';
-  const source    = (document.getElementById('rv-source') || {}).value || 'manual';
   const role      = state.currentRole || {};
-  const checkedBy = role.isOwner ? null : role.id;
-  const errors    = _reviewErrors.filter(e => e.trim());
+  const checkedBy = role.id || null;
 
   // Collect per-task scores if present
   let score, taskScores, maxScore;
@@ -454,11 +398,7 @@ export async function saveReview(submissionId) {
   }
 
   try {
-    if (url || source) {
-      const { dbUpdate: du } = await import('../core/store.js');
-      await du('homework_submissions', submissionId, { submission_url: url, source });
-    }
-    await db.homeworks.saveReview(submissionId, { score, comment, errors, checkedBy, taskScores, maxScore });
+    await db.homeworks.saveReview(submissionId, { score, comment, checkedBy, taskScores, maxScore });
 
     // Notify student via Telegram (fire-and-forget)
     fetch('/api/notify', {
@@ -586,6 +526,11 @@ export async function saveNewHw() {
     }
     closeModal();
     toast(`ДЗ назначено ${students.length} ученикам`);
+    fetch('/api/notify-hw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignment_id: assignment.id }),
+    }).catch(() => {});
     await renderHomeworkPage();
     await updateHwBadge();
   } catch (err) {

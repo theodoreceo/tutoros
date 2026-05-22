@@ -268,10 +268,11 @@ async function handleStudentListHw(chatId, student) {
   subs.forEach((sub, i) => {
     const a = aMap[sub.assignment_id];
     if (!a) return;
-    const due  = a.due_date ? ` · срок: ${a.due_date}` : '';
-    const type = a.hw_type === 'brief' ? ' [краткий]' : a.hw_type === 'trial' ? ' [пробник]' : '';
+    const due    = a.due_date ? ` · срок: ${a.due_date}` : '';
+    const dueBtn = a.due_date ? ` · ${a.due_date.slice(8)}.${a.due_date.slice(5, 7)}` : '';
+    const type   = a.hw_type === 'brief' ? ' [краткий]' : a.hw_type === 'trial' ? ' [пробник]' : '';
     lines.push(`${i + 1}. <b>${a.topic || 'Без темы'}</b>${type}${due}`);
-    buttons.push([{ text: `${i + 1}. ${(a.topic || 'ДЗ').slice(0, 32)}`, callback_data: `hw:${sub.id}` }]);
+    buttons.push([{ text: `${i + 1}. ${(a.topic || 'ДЗ').slice(0, 28)}${dueBtn}`, callback_data: `hw:${sub.id}` }]);
   });
 
   if (!lines.length) return send(chatId, 'Нет активных заданий.');
@@ -495,6 +496,12 @@ async function finishHwCreation(chatId, tid, curator, data) {
       `group_id=eq.${groupId}&crm_status=in.(active,trial)`);
     totalStudents += students.length;
 
+    const typeLabel = hw_type === 'brief' ? 'Краткий ответ'
+      : hw_type === 'trial' ? 'Пробник'
+      : is_advanced ? 'Подробный (сложный)' : 'Подробный';
+    const due = data.due_date ? `\nДедлайн: <b>${data.due_date}</b>` : '';
+    const notifyText = `📚 Новое ДЗ: <b>${data.topic}</b>\nТип: ${typeLabel}${due}\n\n/dz — открыть задания`;
+
     for (const stu of students) {
       try {
         await sbInsert('homework_submissions', {
@@ -504,6 +511,7 @@ async function finishHwCreation(chatId, tid, curator, data) {
           checked_by: null, checked_at: null, submission_url: '',
         });
       } catch { subErrors++; }
+      if (stu.telegram_id) await send(stu.telegram_id, notifyText).catch(() => {});
     }
   }
 

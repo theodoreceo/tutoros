@@ -44,7 +44,7 @@ import {
 import { renderAccess, openRoleModal, editRole, saveRole, deleteRole, toggleAssistantGroup, openInviteModal, createInvite } from './pages/access.js';
 import {
   renderHomeworkPage, setHwTab, openReviewModal, saveReview,
-  addReviewError, removeReviewError, updateScorePreview, updateTotalScore, renderAllHwFiltered,
+  updateScorePreview, updateTotalScore, renderAllHwFiltered,
   updateHwBadge, openCreateHwModal, updateHwLessonOpts, saveNewHw, changeHwStatus,
 } from './pages/homework.js';
 import { renderCuratorDashPage } from './pages/curator-dash.js';
@@ -245,8 +245,6 @@ window.createInvite = createInvite;
 window.setHwTab = setHwTab;
 window.openReviewModal = openReviewModal;
 window.saveReview = saveReview;
-window.addReviewError = addReviewError;
-window.removeReviewError = removeReviewError;
 window.updateScorePreview = updateScorePreview;
 window.updateTotalScore = updateTotalScore;
 window.renderAllHwFiltered = renderAllHwFiltered;

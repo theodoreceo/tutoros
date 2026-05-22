@@ -32,9 +32,15 @@ export default async function handler(req, res) {
     if (!student?.telegram_id) return res.status(200).json({ ok: true, skipped: 'no_telegram' });
 
     const assignment = await sbOne('homework_assignments', `id=eq.${sub.assignment_id}`);
-    const checker    = sub.checked_by ? await sbOne('roles', `id=eq.${sub.checked_by}`) : null;
 
-    const checkerName  = checker?.name || 'Куратор';
+    let checkerName;
+    if (sub.checked_by) {
+      const checker = await sbOne('roles', `id=eq.${sub.checked_by}`);
+      checkerName = checker?.name || 'Тьютор';
+    } else {
+      const owner = await sbOne('roles', `role_type=eq.owner`);
+      checkerName = owner?.name || 'Тьютор';
+    }
     const topic        = assignment?.topic || '—';
     const taskConfig   = assignment?.task_config;
     const taskScores   = sub.task_scores;
