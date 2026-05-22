@@ -68,11 +68,14 @@ export const db = {
       await dbInsert('homework_submissions', record);
       return record;
     },
-    async saveReview(submissionId, { score, comment, errors, checkedBy }) {
-      await dbUpdate('homework_submissions', submissionId, {
+    async saveReview(submissionId, { score, comment, errors, checkedBy, taskScores, maxScore }) {
+      const patch = {
         score, comment, errors: errors || [],
         checked_by: checkedBy, checked_at: new Date().toISOString(), status: 'checked',
-      });
+      };
+      if (taskScores != null) patch.task_scores = taskScores;
+      if (maxScore   != null) patch.max_score   = maxScore;
+      await dbUpdate('homework_submissions', submissionId, patch);
     },
   },
   assistantGroups: {

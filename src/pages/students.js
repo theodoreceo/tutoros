@@ -551,7 +551,12 @@ function renderStudentHwTabInline(studentId) {
   const avgScore = scoredRecent.length ? Math.round(scoredRecent.reduce((acc, s) => acc + s.score, 0) / scoredRecent.length) : null;
 
   const scoreColor = (v) => v === null ? 'var(--hint)' : v < 50 ? 'var(--red)' : v < 75 ? 'var(--amber)' : v < 90 ? 'var(--green)' : 'var(--accent-mid)';
-  const scoreText = (v) => v === null ? '—' : v < 50 ? 'Слабо' : v < 75 ? 'Удовлет.' : v < 90 ? 'Хорошо' : 'Отлично';
+  const scoreFmt   = (sub) => {
+    if (sub.score === null || sub.score === undefined) return '';
+    const a   = (CACHE.homework_assignments || []).find(x => x.id === sub.assignment_id);
+    const max = sub.max_score ?? (Array.isArray(a?.task_config) ? a.task_config.reduce((x, y) => x + y, 0) : 100);
+    return `${sub.score}/${max}`;
+  };
   const statusCfg = {
     assigned: { label: 'Назначено', cls: 'b-gray' },
     submitted: { label: 'Сдано', cls: 'b-bl' },
@@ -561,7 +566,7 @@ function renderStudentHwTabInline(studentId) {
 
   return `${avgScore !== null ? `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface2);border-radius:var(--r);margin-bottom:10px;font-size:12px">
     <i class="ti ti-chart-bar" style="color:${scoreColor(avgScore)}"></i>
-    Средний балл за 30 дней: <b style="color:${scoreColor(avgScore)}">${avgScore}/100 — ${scoreText(avgScore)}</b>
+    Средний балл за 30 дней: <b style="color:${scoreColor(avgScore)}">${avgScore}/100</b>
   </div>` : ''}
   ${newSubs.length ? newSubs.map(sub => {
     const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub.assignment_id);
@@ -571,7 +576,7 @@ function renderStudentHwTabInline(studentId) {
       <i class="ti ti-home-check" style="color:${sub.status === 'checked' ? 'var(--green)' : 'var(--muted)'}"></i>
       <span style="flex:1;font-size:12px">${assignment ? assignment.topic || '—' : '—'}</span>
       <span class="b ${st.cls}" style="font-size:10px">${st.label}</span>
-      ${sub.score !== null ? `<span style="font-size:11px;color:${scoreColor(sub.score)};font-weight:700">${sub.score}</span>` : ''}
+      ${sub.score !== null ? `<span style="font-size:11px;color:${scoreColor(sub.score)};font-weight:700">${scoreFmt(sub)}</span>` : ''}
       ${isOverdue ? '<span class="b b-r" style="font-size:10px">просрочено</span>' : ''}
     </div>`;
   }).join('') : ''}

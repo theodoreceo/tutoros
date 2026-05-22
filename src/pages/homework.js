@@ -8,13 +8,16 @@ import { addHistoryEntry } from '../core/history.js';
 
 let _hwTab = 'queue';
 const _reviewErrors = [];
+let _reviewMaxScore = 100;
 
-function scoreLabel(score) {
-  if (score === null || score === undefined) return { text: '—', color: 'var(--hint)' };
-  if (score < 50) return { text: 'Слабо', color: 'var(--red)' };
-  if (score < 75) return { text: 'Удовлетворительно', color: 'var(--amber)' };
-  if (score < 90) return { text: 'Хорошо', color: 'var(--green)' };
-  return { text: 'Отлично', color: 'var(--accent-mid)' };
+function scoreDisplay(sub, assignment) {
+  if (sub.score === null || sub.score === undefined) return { text: '—', color: 'var(--hint)' };
+  const max = sub.max_score != null
+    ? sub.max_score
+    : (Array.isArray(assignment?.task_config) ? assignment.task_config.reduce((a, b) => a + b, 0) : 100);
+  const pct = max > 0 ? sub.score / max : 0;
+  const color = pct < 0.5 ? 'var(--red)' : pct < 0.75 ? 'var(--amber)' : pct < 0.9 ? 'var(--green)' : 'var(--accent-mid)';
+  return { text: `${sub.score}/${max}`, color };
 }
 
 function sourceIcon(source) {
@@ -231,7 +234,7 @@ async function renderAllHw() {
             const ht = hwTypeCfg[assignment?.hw_type] || hwTypeCfg.detailed;
             const overdue = isOverdue(assignment);
             const checker = sub.checked_by ? ((CACHE.roles || []).find(r => r.id === sub.checked_by) || {}).name || 'Владелец' : '—';
-            const { text: scoreText, color: scoreColor } = scoreLabel(sub.score);
+            const { text: scoreText, color: scoreColor } = scoreDisplay(sub, assignment);
             return `<tr>
               <td><b>${stu ? stu.name : '—'}</b></td>
               <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${assignment ? assignment.topic || '—' : '—'}${assignment?.is_advanced ? ' <span class="b b-a" style="font-size:10px">Сложный</span>' : ''}</td>
@@ -267,10 +270,14 @@ export async function renderAllHwFiltered() {
 export async function openReviewModal(submissionId) {
   const sub = await db.homeworks.getSubmission(submissionId);
   if (!sub) { toast('Работа не найдена'); return; }
-  const stu = (CACHE.students || []).find(s => s.id === sub.student_id);
+  const stu        = (CACHE.students || []).find(s => s.id === sub.student_id);
   const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub.assignment_id);
   _reviewErrors.length = 0;
   if (sub.errors) _reviewErrors.push(...sub.errors);
+
+  const taskConfig = Array.isArray(assignment?.task_config) && assignment.task_config.length
+    ? assignment.task_config : null;
+  _reviewMaxScore  = taskConfig ? taskConfig.reduce((a, b) => a + b, 0) : 100;
 
   const sourceOpts = [
     { v: 'manual', l: 'Вручную' },
@@ -279,6 +286,40 @@ export async function openReviewModal(submissionId) {
     { v: 'web', l: 'Веб' },
   ].map(o => `<option value="${o.v}" ${sub.source === o.v ? 'selected' : ''}>${o.l}</option>`).join('');
 
+  const filesBlock = (sub.submitted_files?.length)
+    ? `<div style="margin-bottom:12px;padding:8px 12px;background:var(--surface2);border-radius:var(--r);font-size:12px;color:var(--muted)">
+        <i class="ti ti-files" style="margin-right:6px"></i>Прикреплено файлов из Telegram: <b>${sub.submitted_files.length}</b>
+        <span style="font-size:11px"> — файлы отправлены кураторам в Telegram</span>
+       </div>` : '';
+
+  const scoreBlock = taskConfig
+    ? `<div class="fg" style="margin-bottom:12px">
+        <label style="margin-bottom:8px;display:block">Баллы по заданиям</label>
+        ${taskConfig.map((maxT, i) => `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-size:13px;min-width:90px;color:var(--muted)">Задание ${i + 1}</span>
+            <input class="fi" type="number" id="rv-task-${i}" min="0" max="${maxT}" value="${(sub.task_scores || [])[i] ?? ''}" style="max-width:70px" oninput="updateTotalScore()">
+            <span style="font-size:12px;color:var(--muted)">/ ${maxT}</span>
+          </div>`).join('')}
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <span style="font-size:13px;font-weight:600">Итого:</span>
+          <input class="fi" type="number" id="rv-score" value="${sub.score ?? ''}" style="max-width:80px" readonly tabindex="-1">
+          <span style="font-size:12px;color:var(--muted)">/ ${_reviewMaxScore}</span>
+          <div style="flex:1"><div class="prog" style="height:8px"><div class="prog-f" id="rv-score-bar" style="width:0%;background:var(--accent-mid)"></div></div></div>
+          <span id="rv-score-label" style="font-size:12px;font-weight:600;min-width:60px;text-align:right">${scoreDisplay(sub, assignment).text}</span>
+        </div>
+       </div>`
+    : `<div class="fg" style="margin-bottom:12px">
+        <label>Оценка <span style="color:var(--accent-mid);font-size:11px">0–${_reviewMaxScore}</span></label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input class="fi" type="number" id="rv-score" min="0" max="${_reviewMaxScore}" value="${sub.score ?? ''}" style="max-width:80px" oninput="updateScorePreview()">
+          <div style="flex:1">
+            <div class="prog" style="height:8px"><div class="prog-f" id="rv-score-bar" style="width:${sub.score != null ? Math.min(100, (sub.score / _reviewMaxScore) * 100) : 0}%;background:var(--accent-mid)"></div></div>
+          </div>
+          <span id="rv-score-label" style="font-size:12px;font-weight:600;min-width:80px;text-align:right">${scoreDisplay(sub, assignment).text}</span>
+        </div>
+       </div>`;
+
   modal(`<div class="modal" style="max-width:560px">
     <div class="modal-title"><i class="ti ti-pencil-check"></i> Проверка работы</div>
     <div class="card" style="padding:10px 14px;margin-bottom:14px;background:var(--surface2)">
@@ -286,6 +327,7 @@ export async function openReviewModal(submissionId) {
       <div style="font-size:12px;color:var(--muted);margin-top:2px">${assignment ? assignment.topic || '—' : '—'}</div>
       ${assignment?.due_date ? `<div style="font-size:11px;color:var(--hint);margin-top:2px">Срок: ${fmtDate(assignment.due_date)}</div>` : ''}
     </div>
+    ${filesBlock}
     <div class="form-row" style="margin-bottom:12px">
       <div class="fg">
         <label>Ссылка на работу</label>
@@ -296,16 +338,7 @@ export async function openReviewModal(submissionId) {
         <select class="fi" id="rv-source">${sourceOpts}</select>
       </div>
     </div>
-    <div class="fg" style="margin-bottom:12px">
-      <label>Оценка <span style="color:var(--accent-mid);font-size:11px">0–100</span></label>
-      <div style="display:flex;align-items:center;gap:10px">
-        <input class="fi" type="number" id="rv-score" min="0" max="100" value="${sub.score ?? ''}" style="max-width:80px" oninput="updateScorePreview()">
-        <div style="flex:1">
-          <div class="prog" style="height:8px"><div class="prog-f" id="rv-score-bar" style="width:${sub.score ?? 0}%;background:var(--accent-mid)"></div></div>
-        </div>
-        <span id="rv-score-label" style="font-size:12px;font-weight:600;min-width:80px;text-align:right">${scoreLabel(sub.score).text}</span>
-      </div>
-    </div>
+    ${scoreBlock}
     <div class="fg" style="margin-bottom:12px">
       <label>Комментарий</label>
       <textarea class="fi" id="rv-comment" rows="3" placeholder="Общий отзыв на работу...">${sub.comment || ''}</textarea>
@@ -351,42 +384,79 @@ export function updateReviewError(idx, value) {
 }
 
 export function updateScorePreview() {
-  const score = +(document.getElementById('rv-score') || {}).value;
-  const bar = document.getElementById('rv-score-bar');
-  const label = document.getElementById('rv-score-label');
-  if (!bar || !label) return;
-  const { text, color } = scoreLabel(isNaN(score) ? null : score);
-  bar.style.width = `${Math.min(100, Math.max(0, score || 0))}%`;
-  bar.style.background = color;
-  label.textContent = text;
-  label.style.color = color;
+  const scoreEl = document.getElementById('rv-score');
+  const bar     = document.getElementById('rv-score-bar');
+  const label   = document.getElementById('rv-score-label');
+  if (!bar || !label || !scoreEl) return;
+  const score = parseFloat(scoreEl.value);
+  const max   = _reviewMaxScore || 100;
+  const pct   = isNaN(score) ? 0 : score / max;
+  const color = pct < 0.5 ? 'var(--red)' : pct < 0.75 ? 'var(--amber)' : pct < 0.9 ? 'var(--green)' : 'var(--accent-mid)';
+  bar.style.width      = `${Math.min(100, Math.max(0, isNaN(score) ? 0 : pct * 100))}%`;
+  bar.style.background = isNaN(score) ? 'var(--hint)' : color;
+  label.textContent    = isNaN(score) ? '—' : `${score}/${max}`;
+  label.style.color    = isNaN(score) ? 'var(--hint)' : color;
+}
+
+export function updateTotalScore() {
+  let i = 0, total = 0;
+  while (true) {
+    const el = document.getElementById(`rv-task-${i}`);
+    if (!el) break;
+    total += parseFloat(el.value) || 0;
+    i++;
+  }
+  const scoreEl = document.getElementById('rv-score');
+  if (scoreEl) scoreEl.value = total;
+  updateScorePreview();
 }
 
 export async function saveReview(submissionId) {
-  const score = (document.getElementById('rv-score') || {}).value;
-  const comment = (document.getElementById('rv-comment') || {}).value || '';
-  const url = (document.getElementById('rv-url') || {}).value || '';
-  const source = (document.getElementById('rv-source') || {}).value || 'manual';
-  const role = state.currentRole || {};
+  const comment   = (document.getElementById('rv-comment') || {}).value || '';
+  const url       = (document.getElementById('rv-url') || {}).value || '';
+  const source    = (document.getElementById('rv-source') || {}).value || 'manual';
+  const role      = state.currentRole || {};
   const checkedBy = role.isOwner ? null : role.id;
+  const errors    = _reviewErrors.filter(e => e.trim());
 
-  const errors = _reviewErrors.filter(e => e.trim());
+  // Collect per-task scores if present
+  let score, taskScores, maxScore;
+  const taskInputs = [];
+  for (let i = 0; ; i++) {
+    const el = document.getElementById(`rv-task-${i}`);
+    if (!el) break;
+    taskInputs.push(parseFloat(el.value) || 0);
+  }
+  if (taskInputs.length) {
+    taskScores = taskInputs;
+    score      = taskScores.reduce((a, b) => a + b, 0);
+    maxScore   = _reviewMaxScore || null;
+  } else {
+    const raw = (document.getElementById('rv-score') || {}).value;
+    score    = raw !== '' ? +raw : null;
+    maxScore = _reviewMaxScore !== 100 ? _reviewMaxScore : null;
+    taskScores = null;
+  }
+
   try {
-    // Update submission_url and source first
     if (url || source) {
       const { dbUpdate: du } = await import('../core/store.js');
       await du('homework_submissions', submissionId, { submission_url: url, source });
     }
-    await db.homeworks.saveReview(submissionId, {
-      score: score !== '' ? +score : null,
-      comment,
-      errors,
-      checkedBy,
-    });
-    const sub = await db.homeworks.getSubmission(submissionId);
-    const stu = (CACHE.students || []).find(s => s.id === sub?.student_id);
+    await db.homeworks.saveReview(submissionId, { score, comment, errors, checkedBy, taskScores, maxScore });
+
+    // Notify student via Telegram (fire-and-forget)
+    fetch('/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ submission_id: submissionId }),
+    }).catch(() => {});
+
+    const sub        = await db.homeworks.getSubmission(submissionId);
+    const stu        = (CACHE.students || []).find(s => s.id === sub?.student_id);
     const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub?.assignment_id);
-    await addHistoryEntry('update', `Проверено ДЗ: ${stu?.name || '—'} · ${assignment?.topic || '—'}${score !== '' ? ' · ' + score + ' баллов' : ''}`, 'homework', submissionId, null);
+    const scoreStr   = score !== null ? ` · ${score}${maxScore ? '/' + maxScore : ''} баллов` : '';
+    await addHistoryEntry('update', `Проверено ДЗ: ${stu?.name || '—'} · ${assignment?.topic || '—'}${scoreStr}`, 'homework', submissionId, null);
     closeModal();
     if (_hwTab === 'queue') await renderHwQueue();
     else await renderAllHw();
@@ -536,7 +606,8 @@ export function renderStudentHwTab(studentId) {
     return d && new Date(d).getTime() >= month30ago && s.score !== null;
   });
   const avgScore = recent.length ? Math.round(recent.reduce((acc, s) => acc + s.score, 0) / recent.length) : null;
-  const { text: avgLabel, color: avgColor } = scoreLabel(avgScore);
+  const avgPct   = (avgScore ?? 0) / 100;
+  const avgColor = avgScore == null ? 'var(--hint)' : avgPct < 0.5 ? 'var(--red)' : avgPct < 0.75 ? 'var(--amber)' : avgPct < 0.9 ? 'var(--green)' : 'var(--accent-mid)';
 
   const statusCfg = {
     assigned: { label: 'Назначено', cls: 'b-gray' },
@@ -552,7 +623,7 @@ export function renderStudentHwTab(studentId) {
       <i class="ti ti-chart-bar" style="font-size:20px;color:${avgColor}"></i>
       <div>
         <div style="font-size:11px;color:var(--muted)">Средний балл за 30 дней</div>
-        <div style="font-size:16px;font-weight:700;color:${avgColor}">${avgScore} / 100 <span style="font-size:12px;font-weight:400">${avgLabel}</span></div>
+        <div style="font-size:16px;font-weight:700;color:${avgColor}">${avgScore} / 100</div>
       </div>
     </div>` : ''}
   <div class="card" style="padding:0">
@@ -563,7 +634,7 @@ export function renderStudentHwTab(studentId) {
           const assignment = (CACHE.homework_assignments || []).find(a => a.id === sub.assignment_id);
           const st = statusCfg[sub.status] || statusCfg.assigned;
           const overdue = isOverdue(assignment);
-          const { text: scoreText, color: scoreColor } = scoreLabel(sub.score);
+          const { text: scoreText, color: scoreColor } = scoreDisplay(sub, assignment);
           return `<tr>
             <td>${assignment ? assignment.topic || '—' : '—'}</td>
             <td>${assignment?.due_date ? `<span style="color:${overdue && sub.status !== 'checked' ? 'var(--red)' : 'inherit'}">${fmtDate(assignment.due_date)}</span>` : '—'}</td>
