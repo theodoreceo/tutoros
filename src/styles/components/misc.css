@@ -2,15 +2,19 @@
 .empty { text-align: center; padding: 40px 20px; color: var(--hint); font-size: 13px; }
 
 /* Page header */
-.ph { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.ph-title { font-size: 15px; font-weight: 600; }
+.ph { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.ph-title { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: .01em; }
 
 /* Two column layout */
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 /* Progress bar */
-.prog { background: var(--surface2); border-radius: 3px; height: 6px; overflow: hidden; margin-top: 4px; }
-.prog-f { height: 6px; border-radius: 3px; background: var(--accent-mid); }
+.prog { background: var(--surface2); border-radius: 3px; height: 5px; overflow: hidden; margin-top: 4px; }
+.prog-f { height: 5px; border-radius: 3px; background: var(--accent); }
+
+/* Attendance bar */
+.attend-bar { width: 50px; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-top: 3px; }
+.attend-fill { height: 4px; border-radius: 2px; }
 
 /* Divider */
 .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
@@ -20,7 +24,23 @@
 .risk-row:last-child { border-bottom: none; }
 
 /* Toast notification */
-.toast { position: fixed; bottom: 20px; right: 20px; background: var(--text); color: #fff; padding: 10px 16px; border-radius: var(--r); font-size: 13px; z-index: 999; opacity: 0; transform: translateY(8px); transition: all .25s; pointer-events: none; }
+.toast {
+  position: fixed;
+  bottom: 22px;
+  right: 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 18px;
+  border-radius: var(--r);
+  font-size: 13px;
+  z-index: 999;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: all .25s;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+}
 .toast.show { opacity: 1; transform: translateY(0); }
 
 /* Amount colors */
@@ -28,6 +48,20 @@
 .amount-neg { color: var(--red); font-weight: 600; }
 
 /* View toggle */
-.view-toggle { display: flex; gap: 4px; background: var(--surface2); border-radius: 6px; padding: 2px; }
-.view-toggle button { padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; border: none; background: transparent; color: var(--muted); cursor: pointer; transition: all .12s; }
-.view-toggle button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.view-toggle { display: flex; gap: 3px; background: var(--surface2); border-radius: 8px; padding: 3px; border: 1px solid var(--border); }
+.view-toggle button {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--hint);
+  cursor: pointer;
+  transition: all .15s;
+}
+.view-toggle button.on {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(59,130,246,.3);
+}

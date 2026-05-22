@@ -56,12 +56,12 @@ function _updateModeUI() {
   const dot = document.getElementById('sync-dot');
   const label = document.getElementById('sync-label');
   const btn = document.getElementById('demo-toggle');
-  if (dot) dot.style.background = demo ? '#f59e0b' : '#22c55e';
+  if (dot) dot.style.background = demo ? '#fbbf24' : '#34d399';
   if (label) label.textContent = demo ? 'Демо-режим' : 'Supabase · онлайн';
   if (btn) {
     btn.textContent = demo ? 'Выйти из демо' : 'Демо';
-    btn.style.color = demo ? '#f59e0b' : 'rgba(247,243,238,.5)';
-    btn.style.borderColor = demo ? 'rgba(245,158,11,.4)' : 'rgba(247,243,238,.2)';
+    btn.style.color = demo ? '#fbbf24' : 'rgba(226,232,240,.35)';
+    btn.style.borderColor = demo ? 'rgba(251,191,36,.3)' : 'rgba(226,232,240,.12)';
   }
 }
 

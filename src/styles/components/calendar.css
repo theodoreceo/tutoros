@@ -37,7 +37,7 @@
 .cal-mcell { min-height: 90px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 6px; background: var(--surface); cursor: pointer; transition: background .1s; vertical-align: top; }
 .cal-mcell:hover { background: var(--surface2); }
 .cal-mcell.other { background: var(--bg); opacity: .6; }
-.cal-mcell.today { background: #eff6ff; }
+.cal-mcell.today { background: rgba(59,130,246,.07); border-color: rgba(59,130,246,.2); }
 .cal-mdate { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
 .cal-mcell.today .cal-mdate { background: var(--accent); color: #fff; }
 .cal-mpill { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 500; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 3px; }

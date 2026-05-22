@@ -1,6 +1,6 @@
 /* Group cards */
 .group-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--rl); padding: 16px 20px; cursor: pointer; transition: border-color .12s, box-shadow .12s; }
-.group-card:hover { border-color: var(--accent-mid); box-shadow: 0 2px 10px rgba(5,51,125,.08); }
+.group-card:hover { border-color: var(--accent-mid); box-shadow: 0 2px 12px rgba(59,130,246,.12); }
 .group-card-name { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
 .group-card-meta { font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
 .group-card-meta span { display: flex; align-items: center; gap: 4px; }

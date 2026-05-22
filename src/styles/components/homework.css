@@ -11,9 +11,20 @@
 
 /* Notes thread */
 .notes-thread { display: flex; flex-direction: column; gap: 8px; }
-.note-bubble { background: var(--surface2); border-radius: 8px; padding: 8px 12px; font-size: 13px; line-height: 1.5; }
+.note-bubble {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
 .note-bubble .note-meta { font-size: 10px; color: var(--hint); margin-top: 4px; }
-.note-bubble.mine { background: #eff6ff; margin-left: 24px; }
+.note-bubble.mine {
+  background: rgba(59,130,246,.1);
+  border-color: rgba(59,130,246,.2);
+  margin-left: 24px;
+}
 .note-bubble.mine .note-meta { text-align: right; }
 .note-input-row { display: flex; gap: 6px; margin-top: 8px; }
 .note-input-row textarea { flex: 1; resize: none; height: 60px; }
