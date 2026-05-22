@@ -5,6 +5,7 @@ import { uid, fmtDate, today } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { addHistoryEntry } from '../core/history.js';
+import { studentSubscriptionStatus } from '../core/risk.js';
 
 let _hwTab = 'queue';
 let _reviewMaxScore = 100;
@@ -50,22 +51,26 @@ export async function updateHwBadge() {
 export function setHwTab(tab) {
   _hwTab = tab;
   document.querySelectorAll('.hw-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-  document.getElementById('hw-tab-queue').style.display   = tab === 'queue'   ? '' : 'none';
-  document.getElementById('hw-tab-overdue').style.display = tab === 'overdue' ? '' : 'none';
-  document.getElementById('hw-tab-all').style.display     = tab === 'all'     ? '' : 'none';
-  if (tab === 'queue')        renderHwQueue();
-  else if (tab === 'overdue') renderOverdueHw();
-  else                        renderAllHw();
+  document.getElementById('hw-tab-queue').style.display    = tab === 'queue'    ? '' : 'none';
+  document.getElementById('hw-tab-overdue').style.display  = tab === 'overdue'  ? '' : 'none';
+  document.getElementById('hw-tab-all').style.display      = tab === 'all'      ? '' : 'none';
+  document.getElementById('hw-tab-students').style.display = tab === 'students' ? '' : 'none';
+  if (tab === 'queue')           renderHwQueue();
+  else if (tab === 'overdue')    renderOverdueHw();
+  else if (tab === 'students')   renderStudentsTab();
+  else                           renderAllHw();
 }
 
 export async function renderHomeworkPage() {
   await updateHwBadge();
-  if (_hwTab === 'queue')        await renderHwQueue();
-  else if (_hwTab === 'overdue') await renderOverdueHw();
-  else                           await renderAllHw();
-  document.getElementById('hw-tab-queue').style.display   = _hwTab === 'queue'   ? '' : 'none';
-  document.getElementById('hw-tab-overdue').style.display = _hwTab === 'overdue' ? '' : 'none';
-  document.getElementById('hw-tab-all').style.display     = _hwTab === 'all'     ? '' : 'none';
+  if (_hwTab === 'queue')          await renderHwQueue();
+  else if (_hwTab === 'overdue')   await renderOverdueHw();
+  else if (_hwTab === 'students')  await renderStudentsTab();
+  else                             await renderAllHw();
+  document.getElementById('hw-tab-queue').style.display    = _hwTab === 'queue'    ? '' : 'none';
+  document.getElementById('hw-tab-overdue').style.display  = _hwTab === 'overdue'  ? '' : 'none';
+  document.getElementById('hw-tab-all').style.display      = _hwTab === 'all'      ? '' : 'none';
+  document.getElementById('hw-tab-students').style.display = _hwTab === 'students' ? '' : 'none';
 }
 
 async function renderHwQueue() {
@@ -264,6 +269,98 @@ async function renderAllHw() {
 
 export async function renderAllHwFiltered() {
   await renderAllHw();
+}
+
+async function renderStudentsTab() {
+  const el = document.getElementById('hw-tab-students');
+  if (!el) return;
+
+  const role = state.currentRole || {};
+  const assistantId = role.isOwner ? null : role.id;
+
+  let students = (CACHE.students || []).filter(s => ['active', 'trial'].includes(s.crm_status));
+
+  if (!role.isOwner && assistantId) {
+    const myGroups = await db.assistantGroups.getGroupsByAssistant(assistantId);
+    const groupIds = new Set(myGroups.map(ag => ag.group_id));
+    students = students.filter(s => groupIds.has(s.group_id));
+  }
+
+  if (!students.length) {
+    el.innerHTML = `<div class="card" style="text-align:center;padding:32px 20px;color:var(--hint)">
+      <i class="ti ti-users" style="font-size:28px;display:block;margin-bottom:8px;opacity:.3"></i>
+      Нет активных учеников
+    </div>`;
+    return;
+  }
+
+  const allSubs = CACHE.homework_submissions || [];
+  const allAssignments = CACHE.homework_assignments || [];
+  const allRoles = CACHE.roles || [];
+  const allAssistantGroups = CACHE.assistant_groups || [];
+
+  const rows = students.map(s => {
+    const sub = studentSubscriptionStatus(s);
+    const subBadge = sub
+      ? (sub.daysLeft < 0
+          ? `<span class="b b-r" style="font-size:10px">Просрочен</span>`
+          : sub.daysLeft <= 7
+            ? `<span class="b b-a" style="font-size:10px">через ${sub.daysLeft}д</span>`
+            : `<span class="b b-g" style="font-size:10px">до ${fmtDate(sub.sub_end)}</span>`)
+      : `<span class="b b-gray" style="font-size:10px">Нет абонемента</span>`;
+
+    const mySubs = allSubs.filter(h => h.student_id === s.id);
+    const totalHw = mySubs.length;
+    const checkedHw = mySubs.filter(h => h.status === 'checked').length;
+    const hwPct = totalHw > 0 ? Math.round(checkedHw / totalHw * 100) : null;
+    const hwPctColor = hwPct === null ? 'var(--hint)' : hwPct >= 80 ? 'var(--green)' : hwPct >= 50 ? 'var(--amber)' : 'var(--red)';
+
+    const trialSubs = mySubs.filter(h => {
+      const a = allAssignments.find(x => x.id === h.assignment_id);
+      return a?.hw_type === 'trial' && h.status === 'checked' && h.score != null;
+    });
+    let avgTrial = null;
+    if (trialSubs.length) {
+      const total = trialSubs.reduce((acc, h) => {
+        const a = allAssignments.find(x => x.id === h.assignment_id);
+        const max = h.max_score != null ? h.max_score : (Array.isArray(a?.task_config) ? a.task_config.reduce((x, y) => x + y, 0) : 100);
+        return acc + (max > 0 ? h.score / max * 100 : 0);
+      }, 0);
+      avgTrial = Math.round(total / trialSubs.length);
+    }
+
+    const groupCurators = allAssistantGroups
+      .filter(ag => ag.group_id === s.group_id)
+      .map(ag => allRoles.find(r => r.id === ag.assistant_id)?.name)
+      .filter(Boolean);
+
+    return `<div class="card" style="padding:14px 16px;margin-bottom:8px">
+      <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:160px">
+          <div style="font-size:13px;font-weight:600;cursor:pointer;color:var(--fg)" onclick="openStudentDetail('${s.id}')">${s.name}</div>
+          <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${subBadge}</div>
+        </div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+          <div style="text-align:center">
+            <div style="font-size:18px;font-weight:700;color:${hwPctColor}">${hwPct !== null ? hwPct + '%' : '—'}</div>
+            <div style="font-size:11px;margin-top:2px">Выполнение ДЗ</div>
+            ${totalHw ? `<div style="font-size:10px;color:var(--hint)">${checkedHw}/${totalHw}</div>` : ''}
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:18px;font-weight:700;color:${avgTrial !== null ? (avgTrial >= 80 ? 'var(--green)' : avgTrial >= 50 ? 'var(--amber)' : 'var(--red)') : 'var(--hint)'}">${avgTrial !== null ? avgTrial + '%' : '—'}</div>
+            <div style="font-size:11px;margin-top:2px">Ср. балл пробников</div>
+            ${trialSubs.length ? `<div style="font-size:10px;color:var(--hint)">${trialSubs.length} пр.</div>` : ''}
+          </div>
+          <div style="text-align:center;min-width:80px">
+            <div style="font-size:12px;font-weight:600;color:var(--fg)">${groupCurators.length ? groupCurators.join(', ') : '—'}</div>
+            <div style="font-size:11px;margin-top:2px;color:var(--muted)">Куратор</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  el.innerHTML = rows.join('');
 }
 
 export async function openReviewModal(submissionId) {

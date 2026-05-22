@@ -189,16 +189,19 @@ export function renderGroupDetail() {
     const hwPendingS = hwS.filter(h => h.status === 'pending').length;
     const hwBadge = hwMissingS > 0 ? `<span class="b b-r" style="font-size:10px"><i class="ti ti-home-off" style="font-size:9px"></i> ${hwMissingS} не сдал</span>`
       : hwPendingS > 0 ? `<span class="b b-a" style="font-size:10px"><i class="ti ti-clock" style="font-size:9px"></i> ждём ДЗ</span>` : '';
-    return `<div class="member-row">
-      <span class="b ${st.cls}" style="font-size:10px;padding:1px 6px;flex-shrink:0">${st.label}</span>
+    return `<div class="card" style="padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:500;display:flex;align-items:center;gap:5px;cursor:pointer" onclick="openStudentDetail('${s.id}')">${s.name} ${warnFlag}</div>
-        <div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${subBadge}${!s.paid ? `<span class="b b-r" style="font-size:10px">Не оплачен</span>` : ''}${hwBadge}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+          <span class="b ${st.cls}" style="font-size:10px;padding:1px 6px;flex-shrink:0">${st.label}</span>
+          <span style="font-size:13px;font-weight:600;cursor:pointer" onclick="openStudentDetail('${s.id}')">${s.name}</span>
+          ${warnFlag}
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${subBadge}${!s.paid ? `<span class="b b-r" style="font-size:10px">Не оплачен</span>` : ''}${hwBadge}</div>
       </div>
       ${attendPctS !== null ? `<div style="text-align:right;flex-shrink:0">
-        <div style="font-size:11px;color:${attendPctS >= 85 ? 'var(--green)' : attendPctS >= 70 ? 'var(--amber)' : 'var(--red)'};font-weight:600">${attendPctS}%</div>
-        <div class="attend-bar"><div class="attend-fill" style="width:${attendPctS}%;background:${attendPctS >= 85 ? '#22c55e' : attendPctS >= 70 ? '#f59e0b' : '#ef4444'}"></div></div>
-        <div style="font-size:10px;color:var(--hint);margin-top:1px">${absCount} пр.</div>
+        <div style="font-size:13px;color:${attendPctS >= 85 ? 'var(--green)' : attendPctS >= 70 ? 'var(--amber)' : 'var(--red)'};font-weight:700">${attendPctS}%</div>
+        <div class="attend-bar" style="margin-top:3px"><div class="attend-fill" style="width:${attendPctS}%;background:${attendPctS >= 85 ? '#22c55e' : attendPctS >= 70 ? '#f59e0b' : '#ef4444'}"></div></div>
+        <div style="font-size:10px;color:var(--hint);margin-top:2px">${absCount} пр.</div>
       </div>` : ''}
     </div>`;
   }).join('') : '<div class="empty" style="padding:12px">Нет учеников в группе</div>';

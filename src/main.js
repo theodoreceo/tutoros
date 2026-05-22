@@ -31,7 +31,7 @@ import {
 import {
   setCalView, calNav, calToday, renderCalendar,
   openLessonFromCalendar, openLessonFormFromPicker, openLessonFormModal, toggleAttendance,
-  setCalHwStatus, toggleHwAssignBlock,
+  setCalHwStatus,
   saveLessonForm, openLessonCard, deleteLesson as calDeleteLesson, exportICS,
 } from './pages/calendar.js';
 import { renderIncome, openPaymentModal, savePayment, deletePayment } from './pages/income.js';
@@ -206,7 +206,6 @@ window.exportICS = exportICS;
 
 window.setGroupHwStatus = setGroupHwStatus;
 window.setCalHwStatus = setCalHwStatus;
-window.toggleHwAssignBlock = toggleHwAssignBlock;
 
 // Income
 window.openPaymentModal = openPaymentModal;

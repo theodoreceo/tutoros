@@ -265,45 +265,12 @@ export function openLessonFormModal(date, gid, existingId) {
       <div class="fg"><label><i class="ti ti-video" style="font-size:11px"></i> Ссылка на занятие</label><input class="fi" id="lf-lesson-link" value="${v.lesson_link || ''}" placeholder="https://..."></div>
       <div class="fg"><label><i class="ti ti-books" style="font-size:11px"></i> Ссылка на материалы</label><input class="fi" id="lf-materials-link" value="${v.materials_link || ''}" placeholder="https://drive.google.com/..."></div>
     </div>
-    <div style="margin-bottom:14px;border-top:1px solid var(--border);padding-top:12px">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
-        <input type="checkbox" id="lf-hw-assign" style="accent-color:var(--accent-mid)" onchange="toggleHwAssignBlock()">
-        <i class="ti ti-home-plus"></i> Дать домашнее задание
-      </label>
-      <div id="hw-assign-block" style="display:none;margin-top:10px">
-        <div class="form-row">
-          <div class="fg" style="grid-column:1/-1"><label>Тема задания</label><input class="fi" id="lf-hw-topic" placeholder="Тригонометрия: задачи на формулы приведения..."></div>
-        </div>
-        <div class="fg" style="margin-bottom:10px"><label>Описание / инструкция</label><textarea class="fi" id="lf-hw-desc" rows="2" placeholder="Подробности..."></textarea></div>
-        <div class="form-row" style="margin-bottom:10px">
-          <div class="fg">
-            <label>Тип задания</label>
-            <select class="fi" id="lf-hw-type">
-              <option value="detailed">Подробный ответ</option>
-              <option value="brief">Краткий ответ</option>
-              <option value="trial">Пробник</option>
-            </select>
-          </div>
-          <div class="fg"><label>Дедлайн</label><input class="fi" type="date" id="lf-hw-due"></div>
-        </div>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;margin-bottom:4px">
-          <input type="checkbox" id="lf-hw-advanced" style="accent-color:var(--accent-mid)">
-          <span>Сложный уровень</span>
-        </label>
-      </div>
-    </div>
     <div class="fg"><label>Заметка к занятию</label><textarea class="fi" id="lf-notes" rows="2">${v.notes || ''}</textarea></div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal()">Отмена</button>
       <button class="btn btn-p" onclick="saveLessonForm('${existingId || ''}')">Сохранить</button>
     </div>
   </div>`);
-}
-
-export function toggleHwAssignBlock() {
-  const checked = (document.getElementById('lf-hw-assign') || {}).checked;
-  const block = document.getElementById('hw-assign-block');
-  if (block) block.style.display = checked ? '' : 'none';
 }
 
 export function toggleAttendance() {}
@@ -336,17 +303,6 @@ export async function saveLessonForm(existingId) {
   // For new lessons: create one per selected group; for edit: single group
   const groupIds = existingId ? [state.currentGroupId] : (_pendingGroupIds.length ? _pendingGroupIds : [state.currentGroupId]);
 
-  const hwAssign = !existingId && (document.getElementById('lf-hw-assign') || {}).checked;
-  let hwParams = null;
-  if (hwAssign) {
-    hwParams = {
-      topic: (document.getElementById('lf-hw-topic') || {}).value || topic,
-      description: (document.getElementById('lf-hw-desc') || {}).value || '',
-      due_date: (document.getElementById('lf-hw-due') || {}).value || '',
-      hw_type: (document.getElementById('lf-hw-type') || {}).value || 'detailed',
-      is_advanced: (document.getElementById('lf-hw-advanced') || {}).checked || false,
-    };
-  }
 
   try {
     for (const [hwId, status] of Object.entries(_hwBtnStates)) {
@@ -368,19 +324,6 @@ export async function saveLessonForm(existingId) {
       if (existingId) await dbUpdate('lessons', existingId, obj);
       else await dbInsert('lessons', obj);
       lessonIds.push(lessonId);
-
-      if (hwParams) {
-        const { db } = await import('../lib/db.js');
-        const assignment = await db.homeworks.createAssignment({
-          group_id: gid,
-          lesson_id: lessonId,
-          ...hwParams,
-        });
-        const members = (CACHE.students || []).filter(s => s.group_id === gid && ['active', 'trial'].includes(s.crm_status));
-        for (const stu of members) {
-          await db.homeworks.createSubmission({ assignment_id: assignment.id, student_id: stu.id });
-        }
-      }
 
       if (!existingId) {
         const members = (CACHE.students || []).filter(s => s.group_id === gid && s.crm_status === 'active');
