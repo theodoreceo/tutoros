@@ -40,6 +40,13 @@ export function applyRoleUI(role) {
   document.querySelectorAll('.edit-only').forEach(el => el.style.display = (role.canEdit || role.isOwner) ? '' : 'none');
 }
 
+export function devSwitchRole(id) {
+  if (!isDemoMode()) return;
+  if (id === 'owner') { applyRole(OWNER_ROLE); return; }
+  const role = CACHE.roles.find(r => r.id === id);
+  if (role) applyRole(buildRole(role));
+}
+
 function _renderDevSwitcher(activeRole) {
   const bar = document.getElementById('dev-role-switcher');
   if (!bar) return;
@@ -55,7 +62,7 @@ function _renderDevSwitcher(activeRole) {
     const isActive = activeRole.id === r.id || (activeRole.isOwner && r.id === 'owner');
     const rt = ROLE_TYPES[r.role_type];
     const label = r.isOwner ? 'Владелец' : (rt?.label || r.name);
-    return `<button onclick="selectRole('${r.id}')" style="
+    return `<button onclick="devSwitchRole('${r.id}')" style="
       font-size:11px;padding:3px 10px;border-radius:10px;border:1px solid;cursor:pointer;
       font-family:inherit;transition:all .15s;
       background:${isActive ? 'rgba(59,130,246,.18)' : 'rgba(226,232,240,.04)'};

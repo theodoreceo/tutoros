@@ -4,7 +4,7 @@ import { supabase } from './lib/supabase.js';
 import { initSupabase, clearDemoData, seedDemoData, isDemoMode, setDemoMode } from './core/store.js';
 import { state } from './core/state.js';
 import {
-  restoreSession, selectRole, applyRoleUI, logout, promptSwitchRole, confirmSwitch,
+  restoreSession, selectRole, devSwitchRole, applyRoleUI, logout, promptSwitchRole, confirmSwitch,
   showLoginForm, showRegisterForm, handleLogin, handleRegister,
 } from './core/auth.js';
 import { navigate, registerRenderer, setupNav } from './core/router.js';
@@ -131,6 +131,7 @@ window.logout = logout;
 window.promptSwitchRole = promptSwitchRole;
 window.confirmSwitch = confirmSwitch;
 window.selectRole = selectRole;
+window.devSwitchRole = devSwitchRole;
 window.showLoginForm = showLoginForm;
 window.showRegisterForm = showRegisterForm;
 window.handleLogin = handleLogin;
