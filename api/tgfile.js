@@ -20,12 +20,15 @@ export default async function handler(req, res) {
   );
   if (!downloadRes.ok) return res.status(502).end('Failed to download from Telegram');
 
-  const contentType = downloadRes.headers.get('content-type') || 'application/octet-stream';
-  const buffer      = Buffer.from(await downloadRes.arrayBuffer());
+  const buffer = Buffer.from(await downloadRes.arrayBuffer());
 
-  // Filename hint for PDFs
-  const ext      = filePath.split('.').pop().toLowerCase();
-  const filename = ext === 'pdf' ? 'homework.pdf' : `file.${ext}`;
+  const ext          = filePath.split('.').pop().toLowerCase();
+  const contentTypes = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+    gif: 'image/gif',  webp: 'image/webp', pdf: 'application/pdf',
+  };
+  const contentType = contentTypes[ext] || downloadRes.headers.get('content-type') || 'application/octet-stream';
+  const filename    = ext === 'pdf' ? 'homework.pdf' : `photo.${ext}`;
 
   res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
