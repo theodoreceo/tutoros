@@ -12,41 +12,64 @@ export function renderAccess() {
   const el = document.getElementById('roles-list');
   if (!el) return;
 
+  // Owner's bot token block
+  const ownerRole = (CACHE.roles || []).find(r => r.role_type === 'owner');
+  const ownerBlock = ownerRole?.reg_token ? `
+    <div style="background:var(--surface2,var(--surface));border:1px solid var(--border);border-radius:var(--r);padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <i class="ti ti-brand-telegram" style="font-size:20px;color:#2aabee;flex-shrink:0"></i>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Ваш Telegram-код (владелец)</div>
+        <div style="font-size:12px;color:var(--muted)">${ownerRole.telegram_id ? '<span class="b b-g"><i class="ti ti-check" style="font-size:10px"></i> Бот привязан</span>' : '<span class="b b-gray">Не привязан</span>'}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <code style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:3px 10px;font-size:13px;font-family:monospace">${ownerRole.reg_token}</code>
+        <button class="btn btn-sm" onclick="copyRegToken('${ownerRole.reg_token}')" title="Скопировать"><i class="ti ti-copy"></i></button>
+      </div>
+    </div>` : '';
+
   const roles = assistantRoles();
-  if (!roles.length) {
-    el.innerHTML = '<div class="empty">Ассистентов нет. Добавьте первого.</div>';
-  } else {
-    el.innerHTML = roles.map(r => {
-      const rt = ROLE_TYPES[r.role_type];
-      const roleLabel = rt?.label || 'Ассистент';
-      const roleIcon = rt?.icon || 'ti-user';
-      const linked = !!r.user_id;
-      return `<div class="card">
-        <div class="card-header">
-          <div>
-            <div style="font-size:14px;font-weight:600">${r.name}</div>
-            <div style="margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-              <span class="b b-bl"><i class="ti ${roleIcon}" style="font-size:10px"></i> ${roleLabel}</span>
-              ${isDemoMode()
-                ? `<span class="b b-gray" title="PIN"><i class="ti ti-key" style="font-size:10px"></i> ${r.pin || 'без PIN'}</span>`
-                : linked
-                  ? `<span class="b b-g"><i class="ti ti-check" style="font-size:10px"></i> Аккаунт привязан</span>`
-                  : `<span class="b b-r"><i class="ti ti-clock" style="font-size:10px"></i> Ожидает регистрации</span>`
+  el.innerHTML = ownerBlock + (roles.length
+    ? roles.map(r => {
+        const rt = ROLE_TYPES[r.role_type];
+        const roleLabel = rt?.label || 'Ассистент';
+        const roleIcon = rt?.icon || 'ti-user';
+        const linked = !!r.user_id;
+        return `<div class="card">
+          <div class="card-header">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14px;font-weight:600">${r.name}</div>
+              <div style="margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                <span class="b b-bl"><i class="ti ${roleIcon}" style="font-size:10px"></i> ${roleLabel}</span>
+                ${isDemoMode()
+                  ? `<span class="b b-gray" title="PIN"><i class="ti ti-key" style="font-size:10px"></i> ${r.pin || 'без PIN'}</span>`
+                  : linked
+                    ? `<span class="b b-g"><i class="ti ti-check" style="font-size:10px"></i> Аккаунт привязан</span>`
+                    : `<span class="b b-r"><i class="ti ti-clock" style="font-size:10px"></i> Ожидает регистрации</span>`
+                }
+                ${!isDemoMode() && r.reg_token
+                  ? `<span style="display:flex;align-items:center;gap:5px">
+                       <span style="font-size:11px;color:var(--muted)">Telegram-код:</span>
+                       <code style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-size:11px;font-family:monospace">${r.reg_token}</code>
+                       <button class="btn btn-sm" style="padding:1px 6px" onclick="copyRegToken('${r.reg_token}')" title="Скопировать код"><i class="ti ti-copy" style="font-size:11px"></i></button>
+                       ${r.telegram_id ? '<i class="ti ti-brand-telegram" style="color:#2aabee;font-size:13px" title="Бот привязан"></i>' : ''}
+                     </span>`
+                  : ''
+                }
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+              ${!isDemoMode() && !linked
+                ? `<button class="btn btn-sm" onclick="openInviteModal('${r.id}')" title="Пригласить"><i class="ti ti-mail"></i> Пригласить</button>`
+                : ''
               }
+              <button class="btn btn-sm btn-icon" onclick="editRole('${r.id}')"><i class="ti ti-edit"></i></button>
+              <button class="btn btn-sm btn-icon" onclick="deleteRole('${r.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>
             </div>
           </div>
-          <div style="display:flex;gap:6px;align-items:center">
-            ${!isDemoMode() && !linked
-              ? `<button class="btn btn-sm" onclick="openInviteModal('${r.id}')" title="Пригласить"><i class="ti ti-mail"></i> Пригласить</button>`
-              : ''
-            }
-            <button class="btn btn-sm btn-icon" onclick="editRole('${r.id}')"><i class="ti ti-edit"></i></button>
-            <button class="btn btn-sm btn-icon" onclick="deleteRole('${r.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
-  }
+        </div>`;
+      }).join('')
+    : '<div class="empty">Ассистентов нет. Добавьте первого.</div>');
+
   renderAssistantGroupsSection();
 }
 
