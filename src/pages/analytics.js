@@ -1,5 +1,5 @@
 import { CACHE } from '../core/store.js';
-import { fmt, fmtDate, thisMonth, lastMonth } from '../utils/helpers.js';
+import { fmt, fmtDate, days30Start, days60Start } from '../utils/helpers.js';
 import { calculateForecast } from '../core/forecast.js';
 
 let _anTab = 'overview';
@@ -50,6 +50,9 @@ export function renderAnalytics() {
 
   const periodPayments = payments.filter(p => new Date(p.date) >= periodStart);
   const periodExpenses = expenses.filter(e => new Date(e.date) >= periodStart);
+
+  const d30 = days30Start();
+  const d60 = days60Start();
 
   function becameStatusInPeriod(s, status) {
     const h = s.status_history || [];
@@ -103,12 +106,10 @@ export function renderAnalytics() {
   const churnBase = activeNow.length + churned.length;
   const churnRate = churnBase ? Math.round(churned.length / churnBase * 100) : 0;
 
-  const allMonthsWithPayments = [...new Set(payments.map(p => p.date?.slice(0, 7)).filter(Boolean))].sort();
-  const lastMonthWithData = allMonthsWithPayments[allMonthsWithPayments.length - 1] || new Date().toISOString().slice(0, 7);
-  const prevMonthWithData = allMonthsWithPayments[allMonthsWithPayments.length - 2] || null;
-  const mrrDisplay = payments.filter(p => p.date?.startsWith(lastMonthWithData)).reduce((s, p) => s + p.amount, 0);
-  const mrrPrevDisplay = prevMonthWithData ? payments.filter(p => p.date?.startsWith(prevMonthWithData)).reduce((s, p) => s + p.amount, 0) : 0;
+  const mrrDisplay = payments.filter(p => p.date >= d30).reduce((s, p) => s + p.amount, 0);
+  const mrrPrevDisplay = payments.filter(p => p.date >= d60 && p.date < d30).reduce((s, p) => s + p.amount, 0);
   const mrrGrowth = mrrPrevDisplay ? Math.round((mrrDisplay - mrrPrevDisplay) / mrrPrevDisplay * 100) : null;
+  const expDisplay = expenses.filter(e => e.date >= d30).reduce((s, e) => s + e.amount, 0);
 
   const totalExpPeriod = periodExpenses.reduce((s, e) => s + e.amount, 0);
   const grossMargin = totalRevenuePeriod > 0 ? Math.round((totalRevenuePeriod - totalExpPeriod) / totalRevenuePeriod * 100) : null;
@@ -131,14 +132,12 @@ export function renderAnalytics() {
   const totalAll = students.length;
   const projectedMRR = activeNow.reduce((sum, s) => sum + (s.price_per_hour || 0) * (s.lessons_per_month || 0), 0);
   const unpaidNow = students.filter(s => s.crm_status === 'active' && !s.paid).length;
-  const mrrThisM = payments.filter(p => p.date?.startsWith(thisMonth())).reduce((s, p) => s + p.amount, 0);
-  const expThisM = expenses.filter(e => e.date?.startsWith(thisMonth())).reduce((s, e) => s + e.amount, 0);
 
   const anOverview = document.getElementById('an-overview-metrics');
   if (anOverview) anOverview.innerHTML = `
     <div class="met"><div class="met-label">Активных учеников</div><div class="met-val">${activeNowCount}</div><div class="met-sub">всего ${totalAll} · ${(CACHE.groups || []).length} групп</div></div>
-    <div class="met"><div class="met-label">Доход этот месяц</div><div class="met-val">${fmt(mrrThisM)} ₽</div><div class="met-sub">расходы ${fmt(expThisM)} ₽</div></div>
-    <div class="met"><div class="met-label">Прибыль этот месяц</div><div class="met-val" style="color:var(--green)">${fmt(mrrThisM - expThisM)} ₽</div></div>
+    <div class="met"><div class="met-label">Доход за 30 дней</div><div class="met-val">${fmt(mrrDisplay)} ₽</div><div class="met-sub">расходы ${fmt(expDisplay)} ₽</div></div>
+    <div class="met"><div class="met-label">Прибыль за 30 дней</div><div class="met-val" style="color:var(--green)">${fmt(mrrDisplay - expDisplay)} ₽</div></div>
     <div class="met"><div class="met-label">Планируемый MRR</div><div class="met-val">${fmt(projectedMRR)} ₽</div><div class="met-sub">по тарифам учеников</div></div>
     <div class="met"><div class="met-label">Не оплатили</div><div class="met-val" style="color:${unpaidNow > 0 ? 'var(--red)' : 'inherit'}">${unpaidNow}</div><div class="met-sub">активных</div></div>
     <div class="met"><div class="met-label">Лиды / Пробные</div><div class="met-val">${students.filter(s => s.crm_status === 'lead').length} / ${students.filter(s => s.crm_status === 'trial').length}</div><div class="met-sub">в воронке</div></div>`;
@@ -155,7 +154,7 @@ export function renderAnalytics() {
     { label: 'ARPU',        val: arpu ? fmt(arpu) + ' ₽/мес' : '—', sub: `ср. по ${studentsWithRate.length} уч.`, hint: 'ср. (цена × занятий) по активным', cls: '' },
     { label: 'Ст-ть часа',  val: hourlyRate ? fmt(hourlyRate) + ' ₽' : '—', sub: 'твой час', hint: 'выручка / кол-во занятий', cls: '' },
     { label: 'Средний чек', val: avgCheck ? fmt(avgCheck) + ' ₽' : '—', sub: `${periodPayments.length} платежей`, hint: '', cls: '' },
-    { label: 'MRR',         val: fmt(mrrDisplay) + ' ₽', sub: mrrGrowth !== null ? (mrrGrowth >= 0 ? '↑ +' + mrrGrowth + '%' : '↓ ' + mrrGrowth + '%') : '', hint: 'последний месяц с данными', cls: mrrGrowth > 0 ? 'good' : mrrGrowth < -10 ? 'warn' : '' },
+    { label: 'MRR',         val: fmt(mrrDisplay) + ' ₽', sub: mrrGrowth !== null ? (mrrGrowth >= 0 ? '↑ +' + mrrGrowth + '%' : '↓ ' + mrrGrowth + '%') : '', hint: 'скользящие 30 дней', cls: mrrGrowth > 0 ? 'good' : mrrGrowth < -10 ? 'warn' : '' },
     { label: 'Gross Margin', val: grossMargin !== null ? grossMargin + '%' : '—', sub: '(доход − расходы) / доход', hint: 'норма: >50%', cls: marginColor(grossMargin) },
     { label: 'Churn rate',  val: churnRate + '%', sub: churned.length + ' ушли за период', hint: 'норма: <5%', cls: churnColor(churnRate) },
     { label: 'Retention',   val: (100 - churnRate) + '%', sub: 'остаются', hint: '1 − churn rate', cls: (100 - churnRate) >= 90 ? 'good' : (100 - churnRate) >= 80 ? '' : 'bad' },
@@ -193,11 +192,12 @@ export function renderAnalytics() {
   const mTotals = mMonths.map(m => payments.filter(p => p.date?.startsWith(m)).reduce((s, p) => s + p.amount, 0));
   const maxMRR = Math.max(...mTotals, 1);
   const mLbls = mMonths.map(m => ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'][+m.split('-')[1] - 1]);
+  const currentMonth = new Date().toISOString().slice(0, 7);
   const mrrBarsEl = document.getElementById('an-mrr-bars');
   if (mrrBarsEl) mrrBarsEl.innerHTML = mMonths.map((m, i) => `
     <div class="mrr-bar-w" title="${mLbls[i]}: ${fmt(mTotals[i])} ₽">
       <div class="mrr-bar-v">${mTotals[i] ? fmt(Math.round(mTotals[i] / 1000)) + 'к' : ''}</div>
-      <div class="mrr-bar-b ${m === lastMonthWithData ? 'cur' : ''}" style="height:${Math.max(3, mTotals[i] / maxMRR * 78)}px"></div>
+      <div class="mrr-bar-b ${m === currentMonth ? 'cur' : ''}" style="height:${Math.max(3, mTotals[i] / maxMRR * 78)}px"></div>
       <div class="mrr-bar-l">${mLbls[i]}</div>
     </div>`).join('');
 
