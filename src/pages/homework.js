@@ -51,26 +51,22 @@ export async function updateHwBadge() {
 export function setHwTab(tab) {
   _hwTab = tab;
   document.querySelectorAll('.hw-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-  document.getElementById('hw-tab-queue').style.display    = tab === 'queue'    ? '' : 'none';
-  document.getElementById('hw-tab-overdue').style.display  = tab === 'overdue'  ? '' : 'none';
-  document.getElementById('hw-tab-all').style.display      = tab === 'all'      ? '' : 'none';
-  document.getElementById('hw-tab-students').style.display = tab === 'students' ? '' : 'none';
-  if (tab === 'queue')           renderHwQueue();
-  else if (tab === 'overdue')    renderOverdueHw();
-  else if (tab === 'students')   renderStudentsTab();
-  else                           renderAllHw();
+  document.getElementById('hw-tab-queue').style.display   = tab === 'queue'   ? '' : 'none';
+  document.getElementById('hw-tab-overdue').style.display = tab === 'overdue' ? '' : 'none';
+  document.getElementById('hw-tab-all').style.display     = tab === 'all'     ? '' : 'none';
+  if (tab === 'queue')        renderHwQueue();
+  else if (tab === 'overdue') renderOverdueHw();
+  else                        renderAllHw();
 }
 
 export async function renderHomeworkPage() {
   await updateHwBadge();
-  if (_hwTab === 'queue')          await renderHwQueue();
-  else if (_hwTab === 'overdue')   await renderOverdueHw();
-  else if (_hwTab === 'students')  await renderStudentsTab();
-  else                             await renderAllHw();
-  document.getElementById('hw-tab-queue').style.display    = _hwTab === 'queue'    ? '' : 'none';
-  document.getElementById('hw-tab-overdue').style.display  = _hwTab === 'overdue'  ? '' : 'none';
-  document.getElementById('hw-tab-all').style.display      = _hwTab === 'all'      ? '' : 'none';
-  document.getElementById('hw-tab-students').style.display = _hwTab === 'students' ? '' : 'none';
+  if (_hwTab === 'queue')        await renderHwQueue();
+  else if (_hwTab === 'overdue') await renderOverdueHw();
+  else                           await renderAllHw();
+  document.getElementById('hw-tab-queue').style.display   = _hwTab === 'queue'   ? '' : 'none';
+  document.getElementById('hw-tab-overdue').style.display = _hwTab === 'overdue' ? '' : 'none';
+  document.getElementById('hw-tab-all').style.display     = _hwTab === 'all'     ? '' : 'none';
 }
 
 async function renderHwQueue() {
@@ -271,8 +267,8 @@ export async function renderAllHwFiltered() {
   await renderAllHw();
 }
 
-async function renderStudentsTab() {
-  const el = document.getElementById('hw-tab-students');
+export async function renderHwStudentsPage() {
+  const el = document.getElementById('hw-students-list');
   if (!el) return;
 
   const role = state.currentRole || {};

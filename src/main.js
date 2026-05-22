@@ -43,7 +43,7 @@ import {
 } from './pages/tasks.js';
 import { renderAccess, openRoleModal, editRole, saveRole, deleteRole, toggleAssistantGroup, openInviteModal, createInvite } from './pages/access.js';
 import {
-  renderHomeworkPage, setHwTab, openReviewModal, saveReview,
+  renderHomeworkPage, renderHwStudentsPage, setHwTab, openReviewModal, saveReview,
   updateScorePreview, updateTotalScore, renderAllHwFiltered,
   updateHwBadge, openCreateHwModal, updateHwLessonOpts, saveNewHw, changeHwStatus,
 } from './pages/homework.js';
@@ -78,6 +78,7 @@ async function init() {
   registerRenderer('expenses', renderExpenses);
   registerRenderer('tasks', renderAssistantTasks);
   registerRenderer('homework', renderHomeworkPage);
+  registerRenderer('hw_students', renderHwStudentsPage);
   registerRenderer('lessons_cal', renderCalendar);
   registerRenderer('analytics', renderAnalytics);
   registerRenderer('access', renderAccess);
