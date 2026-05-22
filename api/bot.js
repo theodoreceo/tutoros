@@ -96,8 +96,7 @@ const botId = () =>
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
-  res.status(200).json({ ok: true }); // acknowledge immediately (Telegram requires <10s)
-  if (req.method !== 'POST') return;
+  if (req.method !== 'POST') return res.status(200).json({ ok: true });
 
   const update = req.body ?? {};
 
@@ -110,6 +109,8 @@ export default async function handler(req, res) {
   } catch (err) {
     console.error('Bot handler error:', err);
   }
+
+  res.status(200).json({ ok: true });
 }
 
 // ── Text message handler ──────────────────────────────────────────────────────
