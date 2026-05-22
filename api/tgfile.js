@@ -28,10 +28,8 @@ export default async function handler(req, res) {
     gif: 'image/gif',  webp: 'image/webp', pdf: 'application/pdf',
   };
   const contentType = contentTypes[ext] || downloadRes.headers.get('content-type') || 'application/octet-stream';
-  const filename    = ext === 'pdf' ? 'homework.pdf' : `photo.${ext}`;
 
   res.setHeader('Content-Type', contentType);
-  res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
   res.setHeader('Cache-Control', 'private, max-age=3600');
   res.send(buffer);
 }
