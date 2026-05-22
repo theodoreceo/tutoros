@@ -6,6 +6,8 @@ export const today = () => { const d = new Date(); return `${d.getFullYear()}-${
 export const dateStr = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 export const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
 export const lastMonth = () => { const d = new Date(); d.setMonth(d.getMonth()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+export const days30Start = () => { const d = new Date(); d.setDate(d.getDate()-30); return d.toISOString().slice(0,10); };
+export const days60Start = () => { const d = new Date(); d.setDate(d.getDate()-60); return d.toISOString().slice(0,10); };
 export const daysLeft = (s) => { if (!s) return null; const diff = (new Date(s + 'T00:00:00') - new Date()) / 86400000; return Math.round(diff); };
 export const g = (id) => (document.getElementById(id) || {}).value || '';
 
@@ -19,8 +21,8 @@ export const ALL_PAGES = [
   { id: 'income',       label: 'Доходы' },
   { id: 'expenses',     label: 'Расходы' },
   { id: 'analytics',    label: 'Аналитика' },
-  { id: 'tasks',        label: 'Задачи' },
   { id: 'homework',     label: 'ДЗ' },
+  { id: 'hw_students',  label: 'Ученики' },
   { id: 'access',       label: 'Доступы' },
   { id: 'curator_dash', label: 'Дашборд' },
 ];
@@ -49,6 +51,6 @@ export const PIPELINE_STAGES = [
 export const GROUP_COLORS = ['#2563eb','#16a34a','#d97706','#7c3aed','#db2777','#0891b2','#ea580c','#0f766e','#9333ea','#dc2626'];
 
 export const ROLE_TYPES = {
-  curator:  { label: 'Куратор',    icon: 'ti-school',       pages: ['curator_dash', 'groups', 'lessons_cal', 'homework'], homePage: 'curator_dash' },
-  marketer: { label: 'Маркетолог', icon: 'ti-speakerphone', pages: ['students', 'crm_students'],                           homePage: 'crm_students' },
+  curator:  { label: 'Куратор',    icon: 'ti-school',       pages: ['curator_dash', 'groups', 'lessons_cal', 'homework', 'hw_students'], homePage: 'curator_dash' },
+  marketer: { label: 'Маркетолог', icon: 'ti-speakerphone', pages: ['students', 'crm_students'],                                          homePage: 'crm_students' },
 };

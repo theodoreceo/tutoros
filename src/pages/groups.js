@@ -166,15 +166,14 @@ export function renderGroupDetail() {
   const hwTotal = allHw.length;
   const hwPct = hwTotal ? Math.round(hwDone / hwTotal * 100) : null;
 
+  const role = state.currentRole || {};
   const metricsEl = document.getElementById('gd-metrics');
   if (metricsEl) metricsEl.innerHTML = `
     <div class="met"><div class="met-label">Учеников</div><div class="met-val">${active.length}<span style="font-size:13px;color:var(--muted)">/${gr.capacity || '∞'}</span></div><div class="met-sub">${gr.schedule || '—'}</div></div>
-    <div class="met"><div class="met-label">Выручка / мес</div><div class="met-val">${fmt(mrr)} ₽</div><div class="met-sub">${fmt(gr.price_per_student || 0)} ₽/уч</div></div>
+    ${role.isOwner ? `<div class="met"><div class="met-label">Выручка / мес</div><div class="met-val">${fmt(mrr)} ₽</div><div class="met-sub">${fmt(gr.price_per_student || 0)} ₽/уч</div></div>` : ''}
     <div class="met"><div class="met-label">Занятий</div><div class="met-val">${lessons.length}</div><div class="met-sub">${lessons[0] ? 'последнее ' + fmtDate(lessons[0].date) : 'ещё не было'}</div></div>
     <div class="met"><div class="met-label">Посещаемость</div><div class="met-val" style="color:${attendPct >= 85 ? 'var(--green)' : attendPct >= 70 ? 'var(--amber)' : 'var(--red)'}">${attendPct}%</div><div class="met-sub">по активным ученикам</div></div>
     ${hwTotal ? `<div class="met"><div class="met-label">Домашка</div><div class="met-val" style="color:${hwPct >= 80 ? 'var(--green)' : hwPct >= 50 ? 'var(--amber)' : 'var(--red)'}">${hwPct}%</div><div class="met-sub">${hwMissing > 0 ? `${hwMissing} не сдано` : 'все сдали'}</div></div>` : ''}`;
-
-  const role = state.currentRole || {};
   const canEdit = role.canEdit || role.isOwner;
   const membersEl = document.getElementById('gd-members');
   if (membersEl) membersEl.innerHTML = members.length ? members.map(s => {

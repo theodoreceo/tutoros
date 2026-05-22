@@ -1,6 +1,6 @@
 import { CACHE } from '../core/store.js';
 import { state } from '../core/state.js';
-import { fmt, fmtDate, thisMonth, lastMonth, dateStr } from '../utils/helpers.js';
+import { fmt, fmtDate, days30Start, days60Start, dateStr } from '../utils/helpers.js';
 import { calcRiskScore, studentSubscriptionStatus } from '../core/risk.js';
 import { GROUP_COLORS } from '../utils/helpers.js';
 
@@ -26,13 +26,14 @@ function groupShort(id) {
 export function renderDashboard() {
   const students = CACHE.students;
   const active = students.filter(s => s.crm_status === 'active');
-  const mrr = CACHE.payments.filter(p => p.date?.startsWith(thisMonth())).reduce((s, p) => s + p.amount, 0);
-  const mrrPrev = CACHE.payments.filter(p => p.date?.startsWith(lastMonth())).reduce((s, p) => s + p.amount, 0);
+  const d30 = days30Start(), d60 = days60Start();
+  const mrr = CACHE.payments.filter(p => p.date >= d30).reduce((s, p) => s + p.amount, 0);
+  const mrrPrev = CACHE.payments.filter(p => p.date >= d60 && p.date < d30).reduce((s, p) => s + p.amount, 0);
   const mrrDelta = mrrPrev ? Math.round((mrr - mrrPrev) / mrrPrev * 100) : null;
   const projectedMRR = active.reduce((sum, s) => sum + (s.price_per_hour || 0) * (s.lessons_per_month || 0), 0);
-  const expThisM = CACHE.expenses.filter(e => e.date?.startsWith(thisMonth())).reduce((s, e) => s + e.amount, 0);
+  const expThisM = CACHE.expenses.filter(e => e.date >= d30).reduce((s, e) => s + e.amount, 0);
   const profit = mrr - expThisM;
-  const profitPrev = mrrPrev - CACHE.expenses.filter(e => e.date?.startsWith(lastMonth())).reduce((s, e) => s + e.amount, 0);
+  const profitPrev = mrrPrev - CACHE.expenses.filter(e => e.date >= d60 && e.date < d30).reduce((s, e) => s + e.amount, 0);
   const profitDelta = profitPrev ? Math.round((profit - profitPrev) / Math.abs(profitPrev) * 100) : null;
   const churned30 = students.filter(s => ['stopped', 'refused', 'left'].includes(s.crm_status) && s.left_at &&
     Math.round((Date.now() - new Date(s.left_at)) / 86400000) <= 30).length;
@@ -46,13 +47,13 @@ export function renderDashboard() {
   if (pulseEl) pulseEl.innerHTML = `
     <div class="pulse-card">
       <div class="p-stripe" style="background:var(--accent-mid)"></div>
-      <div class="p-label">Прибыль / месяц</div>
+      <div class="p-label">Прибыль · 30 дней</div>
       <div class="p-val" style="color:${profit >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(profit)} ₽</div>
       ${profitDelta !== null ? `<div class="p-delta ${deltaClass(profitDelta)}">${deltaIcon(profitDelta)} ${profitDelta > 0 ? '+' : ''}${profitDelta}% к прошлому</div>` : '<div class="p-delta flat">первый месяц</div>'}
     </div>
     <div class="pulse-card">
       <div class="p-stripe" style="background:#c2b5a5"></div>
-      <div class="p-label">Прогноз выручки / месяц</div>
+      <div class="p-label">Прогноз выручки · 30 дней</div>
       <div class="p-val" style="color:#5a5048">${projectedMRR ? fmt(projectedMRR) + ' ₽' : '—'}</div>
       <div class="p-delta flat">сумма LTV · ${active.filter(s => s.price_per_hour && s.lessons_per_month).length} уч. с тарифом</div>
     </div>

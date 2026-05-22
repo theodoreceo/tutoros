@@ -360,40 +360,86 @@ const assistant_groups = [
 
 // ─── Homework Assignments ─────────────────────────────────────────────────────
 const homework_assignments = [
-  { id:'ha1', group_id:'g1', lesson_id:null, topic:'Тригонометрия: формулы приведения',       description:'Задачи 1–15 из сборника Ященко, стр. 47',          due_date:daysAgo(3),       assigned_at:daysAgo(7)+'T18:30:00Z', hw_type:'detailed', is_advanced:false },
-  { id:'ha2', group_id:'g1', lesson_id:null, topic:'Производная: задачи на экстремум',         description:'Вариант 3 полностью, задачи 13–16',                 due_date:daysFromNow(4),   assigned_at:daysAgo(3)+'T18:30:00Z', hw_type:'detailed', is_advanced:false },
-  { id:'ha3', group_id:'g2', lesson_id:null, topic:'Показательные уравнения',                  description:'Самостоятельная работа, все 10 задач',               due_date:daysAgo(1),       assigned_at:daysAgo(6)+'T17:30:00Z', hw_type:'brief',    is_advanced:false },
-  { id:'ha4', group_id:'g2', lesson_id:null, topic:'Логарифмы: сложные преобразования',        description:'Задачи повышенного уровня, стр. 84–85',             due_date:daysFromNow(6),   assigned_at:daysAgo(2)+'T17:30:00Z', hw_type:'trial',    is_advanced:true  },
+  // g1 — ЕГЭ Мат 11А: подробное, просрочено — есть работы в очереди на проверку
+  { id:'ha1', group_id:'g1', lesson_id:null, topic:'Тригонометрия: формулы приведения',
+    description:'Задачи 1–15 из сборника Ященко, стр. 47. Показать полное решение.',
+    due_date:daysAgo(3), assigned_at:daysAgo(8)+'T18:30:00Z',
+    hw_type:'detailed', is_advanced:false, task_config:[15, 20, 20, 25, 20] },
+
+  // g1 — ЕГЭ Мат 11А: подробное, в срок — часть уже сдала досрочно
+  { id:'ha2', group_id:'g1', lesson_id:null, topic:'Производная: задачи на экстремум',
+    description:'Вариант 3 полностью, задачи 13–16. Оформление обязательно.',
+    due_date:daysFromNow(4), assigned_at:daysAgo(3)+'T18:30:00Z',
+    hw_type:'detailed', is_advanced:false, task_config:[25, 25, 25, 25] },
+
+  // g2 — ЕГЭ Мат 11Б: пробная работа (trial), дедлайн через 2 дня
+  { id:'ha3', group_id:'g2', lesson_id:null, topic:'Пробный вариант ЕГЭ №7',
+    description:'Полный вариант: 18 заданий базовой части + 7 из профильной. Время — 3ч 55мин.',
+    due_date:daysFromNow(2), assigned_at:daysAgo(4)+'T17:30:00Z',
+    hw_type:'trial', is_advanced:false, task_config:[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,4,5,6,7,7,8,10] },
+
+  // g2 — ЕГЭ Мат 11Б: краткий ответ (brief), просрочено — тест
+  { id:'ha4', group_id:'g2', lesson_id:null, topic:'Показательные уравнения — экспресс-тест',
+    description:'Решить уравнение: 2^(2x-1) = 128. Записать только числовой ответ.',
+    due_date:daysAgo(1), assigned_at:daysAgo(6)+'T17:30:00Z',
+    hw_type:'brief', is_advanced:false, correct_answer:'3.5' },
+
+  // g3 — ОГЭ Мат 9: подробное, в срок — очередь на проверку есть
+  { id:'ha5', group_id:'g3', lesson_id:null, topic:'Геометрия: площадь треугольника и трапеции',
+    description:'Задачи 8–12 из варианта ОГЭ 2024. Чертёж обязателен.',
+    due_date:daysFromNow(3), assigned_at:daysAgo(2)+'T11:30:00Z',
+    hw_type:'detailed', is_advanced:false, task_config:[20, 20, 20, 20, 20] },
+
+  // g4 — ЕГЭ Физика 11: подробное, просрочено
+  { id:'ha6', group_id:'g4', lesson_id:null, topic:'Законы Ньютона: задачи на динамику',
+    description:'Сборник Савченко, стр. 34, задачи 5–9. Показать схемы сил.',
+    due_date:daysAgo(2), assigned_at:daysAgo(7)+'T17:30:00Z',
+    hw_type:'detailed', is_advanced:false, task_config:[20, 20, 20, 20, 20] },
 ];
 
 // ─── Homework Submissions ─────────────────────────────────────────────────────
 const homework_submissions = [
-  // ha1 (g1, просрочено) — часть сдала, часть нет
-  { id:'hs1',  assignment_id:'ha1', student_id:'s1', submission_url:'https://t.me/c/123/456',      source:'telegram', submitted_at:daysAgo(4)+'T20:15:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs2',  assignment_id:'ha1', student_id:'s2', submission_url:'https://vk.com/doc123',       source:'vk',       submitted_at:daysAgo(5)+'T21:30:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs3',  assignment_id:'ha1', student_id:'s3', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'overdue',   score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs4',  assignment_id:'ha1', student_id:'s4', submission_url:'https://t.me/c/123/460',      source:'telegram', submitted_at:daysAgo(3)+'T19:45:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs5',  assignment_id:'ha1', student_id:'s5', submission_url:'https://docs.google.com/123', source:'web',      submitted_at:daysAgo(6)+'T22:00:00Z', status:'checked',   score:84,    comment:'Хорошая работа! Ошибки в знаках.', errors:['Формула sin(π−x) применена неверно','Потеряно решение в тригонометрическом уравнении'], checked_by:'r2', checked_at:daysAgo(5)+'T10:00:00Z' },
-  { id:'hs6',  assignment_id:'ha1', student_id:'s37',submission_url:'https://t.me/c/123/461',      source:'telegram', submitted_at:daysAgo(4)+'T20:00:00Z', status:'checked',   score:91,    comment:'Отлично, почти без ошибок.',      errors:['Опечатка в задаче 7'], checked_by:'r2', checked_at:daysAgo(3)+'T11:00:00Z' },
+  // ha1 (g1, просрочено) — 3 в очереди на проверку, 1 проверена, 1 просрочена, 1 не сдала
+  { id:'hs1',  assignment_id:'ha1', student_id:'s1',  submitted_at:daysAgo(4)+'T20:15:00Z', status:'submitted', score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs2',  assignment_id:'ha1', student_id:'s2',  submitted_at:daysAgo(5)+'T21:30:00Z', status:'submitted', score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs3',  assignment_id:'ha1', student_id:'s3',  submitted_at:null,                    status:'overdue',   score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs4',  assignment_id:'ha1', student_id:'s4',  submitted_at:daysAgo(3)+'T19:45:00Z', status:'submitted', score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs5',  assignment_id:'ha1', student_id:'s5',  submitted_at:daysAgo(6)+'T22:00:00Z', status:'checked',   score:84,    task_scores:[13,18,17,22,14], comment:'Хорошая работа! Ошибки в знаках при приведении.', submitted_files:[], checked_by:'r2', checked_at:daysAgo(5)+'T10:00:00Z' },
+  { id:'hs6',  assignment_id:'ha1', student_id:'s37', submitted_at:daysAgo(4)+'T20:00:00Z', status:'checked',   score:91,    task_scores:[14,19,19,24,15], comment:'Отлично, почти без ошибок. Молодец!', submitted_files:[], checked_by:'r2', checked_at:daysAgo(3)+'T11:00:00Z' },
 
-  // ha2 (g1, в срок) — кто-то сдал, кто-то ещё нет
-  { id:'hs7',  assignment_id:'ha2', student_id:'s1', submission_url:'https://t.me/c/123/470',      source:'telegram', submitted_at:daysAgo(1)+'T21:00:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs8',  assignment_id:'ha2', student_id:'s2', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs9',  assignment_id:'ha2', student_id:'s3', submission_url:'https://t.me/c/123/471',      source:'telegram', submitted_at:daysAgo(1)+'T22:30:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs10', assignment_id:'ha2', student_id:'s4', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs11', assignment_id:'ha2', student_id:'s5', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  // ha2 (g1, в срок через 4д) — 2 сдали досрочно (очередь), 3 ещё не сдали
+  { id:'hs7',  assignment_id:'ha2', student_id:'s1',  submitted_at:daysAgo(1)+'T21:00:00Z', status:'submitted', score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs8',  assignment_id:'ha2', student_id:'s2',  submitted_at:null,                    status:'assigned',  score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs9',  assignment_id:'ha2', student_id:'s3',  submitted_at:daysAgo(1)+'T22:30:00Z', status:'submitted', score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs10', assignment_id:'ha2', student_id:'s4',  submitted_at:null,                    status:'assigned',  score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs11', assignment_id:'ha2', student_id:'s5',  submitted_at:null,                    status:'assigned',  score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
 
-  // ha3 (g2, просрочено) — 2 сдали, 1 проверена, 1 не сдал
-  { id:'hs12', assignment_id:'ha3', student_id:'s6', submission_url:'https://t.me/c/456/201',      source:'telegram', submitted_at:daysAgo(2)+'T20:00:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs13', assignment_id:'ha3', student_id:'s7', submission_url:'https://vk.com/doc456',       source:'vk',       submitted_at:daysAgo(4)+'T18:00:00Z', status:'checked',   score:95,    comment:'Блестящая работа!',              errors:[], checked_by:'r2', checked_at:daysAgo(3)+'T09:00:00Z' },
-  { id:'hs14', assignment_id:'ha3', student_id:'s8', submission_url:'https://t.me/c/456/202',      source:'telegram', submitted_at:daysAgo(1)+'T23:00:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs15', assignment_id:'ha3', student_id:'s9', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'overdue',   score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  // ha3 (g2, trial, срок через 2д) — 2 сдали досрочно (очередь)
+  { id:'hs12', assignment_id:'ha3', student_id:'s6',  submitted_at:daysAgo(1)+'T20:00:00Z', status:'submitted', score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs13', assignment_id:'ha3', student_id:'s7',  submitted_at:daysAgo(2)+'T18:00:00Z', status:'submitted', score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs14', assignment_id:'ha3', student_id:'s8',  submitted_at:null,                    status:'assigned',  score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs15', assignment_id:'ha3', student_id:'s9',  submitted_at:null,                    status:'assigned',  score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs31', assignment_id:'ha3', student_id:'s31', submitted_at:daysAgo(1)+'T15:00:00Z', status:'submitted', score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs32', assignment_id:'ha3', student_id:'s32', submitted_at:null,                    status:'assigned',  score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
 
-  // ha4 (g2, в срок) — только 1 сдала досрочно
-  { id:'hs16', assignment_id:'ha4', student_id:'s6', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs17', assignment_id:'ha4', student_id:'s7', submission_url:'https://docs.google.com/456', source:'web',      submitted_at:daysAgo(1)+'T14:00:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs18', assignment_id:'ha4', student_id:'s8', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
-  { id:'hs19', assignment_id:'ha4', student_id:'s9', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  // ha4 (g2, brief, просрочено) — 2 проверены авто, 1 просрочена, 1 не ответила
+  { id:'hs16', assignment_id:'ha4', student_id:'s6',  submitted_at:daysAgo(3)+'T10:00:00Z', status:'checked',   score:100,   task_scores:null,        comment:'Верно! Автопроверка.',            submitted_files:[], checked_by:null, checked_at:daysAgo(3)+'T10:01:00Z' },
+  { id:'hs17', assignment_id:'ha4', student_id:'s7',  submitted_at:daysAgo(2)+'T14:00:00Z', status:'checked',   score:0,     task_scores:null,        comment:'Неверно. Правильный ответ: 3.5.', submitted_files:[], checked_by:null, checked_at:daysAgo(2)+'T14:01:00Z' },
+  { id:'hs18', assignment_id:'ha4', student_id:'s8',  submitted_at:null,                    status:'overdue',   score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs19', assignment_id:'ha4', student_id:'s9',  submitted_at:null,                    status:'assigned',  score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+
+  // ha5 (g3, в срок через 3д) — 2 сдали досрочно (очередь на проверку)
+  { id:'hs20', assignment_id:'ha5', student_id:'s10', submitted_at:daysAgo(1)+'T19:00:00Z', status:'submitted', score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs21', assignment_id:'ha5', student_id:'s11', submitted_at:null,                    status:'assigned',  score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs22', assignment_id:'ha5', student_id:'s12', submitted_at:daysAgo(1)+'T21:00:00Z', status:'submitted', score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs23', assignment_id:'ha5', student_id:'s13', submitted_at:null,                    status:'assigned',  score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs24', assignment_id:'ha5', student_id:'s14', submitted_at:null,                    status:'assigned',  score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+
+  // ha6 (g4, просрочено) — 2 в очереди, 1 проверена, 1 просрочена
+  { id:'hs25', assignment_id:'ha6', student_id:'s15', submitted_at:daysAgo(3)+'T20:00:00Z', status:'submitted', score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs26', assignment_id:'ha6', student_id:'s16', submitted_at:daysAgo(4)+'T19:30:00Z', status:'checked',   score:88,    task_scores:[18,19,17,18,16], comment:'Хорошие схемы сил. Задача 3 — ошибка в направлении ускорения.', submitted_files:[], checked_by:'r2', checked_at:daysAgo(3)+'T09:30:00Z' },
+  { id:'hs27', assignment_id:'ha6', student_id:'s17', submitted_at:daysAgo(2)+'T22:00:00Z', status:'submitted', score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
+  { id:'hs28', assignment_id:'ha6', student_id:'s36', submitted_at:null,                    status:'overdue',   score:null,  task_scores:null,        comment:'',                                submitted_files:[], checked_by:null, checked_at:null },
 ];
 
 // ─── Export ───────────────────────────────────────────────────────────────────

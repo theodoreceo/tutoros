@@ -40,12 +40,38 @@ export function applyRoleUI(role) {
   document.querySelectorAll('.edit-only').forEach(el => el.style.display = (role.canEdit || role.isOwner) ? '' : 'none');
 }
 
+function _renderDevSwitcher(activeRole) {
+  const bar = document.getElementById('dev-role-switcher');
+  if (!bar) return;
+  if (!isDemoMode()) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+
+  const allRoles = [
+    { ...OWNER_ROLE, name: 'Владелец' },
+    ...CACHE.roles.filter(r => r.role_type !== 'owner'),
+  ];
+
+  bar.innerHTML = allRoles.map(r => {
+    const isActive = activeRole.id === r.id || (activeRole.isOwner && r.id === 'owner');
+    const rt = ROLE_TYPES[r.role_type];
+    const label = r.isOwner ? 'Владелец' : (rt?.label || r.name);
+    return `<button onclick="selectRole('${r.id}')" style="
+      font-size:11px;padding:3px 10px;border-radius:10px;border:1px solid;cursor:pointer;
+      font-family:inherit;transition:all .15s;
+      background:${isActive ? 'rgba(59,130,246,.18)' : 'rgba(226,232,240,.04)'};
+      color:${isActive ? '#60a5fa' : 'rgba(226,232,240,.35)'};
+      border-color:${isActive ? 'rgba(59,130,246,.4)' : 'rgba(226,232,240,.1)'}
+    ">${label}</button>`;
+  }).join('');
+}
+
 export function applyRole(role) {
   state.currentRole = role;
   if (isDemoMode()) localStorage.setItem('tutoros_role', JSON.stringify(role));
   document.getElementById('setup-screen')?.classList.remove('show');
   document.getElementById('app').style.display = 'flex';
   applyRoleUI(role);
+  _renderDevSwitcher(role);
   import('./router.js').then(({ navigate }) => {
     const homePage = role.isOwner
       ? 'dashboard'
