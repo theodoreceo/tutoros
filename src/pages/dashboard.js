@@ -4,6 +4,15 @@ import { fmt, fmtDate, thisMonth, lastMonth, dateStr } from '../utils/helpers.js
 import { calcRiskScore, studentSubscriptionStatus } from '../core/risk.js';
 import { GROUP_COLORS } from '../utils/helpers.js';
 
+let _dashTab = 'students';
+
+export function setDashTab(tab) {
+  _dashTab = tab;
+  document.querySelectorAll('.dash-tab').forEach((b, i) => b.classList.toggle('on', ['students', 'funnel'][i] === tab));
+  document.getElementById('dash-tab-students').style.display = tab === 'students' ? '' : 'none';
+  document.getElementById('dash-tab-funnel').style.display = tab === 'funnel' ? '' : 'none';
+}
+
 function groupColor(gid) {
   const idx = CACHE.groups.findIndex(g => g.id === gid);
   return GROUP_COLORS[idx % GROUP_COLORS.length] || '#64748b';
@@ -20,11 +29,12 @@ export function renderDashboard() {
   const mrr = CACHE.payments.filter(p => p.date?.startsWith(thisMonth())).reduce((s, p) => s + p.amount, 0);
   const mrrPrev = CACHE.payments.filter(p => p.date?.startsWith(lastMonth())).reduce((s, p) => s + p.amount, 0);
   const mrrDelta = mrrPrev ? Math.round((mrr - mrrPrev) / mrrPrev * 100) : null;
+  const projectedMRR = active.reduce((sum, s) => sum + (s.price_per_hour || 0) * (s.lessons_per_month || 0), 0);
   const expThisM = CACHE.expenses.filter(e => e.date?.startsWith(thisMonth())).reduce((s, e) => s + e.amount, 0);
   const profit = mrr - expThisM;
   const profitPrev = mrrPrev - CACHE.expenses.filter(e => e.date?.startsWith(lastMonth())).reduce((s, e) => s + e.amount, 0);
   const profitDelta = profitPrev ? Math.round((profit - profitPrev) / Math.abs(profitPrev) * 100) : null;
-  const churned30 = students.filter(s => ['stopped', 'refused'].includes(s.crm_status) && s.left_at &&
+  const churned30 = students.filter(s => ['stopped', 'refused', 'left'].includes(s.crm_status) && s.left_at &&
     Math.round((Date.now() - new Date(s.left_at)) / 86400000) <= 30).length;
   const retentionBase = active.length + churned30;
   const retention = retentionBase ? Math.round(active.length / retentionBase * 100) : 100;
@@ -39,6 +49,12 @@ export function renderDashboard() {
       <div class="p-label">Прибыль / месяц</div>
       <div class="p-val" style="color:${profit >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(profit)} ₽</div>
       ${profitDelta !== null ? `<div class="p-delta ${deltaClass(profitDelta)}">${deltaIcon(profitDelta)} ${profitDelta > 0 ? '+' : ''}${profitDelta}% к прошлому</div>` : '<div class="p-delta flat">первый месяц</div>'}
+    </div>
+    <div class="pulse-card">
+      <div class="p-stripe" style="background:#c2b5a5"></div>
+      <div class="p-label">Прогноз выручки / месяц</div>
+      <div class="p-val" style="color:#5a5048">${projectedMRR ? fmt(projectedMRR) + ' ₽' : '—'}</div>
+      <div class="p-delta flat">сумма LTV · ${active.filter(s => s.price_per_hour && s.lessons_per_month).length} уч. с тарифом</div>
     </div>
     <div class="pulse-card">
       <div class="p-stripe" style="background:#22c55e"></div>
@@ -123,6 +139,28 @@ export function renderDashboard() {
     if (age >= 3) actions.push({ level: 'notice', icon: 'ti-user-question', title: `Лид: ${s.name} — ${age} дн. без движения`, sub: `${s.source || ''}`, action: `openStudentDetail('${s.id}')`, actionLabel: 'Карточка' });
   });
 
+  // HW queue alerts
+  const role2 = state.currentRole || {};
+  const myGroupIds2 = role2.isOwner
+    ? null
+    : new Set((CACHE.assistant_groups || []).filter(ag => ag.assistant_id === role2.id).map(ag => ag.group_id));
+  const myAssignmentIds2 = new Set(
+    (CACHE.homework_assignments || [])
+      .filter(a => !myGroupIds2 || myGroupIds2.has(a.group_id))
+      .map(a => a.id)
+  );
+  const pendingReview = (CACHE.homework_submissions || []).filter(s =>
+    s.status === 'submitted' && myAssignmentIds2.has(s.assignment_id)
+  );
+  const overdueHw = (CACHE.homework_submissions || []).filter(s => {
+    if (s.status === 'checked') return false;
+    if (myAssignmentIds2.size && !myAssignmentIds2.has(s.assignment_id)) return false;
+    const asgn = (CACHE.homework_assignments || []).find(a => a.id === s.assignment_id);
+    return asgn?.due_date && new Date(asgn.due_date) < new Date();
+  });
+  if (pendingReview.length) actions.push({ level: 'important', icon: 'ti-clipboard-check', title: `${pendingReview.length} ДЗ ждут проверки`, sub: 'по вашим группам', action: `navigate('homework')`, actionLabel: 'Проверить' });
+  if (overdueHw.length) actions.push({ level: 'notice', icon: 'ti-clock-x', title: `${overdueHw.length} ДЗ просрочены`, sub: '', action: `navigate('homework')`, actionLabel: 'Посмотреть' });
+
   const actionsEl = document.getElementById('dash-actions');
   const countEl = document.getElementById('dash-action-count');
   if (countEl) countEl.textContent = actions.length ? `${actions.length} пунктов` : '';
@@ -173,23 +211,24 @@ export function renderDashboard() {
       trial_done: students.filter(s => ['trial_done', 'trial'].includes(s.crm_status)).length,
       active: students.filter(s => s.crm_status === 'active').length,
       exam_passed: students.filter(s => s.crm_status === 'exam_passed').length,
-      stopped: students.filter(s => s.crm_status === 'stopped').length,
+      stopped: students.filter(s => ['stopped', 'refused'].includes(s.crm_status)).length,
+      left: students.filter(s => s.crm_status === 'left').length,
     };
     const steps = [
-      { label: 'Лиды', color: '#2563eb', n: counts.lead },
+      { label: 'Лиды', color: '#64748b', n: counts.lead },
       { label: 'Пробник назначен', color: '#7c3aed', n: counts.trial_scheduled },
       { label: 'Пробник проведён', color: '#d97706', n: counts.trial_done },
       { label: 'Занимаются', color: '#16a34a', n: counts.active },
       { label: 'Сдали экзамен', color: '#0891b2', n: counts.exam_passed },
     ];
     const maxN = Math.max(...steps.map(s => s.n), 1);
-    const c1 = counts.lead ? Math.round((counts.trial_scheduled + counts.trial_done) / counts.lead * 100) : 0;
-    const c2 = (counts.trial_scheduled + counts.trial_done) ? Math.round(counts.active / (counts.trial_scheduled + counts.trial_done) * 100) : 0;
-    const total = counts.lead || 1;
+    const trialTotal = counts.trial_scheduled + counts.trial_done;
+    const c1 = counts.lead ? Math.round(trialTotal / counts.lead * 100) : 0;
+    const c2 = trialTotal ? Math.round(counts.active / trialTotal * 100) : 0;
     funnelEl.innerHTML = steps.map((s, i) => {
       const conv = i === 1 ? `${c1}% из лидов` : i === 3 ? `${c2}% из пробных` : '';
       return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:${i < steps.length - 1 ? '1px solid var(--border)' : 'none'}">
-        <div style="width:130px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer" onclick="navigate('students')">${s.label}</div>
+        <div style="width:130px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer" onclick="navigate('crm_students')">${s.label}</div>
         <div style="flex:1;background:var(--surface2);border-radius:3px;height:20px;overflow:hidden">
           <div style="height:20px;border-radius:3px;background:${s.color};width:${s.n / maxN * 100}%;display:flex;align-items:center;padding-left:6px;min-width:${s.n ? '24px' : '0'};transition:.3s">
             ${s.n ? `<span style="font-size:11px;font-weight:700;color:#fff;white-space:nowrap">${s.n}</span>` : ''}
@@ -197,7 +236,11 @@ export function renderDashboard() {
         </div>
         <div style="width:70px;text-align:right;font-size:11px;color:var(--muted);white-space:nowrap">${conv}</div>
       </div>`;
-    }).join('') + `<div style="margin-top:8px;font-size:11px;color:var(--muted)">Отказались: <b>${counts.stopped}</b> · Конверсия лид→активный: <b>${counts.lead ? Math.round(counts.active / counts.lead * 100) : 0}%</b></div>`;
+    }).join('') + `<div style="margin-top:10px;display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--muted)">
+      <span>Конверсия лид→активный: <b style="color:var(--text)">${counts.lead ? Math.round(counts.active / counts.lead * 100) : 0}%</b></span>
+      <span>Отказались: <b style="color:var(--text)">${counts.stopped}</b></span>
+      <span>Ушли: <b style="color:var(--text)">${counts.left}</b></span>
+    </div>`;
   }
 
   // History

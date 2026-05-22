@@ -12,6 +12,7 @@ const TITLES = {
   expenses:     'Расходы',
   analytics:    'Аналитика',
   tasks:        'Задачи ассистентам',
+  homework:     'Домашние задания',
   access:       'Управление доступами',
 };
 
@@ -36,6 +37,11 @@ export function navigate(pg) {
 
 export function setupNav() {
   document.querySelectorAll('.sb-item[data-pg]').forEach(el => {
-    el.addEventListener('click', () => navigate(el.dataset.pg));
+    el.addEventListener('click', () => {
+      navigate(el.dataset.pg);
+      // close mobile drawer
+      document.getElementById('sidebar')?.classList.remove('open');
+      document.getElementById('sb-overlay')?.classList.remove('show');
+    });
   });
 }

@@ -121,12 +121,9 @@ export async function saveAssistantTask(id) {
   if (!obj.title) { toast('Введите название задачи'); return; }
   if (id) {
     await dbUpdate('atasks', id, obj);
-    CACHE.atasks = (CACHE.atasks || []).map(x => x.id === id ? obj : x);
     await addHistoryEntry('update', `Задача обновлена: ${obj.title}`, 'task', id, { table: 'atasks', action: 'update', record_id: id, old_data: null });
   } else {
     await dbInsert('atasks', obj);
-    if (!CACHE.atasks) CACHE.atasks = [];
-    CACHE.atasks.push(obj);
     await addHistoryEntry('insert', `Создана задача: ${obj.title}${obj.assignee ? ' → ' + obj.assignee : ''}`, 'task', obj.id, { table: 'atasks', action: 'insert', record_id: obj.id, old_data: null });
   }
   closeModal();
@@ -135,9 +132,7 @@ export async function saveAssistantTask(id) {
 }
 
 export async function changeTaskStatus(id, newStatus) {
-  const task = (CACHE.atasks || []).find(t => t.id === id);
-  if (!task) return;
-  task.status = newStatus;
+  if (!(CACHE.atasks || []).find(t => t.id === id)) return;
   await dbUpdate('atasks', id, { status: newStatus });
   renderAssistantTasks();
   toast('Статус обновлён');
@@ -145,7 +140,6 @@ export async function changeTaskStatus(id, newStatus) {
 
 export async function deleteAssistantTask(id) {
   if (!confirm('Удалить задачу?')) return;
-  CACHE.atasks = (CACHE.atasks || []).filter(t => t.id !== id);
   await dbDelete('atasks', id);
   renderAssistantTasks();
   toast('Задача удалена');

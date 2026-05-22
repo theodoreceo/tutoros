@@ -1,32 +1,37 @@
 import './styles/index.css';
 
-import { initLocalStorage, clearDemoData } from './core/store.js';
+import { supabase } from './lib/supabase.js';
+import { initSupabase, clearDemoData, seedDemoData, isDemoMode, setDemoMode } from './core/store.js';
 import { state } from './core/state.js';
-import { restoreSession, selectRole, applyRoleUI, logout, promptSwitchRole, confirmSwitch } from './core/auth.js';
+import {
+  restoreSession, selectRole, applyRoleUI, logout, promptSwitchRole, confirmSwitch,
+  showLoginForm, showRegisterForm, handleLogin, handleRegister,
+} from './core/auth.js';
 import { navigate, registerRenderer, setupNav } from './core/router.js';
 import { initSidebar } from './components/sidebar.js';
 import { closeModal } from './components/modal.js';
 import { toast } from './components/toast.js';
 
-import { renderDashboard } from './pages/dashboard.js';
+import { renderDashboard, setDashTab } from './pages/dashboard.js';
 import { renderHistoryPage, undoHistoryEntry } from './pages/history-page.js';
 import {
   renderStudents, renderCRMStudents, renderPipeline, setCRMView, setCRMStatusFilter,
   openStudentModal, calcLTV, editStudent, saveStudent, deleteStudent,
   openStudentDetail, openStatusDateModal, confirmStatusChange,
   openTrialFromCalendar, scheduleTrialLesson,
-  openPaymentModalFor, addStudentNote, selectChip,
+  openPaymentModalFor, addStudentNote, selectChip, resetStudentRisk,
+  copyRegToken,
 } from './pages/students.js';
 import {
   renderGroups, openGroupModal, editGroup, saveGroup, deleteGroup,
   openGroupDetail, closeGroupDetail, renderGroupDetail, renderLessonJournal,
   openLessonModal, saveLesson, deleteLesson,
-  setHwStatus as groupsSetHwStatus,
+  setGroupHwStatus,
 } from './pages/groups.js';
 import {
   setCalView, calNav, calToday, renderCalendar,
-  openLessonFromCalendar, openLessonFormModal, toggleAttendance,
-  setHwStatus as calSetHwStatus,
+  openLessonFromCalendar, openLessonFormFromPicker, openLessonFormModal, toggleAttendance,
+  setCalHwStatus, toggleHwAssignBlock,
   saveLessonForm, openLessonCard, deleteLesson as calDeleteLesson, exportICS,
 } from './pages/calendar.js';
 import { renderIncome, openPaymentModal, savePayment, deletePayment } from './pages/income.js';
@@ -36,14 +41,34 @@ import {
   setTaskFilter, renderAssistantTasks, openAssistantTaskModal, editAssistantTask,
   saveAssistantTask, changeTaskStatus, deleteAssistantTask,
 } from './pages/tasks.js';
-import { renderAccess, openRoleModal, editRole, saveRole, deleteRole } from './pages/access.js';
+import { renderAccess, openRoleModal, editRole, saveRole, deleteRole, toggleAssistantGroup, openInviteModal, createInvite } from './pages/access.js';
+import {
+  renderHomeworkPage, setHwTab, openReviewModal, saveReview,
+  addReviewError, removeReviewError, updateScorePreview, renderAllHwFiltered,
+  updateHwBadge, openCreateHwModal, updateHwLessonOpts, saveNewHw, changeHwStatus,
+} from './pages/homework.js';
+import { renderCuratorDashPage } from './pages/curator-dash.js';
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 
-function init() {
-  initLocalStorage();
-  initSidebar();
+function _updateModeUI() {
+  const demo = isDemoMode();
+  const dot = document.getElementById('sync-dot');
+  const label = document.getElementById('sync-label');
+  const btn = document.getElementById('demo-toggle');
+  if (dot) dot.style.background = demo ? '#f59e0b' : '#22c55e';
+  if (label) label.textContent = demo ? 'Демо-режим' : 'Supabase · онлайн';
+  if (btn) {
+    btn.textContent = demo ? 'Выйти из демо' : 'Демо';
+    btn.style.color = demo ? '#f59e0b' : 'rgba(247,243,238,.5)';
+    btn.style.borderColor = demo ? 'rgba(245,158,11,.4)' : 'rgba(247,243,238,.2)';
+  }
+}
 
+async function init() {
+  const loadingEl = document.getElementById('loading-screen');
+
+  initSidebar();
   registerRenderer('dashboard', renderDashboard);
   registerRenderer('history', renderHistoryPage);
   registerRenderer('students', renderStudents);
@@ -52,13 +77,51 @@ function init() {
   registerRenderer('income', renderIncome);
   registerRenderer('expenses', renderExpenses);
   registerRenderer('tasks', renderAssistantTasks);
+  registerRenderer('homework', renderHomeworkPage);
   registerRenderer('lessons_cal', renderCalendar);
   registerRenderer('analytics', renderAnalytics);
   registerRenderer('access', renderAccess);
+  registerRenderer('curator_dash', renderCuratorDashPage);
 
-  const restored = restoreSession();
-  if (!restored) {
+  const showSetup = (formFn) => {
+    if (loadingEl) loadingEl.style.display = 'none';
     document.getElementById('setup-screen')?.classList.add('show');
+    formFn();
+  };
+
+  if (isDemoMode()) {
+    try { await initSupabase(); } catch (err) {
+      if (loadingEl) loadingEl.innerHTML = `<div style="color:#ef4444;font-size:14px"><b>Ошибка загрузки данных</b><br><span style="font-size:12px;opacity:.7">${err.message}</span></div>`;
+      return;
+    }
+    if (loadingEl) loadingEl.style.display = 'none';
+    _updateModeUI();
+    updateHwBadge();
+    const restored = await restoreSession();
+    if (!restored) showSetup(promptSwitchRole);
+    return;
+  }
+
+  // Production: check for invite token in URL first
+  const inviteToken = new URLSearchParams(window.location.search).get('invite');
+
+  // Check existing Supabase session
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (session) {
+    try { await initSupabase(); } catch (err) {
+      if (loadingEl) loadingEl.innerHTML = `<div style="color:#ef4444;font-size:14px"><b>Ошибка подключения к базе данных</b><br><span style="font-size:12px;opacity:.7">${err.message}</span></div>`;
+      return;
+    }
+    if (loadingEl) loadingEl.style.display = 'none';
+    _updateModeUI();
+    updateHwBadge();
+    const restored = await restoreSession();
+    if (!restored) showSetup(showLoginForm);
+  } else if (inviteToken) {
+    showSetup(() => showRegisterForm(inviteToken));
+  } else {
+    showSetup(showLoginForm);
   }
 }
 
@@ -72,7 +135,25 @@ window.logout = logout;
 window.promptSwitchRole = promptSwitchRole;
 window.confirmSwitch = confirmSwitch;
 window.selectRole = selectRole;
-window.clearDemoData = () => { if (confirm('Сбросить все данные?')) { clearDemoData(); location.reload(); } };
+window.showLoginForm = showLoginForm;
+window.showRegisterForm = showRegisterForm;
+window.handleLogin = handleLogin;
+window.handleRegister = handleRegister;
+window.clearDemoData = async () => { if (confirm('Сбросить все данные?')) { await clearDemoData(); location.reload(); } };
+window.seedDemoData = async () => {
+  if (!confirm('Загрузить тестовые данные в пустую базу?')) return;
+  await seedDemoData();
+  location.reload();
+};
+window.toggleDemoMode = () => {
+  const going = !isDemoMode();
+  const msg = going
+    ? 'Включить демо-режим?\n\nДанные из вашей базы не изменятся — вы просто увидите тестовые данные.'
+    : 'Выйти из демо-режима и вернуться к реальной базе данных?';
+  if (!confirm(msg)) return;
+  setDemoMode(going);
+  location.reload();
+};
 
 // Students
 window.renderStudents = renderStudents;
@@ -93,6 +174,8 @@ window.scheduleTrialLesson = scheduleTrialLesson;
 window.openPaymentModalFor = openPaymentModalFor;
 window.addStudentNote = addStudentNote;
 window.selectChip = selectChip;
+window.resetStudentRisk = resetStudentRisk;
+window.copyRegToken = copyRegToken;
 
 // Groups
 window.renderGroups = renderGroups;
@@ -114,17 +197,16 @@ window.calNav = calNav;
 window.calToday = calToday;
 window.renderCalendar = renderCalendar;
 window.openLessonFromCalendar = openLessonFromCalendar;
+window.openLessonFormFromPicker = openLessonFormFromPicker;
 window.openLessonFormModal = openLessonFormModal;
 window.toggleAttendance = toggleAttendance;
 window.saveLessonForm = saveLessonForm;
 window.openLessonCard = openLessonCard;
 window.exportICS = exportICS;
 
-// setHwStatus dispatch — groups version takes 4 string args, calendar takes 2 (second is element)
-window.setHwStatus = function(...args) {
-  if (args.length === 4) return groupsSetHwStatus(...args);
-  return calSetHwStatus(...args);
-};
+window.setGroupHwStatus = setGroupHwStatus;
+window.setCalHwStatus = setCalHwStatus;
+window.toggleHwAssignBlock = toggleHwAssignBlock;
 
 // Income
 window.openPaymentModal = openPaymentModal;
@@ -155,6 +237,37 @@ window.openRoleModal = openRoleModal;
 window.editRole = editRole;
 window.saveRole = saveRole;
 window.deleteRole = deleteRole;
+window.toggleAssistantGroup = toggleAssistantGroup;
+window.openInviteModal = openInviteModal;
+window.createInvite = createInvite;
+
+// Homework
+window.setHwTab = setHwTab;
+window.openReviewModal = openReviewModal;
+window.saveReview = saveReview;
+window.addReviewError = addReviewError;
+window.removeReviewError = removeReviewError;
+window.updateScorePreview = updateScorePreview;
+window.renderAllHwFiltered = renderAllHwFiltered;
+window.openCreateHwModal = openCreateHwModal;
+window.updateHwLessonOpts = updateHwLessonOpts;
+window.saveNewHw = saveNewHw;
+window.changeHwStatus = changeHwStatus;
+
+// Dashboard
+window.setDashTab = setDashTab;
+
+// Mobile sidebar
+window.toggleSidebar = () => {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sb-overlay');
+  const open = sb?.classList.toggle('open');
+  ov?.classList.toggle('show', open);
+};
+window.closeSidebar = () => {
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('sb-overlay')?.classList.remove('show');
+};
 
 // History
 window.undoHistoryEntry = undoHistoryEntry;

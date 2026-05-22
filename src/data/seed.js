@@ -87,12 +87,12 @@ const students = [
   { id:'s45', name:'Тарасова Маша',       contact:'@masha_tar',      grade:'11', group_id:'g5', format:'group',      crm_status:'trial_scheduled', price_per_hour:null, lessons_per_month:null, paid:false, trial_score:null, target_score:null, source:'Авито',    notes:'Хочет ЕГЭ по русскому 80+.',                                                      created_at:daysAgo(4)+'T10:00:00Z', first_contact_at:daysAgo(5), left_at:null,             status_history: hist(['lead',daysAgo(5)],['trial_scheduled',daysAgo(3)]) },
   { id:'s46', name:'Никифоров Саша',      contact:'+79381234567',    grade:'11', group_id:'g2', format:'group',      crm_status:'trial_done',      price_per_hour:null, lessons_per_month:null, paid:false, trial_score:54, target_score:82,   source:'Профи.ру', notes:'Сильный ученик. Пробное прошло отлично.',                                          created_at:daysAgo(7)+'T10:00:00Z', first_contact_at:daysAgo(9), left_at:null,             status_history: hist(['lead',daysAgo(9)],['trial_scheduled',daysAgo(6)],['trial_done',daysAgo(2)]) },
 
-  // ── PAUSED ──
-  { id:'s47', name:'Фомина Алла',         contact:'@alla_fom',       grade:'11', group_id:null, format:'individual', crm_status:'stopped',         price_per_hour:3000, lessons_per_month:6, paid:false, trial_score:48, target_score:72,  source:'Авито',    notes:'Взяла паузу из-за болезни. Планирует вернуться.',                                  created_at:'2025-10-20T10:00:00Z', first_contact_at:'2025-10-18', left_at:'2026-02-01',    status_history: hist(['lead','2025-10-18'],['trial_done','2025-10-23'],['active','2025-10-27'],['stopped','2026-02-01']) },
-  { id:'s48', name:'Казаков Виктор',      contact:'+79471112233',    grade:'11', group_id:'g1', format:'group',      crm_status:'stopped',         price_per_hour:2500, lessons_per_month:8, paid:false, trial_score:35, target_score:65,  source:'Сарафан',  notes:'Ушёл к другому репетитору.',                                                       created_at:'2025-10-25T10:00:00Z', first_contact_at:'2025-10-24', left_at:'2026-01-15',    status_history: hist(['lead','2025-10-24'],['trial_done','2025-10-29'],['active','2025-11-03'],['stopped','2026-01-15']) },
-  { id:'s49', name:'Громова Лиза',        contact:'@liza_gromova',   grade:'9',  group_id:'g3', format:'group',      crm_status:'stopped',         price_per_hour:2000, lessons_per_month:4, paid:false, trial_score:19, target_score:33,  source:'ВКонтакте',notes:'Переехала в другой город.',                                                         created_at:'2025-11-01T10:00:00Z', first_contact_at:'2025-10-30', left_at:'2026-01-20',    status_history: hist(['lead','2025-10-30'],['trial_done','2025-11-04'],['active','2025-11-08'],['stopped','2026-01-20']) },
-  { id:'s50', name:'Ефимов Константин',   contact:'+79184445566',    grade:'11', group_id:null, format:'individual', crm_status:'stopped',         price_per_hour:3500, lessons_per_month:6, paid:false, trial_score:40, target_score:70,  source:'Профи.ру', notes:'Не смог совмещать с секциями.',                                                    created_at:'2025-11-15T10:00:00Z', first_contact_at:'2025-11-14', left_at:'2026-02-10',    status_history: hist(['lead','2025-11-14'],['trial_done','2025-11-19'],['active','2025-11-23'],['stopped','2026-02-10']) },
-  { id:'s51', name:'Лукина Оля',          contact:'@olya_lukin',     grade:'10', group_id:null, format:'individual', crm_status:'stopped',         price_per_hour:3000, lessons_per_month:4, paid:false, trial_score:37, target_score:65,  source:'Авито',    notes:'Семейные обстоятельства.',                                                         created_at:'2025-12-01T10:00:00Z', first_contact_at:'2025-11-30', left_at:'2026-03-01',    status_history: hist(['lead','2025-11-30'],['trial_done','2025-12-05'],['active','2025-12-09'],['stopped','2026-03-01']) },
+  // ── LEFT (was active, then left) ──
+  { id:'s47', name:'Фомина Алла',         contact:'@alla_fom',       grade:'11', group_id:null, format:'individual', crm_status:'left',            price_per_hour:3000, lessons_per_month:6, paid:false, trial_score:48, target_score:72,  source:'Авито',    notes:'Взяла паузу из-за болезни. Планирует вернуться.',                                  created_at:'2025-10-20T10:00:00Z', first_contact_at:'2025-10-18', left_at:'2026-02-01',    status_history: hist(['lead','2025-10-18'],['trial_done','2025-10-23'],['active','2025-10-27'],['left','2026-02-01']) },
+  { id:'s48', name:'Казаков Виктор',      contact:'+79471112233',    grade:'11', group_id:'g1', format:'group',      crm_status:'left',            price_per_hour:2500, lessons_per_month:8, paid:false, trial_score:35, target_score:65,  source:'Сарафан',  notes:'Ушёл к другому репетитору.',                                                       created_at:'2025-10-25T10:00:00Z', first_contact_at:'2025-10-24', left_at:'2026-01-15',    status_history: hist(['lead','2025-10-24'],['trial_done','2025-10-29'],['active','2025-11-03'],['left','2026-01-15']) },
+  { id:'s49', name:'Громова Лиза',        contact:'@liza_gromova',   grade:'9',  group_id:'g3', format:'group',      crm_status:'left',            price_per_hour:2000, lessons_per_month:4, paid:false, trial_score:19, target_score:33,  source:'ВКонтакте',notes:'Переехала в другой город.',                                                         created_at:'2025-11-01T10:00:00Z', first_contact_at:'2025-10-30', left_at:'2026-01-20',    status_history: hist(['lead','2025-10-30'],['trial_done','2025-11-04'],['active','2025-11-08'],['left','2026-01-20']) },
+  { id:'s50', name:'Ефимов Константин',   contact:'+79184445566',    grade:'11', group_id:null, format:'individual', crm_status:'left',            price_per_hour:3500, lessons_per_month:6, paid:false, trial_score:40, target_score:70,  source:'Профи.ру', notes:'Не смог совмещать с секциями.',                                                    created_at:'2025-11-15T10:00:00Z', first_contact_at:'2025-11-14', left_at:'2026-02-10',    status_history: hist(['lead','2025-11-14'],['trial_done','2025-11-19'],['active','2025-11-23'],['left','2026-02-10']) },
+  { id:'s51', name:'Лукина Оля',          contact:'@olya_lukin',     grade:'10', group_id:null, format:'individual', crm_status:'left',            price_per_hour:3000, lessons_per_month:4, paid:false, trial_score:37, target_score:65,  source:'Авито',    notes:'Семейные обстоятельства.',                                                         created_at:'2025-12-01T10:00:00Z', first_contact_at:'2025-11-30', left_at:'2026-03-01',    status_history: hist(['lead','2025-11-30'],['trial_done','2025-12-05'],['active','2025-12-09'],['left','2026-03-01']) },
 
   // ── EXAM PASSED ──
   { id:'s52', name:'Волков Игорь',        contact:'+79991112233',    grade:'11', group_id:null, format:'individual', crm_status:'exam_passed',     price_per_hour:3000, lessons_per_month:8, paid:true,  trial_score:49, target_score:85,  source:'Сарафан',  notes:'Сдал на 89 баллов!',                                                               created_at:'2025-09-15T10:00:00Z', first_contact_at:'2025-09-14', left_at:'2025-06-30',    status_history: hist(['lead','2025-09-14'],['trial_done','2025-09-19'],['active','2025-09-23'],['exam_passed','2025-06-30']) },
@@ -359,12 +359,55 @@ const atasks = [
 ];
 
 // ─── Roles ────────────────────────────────────────────────────────────────────
-const ALL_PAGE_IDS = ['dashboard','history','students','crm_students','groups','lessons_cal','income','expenses','analytics','tasks','access'];
+const ALL_PAGE_IDS = ['dashboard','history','students','crm_students','groups','lessons_cal','homework','income','expenses','analytics','tasks','access'];
 
 const roles = [
-  { id:'r1', name:'Владелец',    pages: ALL_PAGE_IDS, canEdit:true,  isOwner:true,  pin:null,   created_at:'2025-09-01T10:00:00Z' },
-  { id:'r2', name:'Ассистент 1', pages:['dashboard','students','crm_students','groups','lessons_cal','tasks'], canEdit:true,  isOwner:false, pin:'1234', created_at:'2025-09-01T10:00:00Z' },
-  { id:'r3', name:'Педагог',     pages:['dashboard','groups','lessons_cal'], canEdit:false, isOwner:false, pin:'5678', created_at:'2025-09-01T10:00:00Z' },
+  { id:'r2', name:'Анна (куратор)',   role_type:'curator',  pages:['curator_dash','groups','lessons_cal','homework'], can_edit:true,  isOwner:false, pin:'1234', created_at:'2025-09-01T10:00:00Z' },
+  { id:'r3', name:'Дима (маркетолог)',role_type:'marketer', pages:['students','crm_students'],         can_edit:false, isOwner:false, pin:'5678', created_at:'2025-09-01T10:00:00Z' },
+];
+
+// ─── Assistant ↔ Groups ───────────────────────────────────────────────────────
+const assistant_groups = [
+  { id:'ag1', assistant_id:'r2', group_id:'g1' },
+  { id:'ag2', assistant_id:'r2', group_id:'g2' },
+];
+
+// ─── Homework Assignments ─────────────────────────────────────────────────────
+const homework_assignments = [
+  { id:'ha1', group_id:'g1', lesson_id:null, topic:'Тригонометрия: формулы приведения',       description:'Задачи 1–15 из сборника Ященко, стр. 47',          due_date:daysAgo(3),       assigned_at:daysAgo(7)+'T18:30:00Z', hw_type:'detailed', is_advanced:false },
+  { id:'ha2', group_id:'g1', lesson_id:null, topic:'Производная: задачи на экстремум',         description:'Вариант 3 полностью, задачи 13–16',                 due_date:daysFromNow(4),   assigned_at:daysAgo(3)+'T18:30:00Z', hw_type:'detailed', is_advanced:false },
+  { id:'ha3', group_id:'g2', lesson_id:null, topic:'Показательные уравнения',                  description:'Самостоятельная работа, все 10 задач',               due_date:daysAgo(1),       assigned_at:daysAgo(6)+'T17:30:00Z', hw_type:'brief',    is_advanced:false },
+  { id:'ha4', group_id:'g2', lesson_id:null, topic:'Логарифмы: сложные преобразования',        description:'Задачи повышенного уровня, стр. 84–85',             due_date:daysFromNow(6),   assigned_at:daysAgo(2)+'T17:30:00Z', hw_type:'trial',    is_advanced:true  },
+];
+
+// ─── Homework Submissions ─────────────────────────────────────────────────────
+const homework_submissions = [
+  // ha1 (g1, просрочено) — часть сдала, часть нет
+  { id:'hs1',  assignment_id:'ha1', student_id:'s1', submission_url:'https://t.me/c/123/456',      source:'telegram', submitted_at:daysAgo(4)+'T20:15:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs2',  assignment_id:'ha1', student_id:'s2', submission_url:'https://vk.com/doc123',       source:'vk',       submitted_at:daysAgo(5)+'T21:30:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs3',  assignment_id:'ha1', student_id:'s3', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'overdue',   score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs4',  assignment_id:'ha1', student_id:'s4', submission_url:'https://t.me/c/123/460',      source:'telegram', submitted_at:daysAgo(3)+'T19:45:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs5',  assignment_id:'ha1', student_id:'s5', submission_url:'https://docs.google.com/123', source:'web',      submitted_at:daysAgo(6)+'T22:00:00Z', status:'checked',   score:84,    comment:'Хорошая работа! Ошибки в знаках.', errors:['Формула sin(π−x) применена неверно','Потеряно решение в тригонометрическом уравнении'], checked_by:'r2', checked_at:daysAgo(5)+'T10:00:00Z' },
+  { id:'hs6',  assignment_id:'ha1', student_id:'s37',submission_url:'https://t.me/c/123/461',      source:'telegram', submitted_at:daysAgo(4)+'T20:00:00Z', status:'checked',   score:91,    comment:'Отлично, почти без ошибок.',      errors:['Опечатка в задаче 7'], checked_by:'r2', checked_at:daysAgo(3)+'T11:00:00Z' },
+
+  // ha2 (g1, в срок) — кто-то сдал, кто-то ещё нет
+  { id:'hs7',  assignment_id:'ha2', student_id:'s1', submission_url:'https://t.me/c/123/470',      source:'telegram', submitted_at:daysAgo(1)+'T21:00:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs8',  assignment_id:'ha2', student_id:'s2', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs9',  assignment_id:'ha2', student_id:'s3', submission_url:'https://t.me/c/123/471',      source:'telegram', submitted_at:daysAgo(1)+'T22:30:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs10', assignment_id:'ha2', student_id:'s4', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs11', assignment_id:'ha2', student_id:'s5', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+
+  // ha3 (g2, просрочено) — 2 сдали, 1 проверена, 1 не сдал
+  { id:'hs12', assignment_id:'ha3', student_id:'s6', submission_url:'https://t.me/c/456/201',      source:'telegram', submitted_at:daysAgo(2)+'T20:00:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs13', assignment_id:'ha3', student_id:'s7', submission_url:'https://vk.com/doc456',       source:'vk',       submitted_at:daysAgo(4)+'T18:00:00Z', status:'checked',   score:95,    comment:'Блестящая работа!',              errors:[], checked_by:'r2', checked_at:daysAgo(3)+'T09:00:00Z' },
+  { id:'hs14', assignment_id:'ha3', student_id:'s8', submission_url:'https://t.me/c/456/202',      source:'telegram', submitted_at:daysAgo(1)+'T23:00:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs15', assignment_id:'ha3', student_id:'s9', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'overdue',   score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+
+  // ha4 (g2, в срок) — только 1 сдала досрочно
+  { id:'hs16', assignment_id:'ha4', student_id:'s6', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs17', assignment_id:'ha4', student_id:'s7', submission_url:'https://docs.google.com/456', source:'web',      submitted_at:daysAgo(1)+'T14:00:00Z', status:'submitted', score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs18', assignment_id:'ha4', student_id:'s8', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
+  { id:'hs19', assignment_id:'ha4', student_id:'s9', submission_url:'',                            source:'manual',   submitted_at:null,                    status:'assigned',  score:null,  comment:'',                              errors:[], checked_by:null, checked_at:null },
 ];
 
 // ─── Export ───────────────────────────────────────────────────────────────────
@@ -383,4 +426,7 @@ export const SEED = {
   student_notes: [],
   hw_submissions: [],
   history_log: [],
+  homework_assignments,
+  homework_submissions,
+  assistant_groups,
 };

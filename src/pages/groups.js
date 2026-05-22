@@ -1,18 +1,61 @@
 import { CACHE, dbInsert, dbUpdate, dbDelete } from '../core/store.js';
 import { state } from '../core/state.js';
-import { uid, fmt, fmtDate, fmtDateLong, today, g, STATUS_CONFIG } from '../utils/helpers.js';
+import { uid, fmt, fmtDate, fmtDateLong, today, g, STATUS_CONFIG, dateStr } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { addHistoryEntry } from '../core/history.js';
 import { addEvent } from '../core/events.js';
 import { studentSubscriptionStatus, recalcRisk } from '../core/risk.js';
 
+function renderCuratorDash() {
+  const el = document.getElementById('curator-dash');
+  if (!el) return;
+  const role = state.currentRole || {};
+  const myGroupIds = role.isOwner
+    ? null
+    : new Set((CACHE.assistant_groups || []).filter(ag => ag.assistant_id === role.id).map(ag => ag.group_id));
+  const myGroups = myGroupIds
+    ? (CACHE.groups || []).filter(g => myGroupIds.has(g.id))
+    : (CACHE.groups || []);
+  if (!myGroups.length) { el.innerHTML = ''; return; }
+  const myGroupIdSet = new Set(myGroups.map(g => g.id));
+  const activeStudents = (CACHE.students || []).filter(s => s.crm_status === 'active' && myGroupIdSet.has(s.group_id)).length;
+  const todayStr = dateStr(new Date());
+  const in7d = new Date(); in7d.setDate(in7d.getDate() + 7);
+  const upcoming = (CACHE.lessons || []).filter(l => myGroupIdSet.has(l.group_id) && l.date >= todayStr && l.date <= dateStr(in7d)).length;
+  const myAssignmentIds = new Set(
+    (CACHE.homework_assignments || []).filter(a => myGroupIdSet.has(a.group_id)).map(a => a.id)
+  );
+  const pendingReview = (CACHE.homework_submissions || []).filter(s => s.status === 'submitted' && myAssignmentIds.has(s.assignment_id)).length;
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+    ${[
+      { icon: 'ti-sitemap',        label: 'Мои группы',     val: myGroups.length,  sub: 'назначено', color: '#7c3aed' },
+      { icon: 'ti-users',          label: 'Учеников',       val: activeStudents,   sub: 'активных в группах', color: '#16a34a' },
+      { icon: 'ti-calendar-event', label: 'Занятий (7 дн)', val: upcoming,         sub: 'ближайших', color: '#0891b2' },
+      { icon: 'ti-clipboard-check',label: 'ДЗ на проверке', val: pendingReview,    sub: 'ждут ответа', color: pendingReview ? '#d97706' : '#94a3b8' },
+    ].map(c => `<div class="card" style="padding:12px 14px;margin-bottom:0">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px"><i class="ti ${c.icon}" style="color:${c.color};margin-right:3px"></i>${c.label}</div>
+      <div style="font-size:22px;font-weight:700;color:${c.color}">${c.val}</div>
+      <div style="font-size:10px;color:var(--hint);margin-top:2px">${c.sub}</div>
+    </div>`).join('')}
+  </div>`;
+}
+
 export function renderGroups() {
+  renderCuratorDash();
   const el = document.getElementById('groups-list');
   if (!el) return;
-  if (!(CACHE.groups || []).length) { el.innerHTML = '<div class="empty">Групп нет. Создайте первую!</div>'; return; }
   const role = state.currentRole || {};
-  el.innerHTML = CACHE.groups.map(gr => {
+
+  // Curators only see their assigned groups
+  let groups = CACHE.groups || [];
+  if (!role.isOwner) {
+    const myGroupIds = new Set((CACHE.assistant_groups || []).filter(ag => ag.assistant_id === role.id).map(ag => ag.group_id));
+    groups = groups.filter(g => myGroupIds.has(g.id));
+  }
+  if (!groups.length) { el.innerHTML = '<div class="empty">Групп нет или вам не назначены группы.</div>'; return; }
+
+  el.innerHTML = groups.map(gr => {
     const members = (CACHE.students || []).filter(s => s.group_id === gr.id && s.crm_status === 'active');
     const allMembers = (CACHE.students || []).filter(s => s.group_id === gr.id);
     const lessons = (CACHE.lessons || []).filter(l => l.group_id === gr.id);
@@ -28,7 +71,7 @@ export function renderGroups() {
         </div>
         <div style="display:flex;gap:6px;align-items:center" onclick="event.stopPropagation()">
           ${unpaid ? `<span class="b b-r"><i class="ti ti-cash-off" style="font-size:10px"></i> ${unpaid} не оплат.</span>` : ''}
-          <span class="b b-g">${fmt(mrr)} ₽/мес</span>
+          ${role.isOwner ? `<span class="b b-g">${fmt(mrr)} ₽/мес</span>` : ''}
           ${role.isOwner ? `<button class="btn btn-sm btn-icon" onclick="editGroup('${gr.id}')"><i class="ti ti-edit"></i></button>
           <button class="btn btn-sm btn-icon" onclick="deleteGroup('${gr.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
         </div>
@@ -74,8 +117,6 @@ export async function saveGroup(id) {
   if (!obj.name) { toast('Введите название'); return; }
   try {
     if (id) await dbUpdate('groups', id, obj); else await dbInsert('groups', obj);
-    if (id) CACHE.groups = (CACHE.groups || []).map(x => x.id === id ? obj : x);
-    else { if (!CACHE.groups) CACHE.groups = []; CACHE.groups.push(obj); }
     closeModal(); renderGroups(); toast('Сохранено');
   } catch (e) { toast('Ошибка: ' + e.message); }
 }
@@ -84,7 +125,6 @@ export async function deleteGroup(id) {
   if (!confirm('Удалить группу?')) return;
   try {
     await dbDelete('groups', id);
-    CACHE.groups = (CACHE.groups || []).filter(x => x.id !== id);
     renderGroups(); toast('Удалено');
   } catch (e) { toast('Ошибка: ' + e.message); }
 }
@@ -199,9 +239,9 @@ export function renderLessonJournal(lessons) {
           return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)">
             <span style="flex:1;font-size:12px">${s.name.split(' ')[0]}</span>
             ${canEdit ? `
-              <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;${status === 'done' ? 'background:var(--green-bg);color:var(--green);' : 'opacity:.5'}" onclick="setHwStatus('${l.id}','${l.group_id}','${s.id}','done')">✅ Сдал</button>
-              <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;${status === 'missing' ? 'background:var(--red-bg);color:var(--red);' : 'opacity:.5'}" onclick="setHwStatus('${l.id}','${l.group_id}','${s.id}','missing')">❌ Не сдал</button>
-              <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;${status === 'pending' ? 'background:var(--amber-bg);color:var(--amber);' : 'opacity:.5'}" onclick="setHwStatus('${l.id}','${l.group_id}','${s.id}','pending')">⏳ Ждём</button>
+              <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;${status === 'done' ? 'background:var(--green-bg);color:var(--green);' : 'opacity:.5'}" onclick="setGroupHwStatus('${l.id}','${l.group_id}','${s.id}','done')">✅ Сдал</button>
+              <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;${status === 'missing' ? 'background:var(--red-bg);color:var(--red);' : 'opacity:.5'}" onclick="setGroupHwStatus('${l.id}','${l.group_id}','${s.id}','missing')">❌ Не сдал</button>
+              <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;${status === 'pending' ? 'background:var(--amber-bg);color:var(--amber);' : 'opacity:.5'}" onclick="setGroupHwStatus('${l.id}','${l.group_id}','${s.id}','pending')">⏳ Ждём</button>
             ` : `<span style="font-size:13px;color:${colorMap[status]}">${statusMap[status]}</span>`}
           </div>`;
         }).join('');
@@ -317,11 +357,9 @@ export async function saveLesson(id) {
   if (!obj.date) { toast('Укажите дату'); return; }
   if (!obj.topic) { toast('Укажите тему'); return; }
   try {
-    if (id) { await dbUpdate('lessons', id, obj); CACHE.lessons = (CACHE.lessons || []).map(x => x.id === id ? obj : x); }
+    if (id) await dbUpdate('lessons', id, obj);
     else {
       await dbInsert('lessons', obj);
-      if (!CACHE.lessons) CACHE.lessons = [];
-      CACHE.lessons.push(obj);
       for (const sid of absent_ids) await addEvent('student', sid, 'lesson_absent', { lesson_id: obj.id, topic: obj.topic });
       const mems = (CACHE.students || []).filter(s => s.group_id === state.currentGroupId && s.crm_status === 'active');
       for (const s of mems) await recalcRisk(s);
@@ -335,24 +373,19 @@ export async function deleteLesson(id) {
   try {
     const l = (CACHE.lessons || []).find(x => x.id === id);
     await dbDelete('lessons', id);
-    CACHE.lessons = (CACHE.lessons || []).filter(x => x.id !== id);
     await addHistoryEntry('delete', `Удалено занятие: ${l?.topic || '—'} · ${l?.date || ''}`, 'lesson', id, { table: 'lessons', action: 'delete', record_id: id, old_data: l });
     renderGroupDetail();
     toast('Удалено');
   } catch (e) { toast('Ошибка: ' + e.message); }
 }
 
-export async function setHwStatus(lessonId, groupId, studentId, status) {
+export async function setGroupHwStatus(lessonId, groupId, studentId, status) {
   const existing = (CACHE.hw_submissions || []).find(h => h.lesson_id === lessonId && h.student_id === studentId);
   if (existing) {
-    existing.status = status;
-    existing.checked_at = new Date().toISOString();
-    await dbUpdate('hw_submissions', existing.id, { status, checked_at: existing.checked_at });
+    await dbUpdate('hw_submissions', existing.id, { status, checked_at: new Date().toISOString() });
   } else {
     const obj = { id: uid(), lesson_id: lessonId, group_id: groupId, student_id: studentId, assigned_at: new Date().toISOString(), status, checked_at: new Date().toISOString() };
     await dbInsert('hw_submissions', obj);
-    if (!CACHE.hw_submissions) CACHE.hw_submissions = [];
-    CACHE.hw_submissions.push(obj);
   }
   if (status === 'missing') {
     const lesson = (CACHE.lessons || []).find(l => l.id === lessonId);

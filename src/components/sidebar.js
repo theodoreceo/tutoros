@@ -19,5 +19,15 @@ export function renderSetupRoles() {
   const roleBtns = CACHE.roles.map(r => `
     <button class="btn btn-p" onclick="selectRole('${r.id}')">${r.name}</button>
   `).join('');
-  container.innerHTML = ownerBtn + roleBtns;
+
+  const isEmpty = !CACHE.groups.length && !CACHE.roles.length;
+  const emptyState = isEmpty ? `
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);text-align:center">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:12px">База данных пуста</div>
+      <button class="btn" style="width:100%;justify-content:center;gap:6px" onclick="seedDemoData()">
+        <i class="ti ti-database-import"></i> Загрузить демо-данные
+      </button>
+    </div>` : '';
+
+  container.innerHTML = ownerBtn + roleBtns + emptyState;
 }

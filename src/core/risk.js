@@ -1,5 +1,5 @@
 import { CACHE } from './store.js';
-import { daysLeft, fmt } from '../utils/helpers.js';
+import { daysLeft } from '../utils/helpers.js';
 import { addEvent } from './events.js';
 
 export function studentSubscriptionStatus(s) {
@@ -20,31 +20,40 @@ export function renderSubscriptionBadge(s) {
 }
 
 export function calcRiskScore(s) {
-  let score = 0; const reasons = [];
-  const cutoff30 = new Date(); cutoff30.setDate(cutoff30.getDate() - 30);
-  const lessons30 = (CACHE.lessons || []).filter(l => new Date(l.date) >= cutoff30);
+  let score = 0;
+  const reasons = [];
+  const cutoff30 = new Date(Date.now() - 30 * 86400000);
+  const resetAt = s.risk_reset_at ? new Date(s.risk_reset_at) : null;
 
-  const absents30 = lessons30.filter(l => (l.student_attendance || []).some(a => a.student_id === s.id && !a.present)).length;
-  if (absents30 >= 3) { score += 3; reasons.push(`${absents30} пропусков за 30д`); }
-  else if (absents30 >= 2) { score += 2; reasons.push(`${absents30} пропуска за 30д`); }
-  else if (absents30 >= 1) { score += 1; reasons.push(`1 пропуск за 30д`); }
+  // Missed non-advanced HW in last 30 days (after reset if any)
+  const recentMissed = (CACHE.homework_submissions || []).filter(sub => {
+    if (sub.student_id !== s.id) return false;
+    if (sub.status !== 'overdue' && sub.status !== 'missing') return false;
+    const asgn = (CACHE.homework_assignments || []).find(a => a.id === sub.assignment_id);
+    if (!asgn) return false;
+    if (asgn.is_advanced) return false;
+    const asgnDate = new Date(asgn.assigned_at || asgn.due_date || 0);
+    if (asgnDate < cutoff30) return false;
+    if (resetAt && asgnDate < resetAt) return false;
+    return true;
+  }).length;
 
-  const hwMissing = (CACHE.hw_submissions || []).filter(h => h.student_id === s.id && h.status === 'missing').length;
-  if (hwMissing >= 2) { score += 2; reasons.push(`${hwMissing} ДЗ не сдано`); }
-  else if (hwMissing === 1) { score += 1; reasons.push('1 ДЗ не сдано'); }
+  if (recentMissed >= 3)      { score += 2; reasons.push(`${recentMissed} несданных ДЗ за 30 дн.`); }
+  else if (recentMissed >= 2) { score += 1; reasons.push(`${recentMissed} несданных ДЗ за 30 дн.`); }
 
+  // Subscription status
   const sub = studentSubscriptionStatus(s);
-  if (sub && sub.daysLeft < 0) { score += 3; reasons.push('абонемент просрочен'); }
-  else if (sub && sub.daysLeft <= 7) { score += 1; reasons.push('абонемент истекает'); }
+  if (sub) {
+    if (sub.daysLeft < 0)     { score += 2; reasons.push('абонемент просрочен'); }
+    else if (sub.daysLeft < 3){ score += 1; reasons.push('абонемент истекает'); }
+  }
 
-  if (!s.paid && s.crm_status === 'active') { score += 2; reasons.push('не оплачен'); }
-
-  return { score, reasons, level: score >= 5 ? 'high' : score >= 2 ? 'med' : 'low' };
+  return { score, reasons, level: score >= 2 ? 'high' : score === 1 ? 'med' : 'low' };
 }
 
 export async function recalcRisk(s) {
   const { score, reasons, level } = calcRiskScore(s);
-  if (level === 'high' || level === 'med') {
+  if (level === 'high') {
     const existing = (CACHE.events || []).find(e => e.entity_id === s.id && e.event_type === 'student_at_risk' &&
       new Date(e.created_at) > new Date(Date.now() - 86400000 * 3));
     if (!existing) await addEvent('student', s.id, 'student_at_risk', { score, reasons });
@@ -53,7 +62,7 @@ export async function recalcRisk(s) {
 
 export function riskBadge(s) {
   const { score, level, reasons } = calcRiskScore(s);
-  if (level === 'high') return `<span class="risk-badge high" title="${reasons.join(', ')}"><i class="ti ti-alert-triangle"></i> Высокий</span>`;
-  if (level === 'med')  return `<span class="risk-badge med"  title="${reasons.join(', ')}"><i class="ti ti-alert-circle"></i> Средний</span>`;
+  if (level === 'high') return `<span class="risk-badge high" title="${reasons.join(', ')}"><i class="ti ti-alert-triangle"></i> ${score} · Внимание</span>`;
+  if (level === 'med')  return `<span class="risk-badge med"  title="${reasons.join(', ')}"><i class="ti ti-alert-circle"></i> ${score} · Следить</span>`;
   return `<span class="risk-badge low"><i class="ti ti-circle-check"></i> OK</span>`;
 }
