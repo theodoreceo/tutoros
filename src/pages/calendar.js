@@ -17,6 +17,18 @@ function groupColor(gid) {
   return GROUP_COLORS[idx % GROUP_COLORS.length] || '#64748b';
 }
 
+function roleColor(ledBy) {
+  if (!ledBy) return null;
+  if (ledBy === 'owner') return '#2563eb';
+  return (CACHE.roles || []).find(r => r.id === ledBy)?.color || null;
+}
+
+function roleName(ledBy) {
+  if (!ledBy) return '';
+  if (ledBy === 'owner') return 'Владелец';
+  return (CACHE.roles || []).find(r => r.id === ledBy)?.name || '';
+}
+
 export function setCalView(v) {
   _calView = v;
   document.querySelectorAll('#cal-view-toggle button').forEach((b, i) => b.classList.toggle('on', ['week', 'month'][i] === v));
@@ -83,7 +95,7 @@ export function renderCalendar() {
       const hourLines = Array.from({ length: CAL_END - CAL_START }, () => `<div class="cal-hour-line"></div>`).join('');
       const halfLines = Array.from({ length: CAL_END - CAL_START }, (_, i) => `<div class="cal-half-line" style="top:${(i + 0.5) * HOUR_PX}px"></div>`).join('');
       const eventBlocks = dayLessons.map(l => {
-        const gc = groupColor(l.group_id);
+        const gc = roleColor(l.led_by) || groupColor(l.group_id);
         const gr = (CACHE.groups || []).find(g => g.id === l.group_id);
         const top = lessonTop(l);
         const h = lessonHeight(l);
@@ -92,9 +104,11 @@ export function renderCalendar() {
         const endH = Math.floor(endMin / 60) + CAL_START;
         const endM = endMin % 60;
         const timeStr = `${l.start_time || '?'} – ${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+        const rName = roleName(l.led_by);
         return `<div class="cal-event${past ? ' past' : ''}" style="top:${top}px;height:${h}px;background:${gc}18;color:${gc};border-left-color:${gc}" onclick="event.stopPropagation();openLessonCard('${l.id}')">
           <div class="cal-event-title">${l.topic || 'Занятие'}</div>
           <div class="cal-event-time">${timeStr} · ${gr ? gr.name.slice(0, 14) : ''}</div>
+          ${rName ? `<div style="font-size:9px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px"><i class="ti ti-user-check" style="font-size:8px"></i> ${rName}</div>` : ''}
           ${past ? `<div class="cal-event-past">✓ прошло</div>` : ''}
         </div>`;
       }).join('');
@@ -150,14 +164,15 @@ export function renderCalendar() {
       <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Занятия месяца · ${monthLessons.length}</div>
       ${monthLessons.length ? monthLessons.map(l => {
       const gr = (CACHE.groups || []).find(g => g.id === l.group_id);
-      const gc = groupColor(l.group_id);
+      const gc = roleColor(l.led_by) || groupColor(l.group_id);
       const past = lessonIsPast(l);
       const d = new Date(l.date + 'T00:00:00');
       const dayStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+      const rn = roleName(l.led_by);
       return `<div style="padding:8px 10px;margin-bottom:6px;border-radius:var(--r);border:1px solid var(--border);border-left:3px solid ${gc};cursor:pointer;opacity:${past ? .5 : 1}" onclick="openLessonCard('${l.id}')">
           <div style="font-size:10px;color:var(--muted);font-weight:600">${dayStr} · ${l.start_time || '?'}</div>
           <div style="font-size:12px;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l.topic || 'Занятие'}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">${gr ? gr.name.slice(0, 20) : '—'}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${gr ? gr.name.slice(0, 20) : '—'}${rn ? `&nbsp;· <b style="color:${gc}">${rn}</b>` : ''}</div>
         </div>`;
     }).join('') : '<div style="font-size:12px;color:var(--hint)">Занятий нет</div>'}
     </div>`;
@@ -175,7 +190,7 @@ export function renderCalendar() {
       return `<div class="cal-mcell${other ? ' other' : ''}${isToday ? ' today' : ''}" style="${isWeekend && !other ? 'background:#fef9f0' : ''}" onclick="openLessonFromCalendar('${ds}')">
               <div class="cal-mdate" style="${isWeekend && !other ? 'color:#d97706' : ''}">${d.getDate()}</div>
               ${dayLessons.slice(0, 3).map(l => {
-        const gc = groupColor(l.group_id);
+        const gc = roleColor(l.led_by) || groupColor(l.group_id);
         const past = lessonIsPast(l);
         return `<span class="cal-mpill${past ? ' past' : ''}" style="background:${gc}20;color:${past ? 'var(--muted)' : gc}" onclick="event.stopPropagation();openLessonCard('${l.id}')">
                   ${past ? '✓ ' : ''}<span style="overflow:hidden;text-overflow:ellipsis">${l.start_time || ''} ${l.topic || 'Занятие'}</span>
@@ -402,7 +417,7 @@ export async function deleteLesson(id) {
 }
 
 export function exportICS() {
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//теорема федора//RU', 'CALSCALE:GREGORIAN'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//TutorOS//RU', 'CALSCALE:GREGORIAN'];
   (CACHE.lessons || []).forEach(l => {
     const gr = (CACHE.groups || []).find(g => g.id === l.group_id);
     const [h, m] = (l.start_time || '09:00').split(':').map(Number);
@@ -418,6 +433,43 @@ export function exportICS() {
   });
   lines.push('END:VCALENDAR');
   const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'teorema_fedora_lessons.ics'; a.click();
-  toast('.ics скачан — импортируй в Apple/Google Calendar двойным кликом');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tutoros_lessons.ics'; a.click();
+}
+
+export async function calSubscribe() {
+  const { isDemoMode } = await import('../core/store.js');
+  if (isDemoMode()) {
+    exportICS();
+    toast('В демо-режиме доступно только скачивание .ics');
+    return;
+  }
+  const { supabase } = await import('../lib/supabase.js');
+  let { data } = await supabase.from('settings').select('value').eq('key', 'cal_token').maybeSingle();
+  let token = data?.value;
+  if (!token) {
+    token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    await supabase.from('settings').upsert({ key: 'cal_token', value: token });
+  }
+  const webcalUrl = `webcal://${window.location.host}/api/cal.js?token=${token}`;
+  modal(`<div class="modal" style="max-width:440px">
+    <div class="modal-title"><i class="ti ti-brand-apple" style="margin-right:6px"></i>Синхронизация с Apple Calendar</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px">
+      Занятия будут автоматически обновляться в Apple Calendar каждые 4 часа.
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">URL подписки</div>
+      <code style="font-size:11px;word-break:break-all;color:var(--text);line-height:1.6">${webcalUrl}</code>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.7">
+      <b>iOS / iPadOS:</b> Настройки → Контакты → Аккаунты → Добавить → Другое → Добавить подписку на календарь<br>
+      <b>Mac:</b> Calendar → Файл → Новая подписка на календарь<br>
+      Или нажми «Открыть в Calendar» — приложение откроется само.
+    </div>
+    <div class="modal-footer" style="flex-wrap:wrap;gap:6px">
+      <button class="btn" onclick="closeModal()">Закрыть</button>
+      <button class="btn" onclick="exportICS()"><i class="ti ti-calendar-download"></i> Скачать .ics</button>
+      <button class="btn" onclick="navigator.clipboard.writeText('${webcalUrl}').then(()=>toast('URL скопирован'))"><i class="ti ti-copy"></i> Скопировать URL</button>
+      <a href="${webcalUrl}" class="btn btn-p" onclick="closeModal()"><i class="ti ti-brand-apple"></i> Открыть в Calendar</a>
+    </div>
+  </div>`);
 }

@@ -37,7 +37,10 @@ export function renderAccess() {
         return `<div class="card">
           <div class="card-header">
             <div style="flex:1;min-width:0">
-              <div style="font-size:14px;font-weight:600">${r.name}</div>
+              <div style="display:flex;align-items:center;gap:7px">
+                <span style="width:10px;height:10px;border-radius:50%;background:${r.color || '#64748b'};flex-shrink:0;display:inline-block"></span>
+                <span style="font-size:14px;font-weight:600">${r.name}</span>
+              </div>
               <div style="margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                 <span class="b b-bl"><i class="ti ${roleIcon}" style="font-size:10px"></i> ${roleLabel}</span>
                 ${isDemoMode()
@@ -85,7 +88,10 @@ function renderAssistantGroupsSection() {
     ${roles.map(role => {
       const myGroups = new Set((CACHE.assistant_groups || []).filter(ag => ag.assistant_id === role.id).map(ag => ag.group_id));
       return `<div class="card" style="margin-bottom:10px">
-        <div style="font-size:13px;font-weight:600;margin-bottom:10px">${role.name}</div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:7px">
+          <span style="width:10px;height:10px;border-radius:50%;background:${role.color || '#64748b'};flex-shrink:0;display:inline-block"></span>
+          ${role.name}
+        </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px">
           ${(CACHE.groups || []).map(gr => {
             const checked = myGroups.has(gr.id);
@@ -116,6 +122,13 @@ export function openRoleModal(id) {
       <div class="fg"><label>Имя</label><input class="fi" id="rf-name" value="${v.name}" placeholder="Анна"></div>
       ${isDemoMode() ? `<div class="fg"><label>PIN-код</label><input class="fi" id="rf-pin" value="${v.pin || ''}" placeholder="1234" maxlength="8"></div>` : ''}
     </div>
+    <div class="fg" style="margin-top:2px">
+      <label>Цвет в календаре</label>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+        <input type="color" id="rf-color" value="${v.color || '#7c3aed'}" style="width:38px;height:34px;border:1px solid var(--border);border-radius:var(--r);cursor:pointer;padding:2px;background:transparent">
+        <span style="font-size:12px;color:var(--muted)">Отображается в календаре при ведении занятий</span>
+      </div>
+    </div>
     <div class="fg">
       <label style="margin-bottom:8px;display:block">Роль</label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -137,7 +150,8 @@ export async function saveRole(id) {
   const roleTypeEl = document.querySelector('input[name="role_type"]:checked');
   const roleType = roleTypeEl?.value || 'curator';
   const pages = ROLE_TYPES[roleType]?.pages || [];
-  const obj = { id: id || uid(), name: g('rf-name'), pages, role_type: roleType, can_edit: false };
+  const color = document.getElementById('rf-color')?.value || '#7c3aed';
+  const obj = { id: id || uid(), name: g('rf-name'), pages, role_type: roleType, can_edit: false, color };
   if (isDemoMode()) obj.pin = g('rf-pin');
   if (!obj.name) { toast('Введите имя'); return; }
   try {

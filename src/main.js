@@ -32,7 +32,7 @@ import {
   setCalView, calNav, calToday, renderCalendar,
   openLessonFromCalendar, openLessonFormFromPicker, openLessonFormModal, toggleAttendance,
   setCalHwStatus,
-  saveLessonForm, openLessonCard, deleteLesson as calDeleteLesson, exportICS,
+  saveLessonForm, openLessonCard, deleteLesson as calDeleteLesson, exportICS, calSubscribe,
 } from './pages/calendar.js';
 import { renderIncome, openPaymentModal, savePayment, deletePayment } from './pages/income.js';
 import { renderExpenses, openExpenseModal, toggleChannelField, addExpenseCategory, saveExpense, deleteExpense } from './pages/expenses.js';
@@ -200,6 +200,7 @@ window.toggleAttendance = toggleAttendance;
 window.saveLessonForm = saveLessonForm;
 window.openLessonCard = openLessonCard;
 window.exportICS = exportICS;
+window.calSubscribe = calSubscribe;
 
 window.setGroupHwStatus = setGroupHwStatus;
 window.setCalHwStatus = setCalHwStatus;

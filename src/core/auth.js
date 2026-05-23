@@ -4,7 +4,7 @@ import { state } from './state.js';
 import { ALL_PAGES, ROLE_TYPES } from '../utils/helpers.js';
 
 // ── Demo-mode legacy role (hardcoded, not in DB) ──────────────────────────────
-const OWNER_ROLE = { id: 'owner', name: 'Владелец', pages: ALL_PAGES.map(p => p.id), canEdit: true, isOwner: true };
+const OWNER_ROLE = { id: 'owner', name: 'Владелец', pages: ALL_PAGES.map(p => p.id), canEdit: true, isOwner: true, color: '#2563eb' };
 
 function buildRole(role) {
   if (role.role_type === 'owner') {
