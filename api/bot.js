@@ -309,6 +309,14 @@ async function handleStudentListHw(chatId, student) {
 
 // ── Student: my results (/mydz) ───────────────────────────────────────────────
 
+function toPercent(score, maxScore, taskConfig) {
+  if (score === null || score === undefined) return null;
+  if (maxScore) return Math.round(score / maxScore * 100);
+  if (Array.isArray(taskConfig) && taskConfig.length)
+    return Math.round(score / taskConfig.reduce((a, b) => a + b, 0) * 100);
+  return score; // brief HW already stores 0-100
+}
+
 async function showStudentStats(chatId, student) {
   const allSubs = await sbSelect('homework_submissions',
     `student_id=eq.${student.id}&order=submitted_at.desc.nullsfirst`);
@@ -316,13 +324,23 @@ async function showStudentStats(chatId, student) {
   const assigned  = allSubs.filter(s => s.status === 'assigned').length;
   const submitted = allSubs.filter(s => s.status === 'submitted').length;
   const checked   = allSubs.filter(s => s.status === 'checked');
+
+  const done = allSubs.filter(s => s.status !== 'assigned');
+  const aIds = done.length ? [...new Set(done.map(s => s.assignment_id))] : [];
+  const assignments = aIds.length
+    ? await sbSelect('homework_assignments', `id=in.(${aIds.join(',')})&select=id,topic,due_date,hw_type,task_config`)
+    : [];
+  const aMap = Object.fromEntries(assignments.map(a => [a.id, a]));
+
   const checkedWithScore = checked.filter(s => s.score !== null);
-  const avgScore  = checkedWithScore.length
-    ? Math.round(checkedWithScore.reduce((a, s) => a + s.score, 0) / checkedWithScore.length)
+  const avgPct = checkedWithScore.length
+    ? Math.round(checkedWithScore.reduce((sum, s) => {
+        return sum + (toPercent(s.score, s.max_score, aMap[s.assignment_id]?.task_config) ?? 0);
+      }, 0) / checkedWithScore.length)
     : null;
 
-  const scoreBar = avgScore !== null
-    ? (avgScore >= 80 ? '🟢' : avgScore >= 50 ? '🟡' : '🔴') + ` ${avgScore}%`
+  const scoreBar = avgPct !== null
+    ? (avgPct >= 80 ? '🟢' : avgPct >= 50 ? '🟡' : '🔴') + ` ${avgPct}%`
     : '—';
 
   const header = `📊 <b>Мои результаты</b> · ${student.name}\n\n` +
@@ -331,20 +349,15 @@ async function showStudentStats(chatId, student) {
     `✅ Проверено: <b>${checked.length}</b>\n` +
     `⭐ Средний балл: <b>${scoreBar}</b>`;
 
-  const done = allSubs.filter(s => s.status !== 'assigned');
   if (!done.length) return send(chatId, header + '\n\nПока нет сданных работ.');
-
-  const aIds = [...new Set(done.map(s => s.assignment_id))];
-  const assignments = await sbSelect('homework_assignments',
-    `id=in.(${aIds.join(',')})&select=id,topic,due_date,hw_type`);
-  const aMap = Object.fromEntries(assignments.map(a => [a.id, a]));
 
   const buttons = done.slice(0, 10).map(sub => {
     const a    = aMap[sub.assignment_id];
+    const pct  = toPercent(sub.score, sub.max_score, a?.task_config);
     const icon = sub.status === 'submitted' ? '📤'
-      : sub.score !== null && sub.score >= 80 ? '✅'
-      : sub.score !== null && sub.score >= 50 ? '🟡' : sub.score !== null ? '❌' : '✅';
-    const scoreStr = sub.score !== null ? ` ${sub.score}%` : '';
+      : pct !== null && pct >= 80 ? '✅'
+      : pct !== null && pct >= 50 ? '🟡' : pct !== null ? '❌' : '✅';
+    const scoreStr = pct !== null ? ` ${pct}%` : '';
     const label    = (a?.topic || '—').slice(0, 30);
     return [{ text: `${icon}${scoreStr} ${label}`, callback_data: `my_sub:${sub.id}` }];
   });
@@ -357,10 +370,11 @@ async function showStudentSubDetail(chatId, student, subId) {
   if (!sub) return send(chatId, 'Не найдено.');
 
   const assignment = await sbOne('homework_assignments',
-    `id=eq.${sub.assignment_id}&select=id,topic,description,due_date,hw_type`);
+    `id=eq.${sub.assignment_id}&select=id,topic,description,due_date,hw_type,task_config`);
 
+  const pct = toPercent(sub.score, sub.max_score, assignment?.task_config);
   const statusLine = sub.status === 'submitted' ? '📤 На проверке'
-    : sub.status === 'checked' && sub.score !== null ? `✅ Проверено: <b>${sub.score}%</b>`
+    : sub.status === 'checked' && pct !== null ? `✅ Проверено: <b>${pct}%</b>`
     : sub.status === 'checked' ? '✅ Проверено'
     : sub.status;
 
