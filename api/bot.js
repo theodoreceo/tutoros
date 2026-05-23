@@ -78,6 +78,21 @@ const cbq   = (id, text = '') => tg('answerCallbackQuery', { callback_query_id: 
 const kbd   = (rows) => ({ reply_markup: JSON.stringify({ inline_keyboard: rows }) });
 const botId = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
+// ── Reply keyboards (persistent bottom buttons) ───────────────────────────────
+
+const STUDENT_KBD = [
+  [{ text: '📚 Мои задания' }, { text: '📊 Мои результаты' }],
+  [{ text: '❓ Помощь' }],
+];
+const CURATOR_KBD = [
+  [{ text: '➕ Создать ДЗ' }, { text: '📋 Мои задания' }],
+  [{ text: '❓ Помощь' }],
+];
+
+const rkbd = (rows) => ({
+  reply_markup: JSON.stringify({ keyboard: rows, resize_keyboard: true, persistent: true }),
+});
+
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
@@ -105,15 +120,26 @@ async function handleText(msg) {
     sbOne('roles',    `telegram_id=eq.${tid}`),
   ]);
 
+  // ── Menu button shortcuts (checked before slash commands so they always work) ──
+  if (text === '📚 Мои задания'    && student)  return handleStudentListHw(chatId, student);
+  if (text === '📊 Мои результаты' && student)  return showStudentStats(chatId, student);
+  if (text === '➕ Создать ДЗ'    && curator)  return startHwCreation(chatId, tid, curator);
+  if (text === '📋 Мои задания'    && curator)  return showMyDz(chatId, tid, curator, 0);
+  if (text === '❓ Помощь') {
+    if (student) return send(chatId, 'Команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт', rkbd(STUDENT_KBD));
+    if (curator) return send(chatId, 'Команды:\n/newdz — создать ДЗ\n/mydz — список ДЗ\n/unlink — отвязать аккаунт', rkbd(CURATOR_KBD));
+    return send(chatId, 'Введи регистрационный код для подключения.');
+  }
+
   // /start
   if (text === '/start') {
     if (student) {
       await setSession(tid, { step: 'student' });
-      return send(chatId, `Привет, <b>${student.name}</b>!\n\n/dz — домашние задания\n/unlink — отвязать аккаунт`);
+      return send(chatId, `Привет, <b>${student.name}</b>! 👋\n\nИспользуй кнопки ниже или команды:\n/dz — задания · /mydz — результаты`, rkbd(STUDENT_KBD));
     }
     if (curator) {
       await setSession(tid, { step: 'curator' });
-      return send(chatId, `Привет, <b>${curator.name}</b>!\n\n/newdz — создать ДЗ\n/mydz — мои ДЗ\n/unlink — отвязать аккаунт`);
+      return send(chatId, `Привет, <b>${curator.name}</b>! 👋\n\nИспользуй кнопки ниже или команды:\n/newdz — создать ДЗ · /mydz — мои ДЗ`, rkbd(CURATOR_KBD));
     }
     await setSession(tid, {});
     return send(chatId, `Добро пожаловать в бот TutorOS!\n\nВведи регистрационный код для подключения.\nКод есть в TutorOS: карточка ученика или страница Доступ.`);
@@ -128,14 +154,15 @@ async function handleText(msg) {
 
   // /help
   if (text === '/help') {
-    if (student) return send(chatId, '/dz — задания\n/unlink — отвязать аккаунт');
-    if (curator) return send(chatId, '/newdz — создать ДЗ\n/mydz — список ДЗ\n/unlink — отвязать аккаунт');
+    if (student) return send(chatId, '/dz — задания\n/mydz — результаты\n/unlink — отвязать аккаунт', rkbd(STUDENT_KBD));
+    if (curator) return send(chatId, '/newdz — создать ДЗ\n/mydz — список ДЗ\n/unlink — отвязать аккаунт', rkbd(CURATOR_KBD));
     return send(chatId, 'Введи регистрационный код для подключения.');
   }
 
   // Student commands
   if (student) {
-    if (text === '/dz') return handleStudentListHw(chatId, student);
+    if (text === '/dz')    return handleStudentListHw(chatId, student);
+    if (text === '/mydz')  return showStudentStats(chatId, student);
     const sess = await getSession(tid);
     if (typeof sess.step === 'string' && sess.step.startsWith('await_answer:')) {
       const subId = sess.step.slice('await_answer:'.length);
@@ -242,13 +269,13 @@ async function handleRegistration(chatId, tid, token) {
     if (sm.telegram_id) return send(chatId, 'Этот код уже использован.');
     await sbPatch('students', `id=eq.${sm.id}`, { telegram_id: tid });
     await setSession(tid, { step: 'student' });
-    return send(chatId, `✅ Подключён как <b>${sm.name}</b>.\n/dz — задания`);
+    return send(chatId, `✅ Подключён как <b>${sm.name}</b>!\n\nИспользуй кнопки ниже 👇`, rkbd(STUDENT_KBD));
   }
   if (rm) {
     if (rm.telegram_id) return send(chatId, 'Этот код уже использован.');
     await sbPatch('roles', `id=eq.${rm.id}`, { telegram_id: tid });
     await setSession(tid, { step: 'curator' });
-    return send(chatId, `✅ Подключён как <b>${rm.name}</b>.\n/newdz — создать ДЗ`);
+    return send(chatId, `✅ Подключён как <b>${rm.name}</b>!\n\nИспользуй кнопки ниже 👇`, rkbd(CURATOR_KBD));
   }
   return send(chatId, 'Код не найден. Проверь и попробуй снова.');
 }
@@ -278,6 +305,75 @@ async function handleStudentListHw(chatId, student) {
 
   if (!lines.length) return send(chatId, 'Нет активных заданий.');
   return send(chatId, `Задания (${lines.length}):\n\n${lines.join('\n')}\n\nВыбери для сдачи:`, kbd(buttons));
+}
+
+// ── Student: my results (/mydz) ───────────────────────────────────────────────
+
+async function showStudentStats(chatId, student) {
+  const allSubs = await sbSelect('homework_submissions',
+    `student_id=eq.${student.id}&order=submitted_at.desc.nullsfirst`);
+
+  const assigned  = allSubs.filter(s => s.status === 'assigned').length;
+  const submitted = allSubs.filter(s => s.status === 'submitted').length;
+  const checked   = allSubs.filter(s => s.status === 'checked');
+  const checkedWithScore = checked.filter(s => s.score !== null);
+  const avgScore  = checkedWithScore.length
+    ? Math.round(checkedWithScore.reduce((a, s) => a + s.score, 0) / checkedWithScore.length)
+    : null;
+
+  const scoreBar = avgScore !== null
+    ? (avgScore >= 80 ? '🟢' : avgScore >= 50 ? '🟡' : '🔴') + ` ${avgScore}%`
+    : '—';
+
+  const header = `📊 <b>Мои результаты</b> · ${student.name}\n\n` +
+    `⏳ Ждут сдачи: <b>${assigned}</b>\n` +
+    `📤 На проверке: <b>${submitted}</b>\n` +
+    `✅ Проверено: <b>${checked.length}</b>\n` +
+    `⭐ Средний балл: <b>${scoreBar}</b>`;
+
+  const done = allSubs.filter(s => s.status !== 'assigned');
+  if (!done.length) return send(chatId, header + '\n\nПока нет сданных работ.');
+
+  const aIds = [...new Set(done.map(s => s.assignment_id))];
+  const assignments = await sbSelect('homework_assignments',
+    `id=in.(${aIds.join(',')})&select=id,topic,due_date,hw_type`);
+  const aMap = Object.fromEntries(assignments.map(a => [a.id, a]));
+
+  const buttons = done.slice(0, 10).map(sub => {
+    const a    = aMap[sub.assignment_id];
+    const icon = sub.status === 'submitted' ? '📤'
+      : sub.score !== null && sub.score >= 80 ? '✅'
+      : sub.score !== null && sub.score >= 50 ? '🟡' : sub.score !== null ? '❌' : '✅';
+    const scoreStr = sub.score !== null ? ` ${sub.score}%` : '';
+    const label    = (a?.topic || '—').slice(0, 30);
+    return [{ text: `${icon}${scoreStr} ${label}`, callback_data: `my_sub:${sub.id}` }];
+  });
+
+  return send(chatId, header + `\n\nПоследние работы (${done.length}):`, kbd(buttons));
+}
+
+async function showStudentSubDetail(chatId, student, subId) {
+  const sub = await sbOne('homework_submissions', `id=eq.${subId}&student_id=eq.${student.id}`);
+  if (!sub) return send(chatId, 'Не найдено.');
+
+  const assignment = await sbOne('homework_assignments',
+    `id=eq.${sub.assignment_id}&select=id,topic,description,due_date,hw_type`);
+
+  const statusLine = sub.status === 'submitted' ? '📤 На проверке'
+    : sub.status === 'checked' && sub.score !== null ? `✅ Проверено: <b>${sub.score}%</b>`
+    : sub.status === 'checked' ? '✅ Проверено'
+    : sub.status;
+
+  const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : null;
+
+  let text = `<b>${assignment?.topic || '—'}</b>\n\n${statusLine}`;
+  if (sub.comment)       text += `\n\n💬 Комментарий:\n${sub.comment}`;
+  if (assignment?.due_date) text += `\n\n📅 Дедлайн: ${assignment.due_date}`;
+  if (sub.submitted_at)  text += `\n📤 Сдано: ${fmtDate(sub.submitted_at)}`;
+  if (sub.checked_at)    text += `\n🔍 Проверено: ${fmtDate(sub.checked_at)}`;
+  if (sub.student_answers?.length) text += `\n\n📝 Твои ответы: <code>${sub.student_answers.join(', ')}</code>`;
+
+  return send(chatId, text, kbd([[{ text: '← Назад к результатам', callback_data: 'my_stats_back' }]]));
 }
 
 // ── Student: answer submission (brief) ───────────────────────────────────────
@@ -748,6 +844,17 @@ async function handleCallback(cq) {
   if (data === 'cancel_files' && student) {
     await setSession(tid, { step: 'student' });
     return send(chatId, 'Сдача отменена. /dz — посмотреть задания.');
+  }
+
+  // Student: view specific submission detail
+  if (data.startsWith('my_sub:') && student) {
+    const subId = data.slice('my_sub:'.length);
+    return showStudentSubDetail(chatId, student, subId);
+  }
+
+  // Student: back to stats
+  if (data === 'my_stats_back' && student) {
+    return showStudentStats(chatId, student);
   }
 }
 
