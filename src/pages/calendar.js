@@ -448,9 +448,14 @@ export async function calSubscribe() {
   let token = data?.value;
   if (!token) {
     token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-    await supabase.from('settings').upsert({ key: 'cal_token', value: token });
+    const { error } = await supabase.from('settings').upsert({ key: 'cal_token', value: token });
+    if (error) {
+      toast('Ошибка: нужно запустить migration_colors.sql в Supabase');
+      console.error('settings upsert:', error.message);
+      return;
+    }
   }
-  const webcalUrl = `webcal://${window.location.host}/api/cal.js?token=${token}`;
+  const webcalUrl = `webcal://${window.location.host}/api/cal?token=${token}`;
   modal(`<div class="modal" style="max-width:440px">
     <div class="modal-title"><i class="ti ti-brand-apple" style="margin-right:6px"></i>Синхронизация с Apple Calendar</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:14px">
