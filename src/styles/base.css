@@ -3,7 +3,8 @@
 html, body {
   height: 100%;
   overflow: hidden;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Manrope', sans-serif;
+  font-weight: 500;
   font-size: 14px;
   background: var(--bg);
   color: var(--text);
@@ -32,9 +33,9 @@ html, body {
   box-shadow: 0 8px 40px rgba(0,0,0,.4);
 }
 .setup-logo {
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Manrope', sans-serif;
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text);
   margin-bottom: 4px;
   line-height: 1.2;
@@ -44,7 +45,7 @@ html, body {
   font-weight: 400;
   color: var(--accent-mid);
 }
-.setup-sub { font-size: 13px; color: var(--hint); margin-bottom: 28px; }
+.setup-sub { font-size: 13px; font-weight: 300; color: var(--hint); margin-bottom: 28px; }
 .step-block {
   background: var(--surface2);
   border: 1px solid var(--border);

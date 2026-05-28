@@ -3,7 +3,7 @@
 
 /* Page header */
 .ph { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.ph-title { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: .01em; }
+.ph-title { font-size: 16px; font-weight: 800; font-family: 'Manrope', sans-serif; color: var(--text); letter-spacing: .01em; }
 
 /* Two column layout */
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -62,6 +62,6 @@
 }
 .view-toggle button.on {
   background: var(--accent);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(59,130,246,.3);
+  color: #1a1612;
+  box-shadow: 0 2px 8px rgba(255,211,255,.2);
 }
