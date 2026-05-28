@@ -62,6 +62,6 @@
 }
 .view-toggle button.on {
   background: var(--accent);
-  color: #1a1612;
+  color: #1d1d1d;
   box-shadow: 0 2px 8px rgba(255,211,255,.2);
 }

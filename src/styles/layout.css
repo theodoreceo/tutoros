@@ -4,7 +4,7 @@
 /* Sidebar */
 .sidebar {
   width: var(--sw);
-  background: #120f0c;
+  background: #161616;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -74,7 +74,7 @@
 /* Main area */
 .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
 .topbar {
-  background: #120f0c;
+  background: #161616;
   border-bottom: 1px solid var(--border);
   padding: 0 24px;
   height: 54px;
