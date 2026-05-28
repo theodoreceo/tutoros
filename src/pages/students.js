@@ -269,7 +269,9 @@ export async function confirmStatusChange(id, newStatus) {
 async function _commitSaveStudent(id, newStatus, history, existing, statusDate) {
   const todayStr = today();
   const leftStatuses = ['stopped', 'refused', 'left'];
+  const exitStatuses = ['stopped', 'refused', 'left', 'exam_passed'];
   const left_at = leftStatuses.includes(newStatus) ? (existing?.left_at || statusDate || todayStr) : null;
+  const clearTokens = exitStatuses.includes(newStatus);
   function fv(fieldId, fallback) { return (document.getElementById(fieldId) || {}).value ?? fallback; }
   const obj = {
     id: id || uid(),
@@ -290,6 +292,8 @@ async function _commitSaveStudent(id, newStatus, history, existing, statusDate) 
     status_history: history,
     left_at,
     created_at: existing?.created_at || new Date().toISOString(),
+    reg_token: clearTokens ? null : (existing?.reg_token ?? null),
+    telegram_id: clearTokens ? null : (existing?.telegram_id ?? null),
   };
   if (!obj.name) { toast('Введите имя'); return; }
   try {
