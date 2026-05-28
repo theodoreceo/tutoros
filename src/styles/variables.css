@@ -1,9 +1,9 @@
 :root {
   /* ── Warm Dark Palette ──────────────────────────────────────────────────── */
-  --bg:           #1d1d1d;
-  --surface:      #252525;
-  --surface2:     #2e2e2e;
-  --border:       #3a3a3a;
+  --bg:           #111111;
+  --surface:      #1a1a1a;
+  --surface2:     #222222;
+  --border:       #303030;
 
   --accent:       #ffd3ff;
   --accent2:      #e8b8e8;
