@@ -20,7 +20,7 @@ import {
   openStudentDetail, openStatusDateModal, confirmStatusChange,
   openTrialFromCalendar, scheduleTrialLesson,
   openPaymentModalFor, addStudentNote, selectChip, resetStudentRisk,
-  copyRegToken,
+  copyRegToken, generateStudentToken,
 } from './pages/students.js';
 import {
   renderGroups, openGroupModal, editGroup, saveGroup, deleteGroup,
@@ -173,6 +173,7 @@ window.addStudentNote = addStudentNote;
 window.selectChip = selectChip;
 window.resetStudentRisk = resetStudentRisk;
 window.copyRegToken = copyRegToken;
+window.generateStudentToken = generateStudentToken;
 
 // Groups
 window.renderGroups = renderGroups;

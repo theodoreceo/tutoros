@@ -7,6 +7,8 @@ import { addHistoryEntry } from '../core/history.js';
 import { addEvent, studentEvents } from '../core/events.js';
 import { calcRiskScore, riskBadge, renderSubscriptionBadge, studentSubscriptionStatus, recalcRisk } from '../core/risk.js';
 
+const genToken = () => Math.random().toString(36).slice(2, 8);
+
 function groupShort(id) {
   const gr = (CACHE.groups || []).find(x => x.id === id);
   return gr ? gr.name.slice(0, 24) + (gr.name.length > 24 ? '…' : '') : '—';
@@ -145,12 +147,18 @@ export function renderPipeline() {
           const { level, reasons } = calcRiskScore(s);
           const riskCls = level === 'high' ? 'risk-high' : level === 'med' ? 'risk-med' : '';
           const contact = s.contact ? `<span style="font-size:10px;color:var(--hint)">${s.contact}</span>` : '';
+          const tgIcon = s.telegram_id
+            ? `<i class="ti ti-brand-telegram" style="color:#2aabee;font-size:11px" title="Telegram привязан"></i>`
+            : s.reg_token
+              ? `<span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer" onclick="event.stopPropagation();copyRegToken('${s.reg_token}')" title="Скопировать код ${s.reg_token}"><i class="ti ti-brand-telegram" style="color:var(--muted);font-size:11px"></i><code style="font-size:10px;color:var(--muted)">${s.reg_token}</code></span>`
+              : '';
           return `<div class="pipeline-card ${riskCls}" onclick="openStudentDetail('${s.id}')">
             <div class="pipeline-card-name">${s.name}</div>
             <div style="font-size:11px;color:var(--muted)">${s.source || ''} · ${s.grade || ''}кл</div>
             <div class="pipeline-card-meta">
               ${contact}
               ${level !== 'low' ? `<span class="risk-badge ${level}" style="font-size:9px;padding:1px 5px">${reasons[0] || ''}</span>` : ''}
+              ${tgIcon}
             </div>
           </div>`;
         }).join('') : `<div class="pipeline-empty">Нет</div>`}
@@ -292,7 +300,7 @@ async function _commitSaveStudent(id, newStatus, history, existing, statusDate) 
     status_history: history,
     left_at,
     created_at: existing?.created_at || new Date().toISOString(),
-    reg_token: clearTokens ? null : (existing?.reg_token ?? null),
+    reg_token: clearTokens ? null : (existing?.reg_token ?? genToken()),
     telegram_id: clearTokens ? null : (existing?.telegram_id ?? null),
   };
   if (!obj.name) { toast('Введите имя'); return; }
@@ -399,9 +407,12 @@ export function openStudentDetail(id) {
         <div style="font-size:12px">${s.telegram_id ? '<span class="b b-g"><i class="ti ti-check" style="font-size:10px"></i> Привязан</span>' : '<span class="b b-gray">Не привязан</span>'}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <span style="font-size:11px;color:var(--muted)">Код:</span>
-        <code style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace">${s.reg_token || '—'}</code>
-        ${s.reg_token ? `<button class="btn btn-sm" onclick="copyRegToken('${s.reg_token}')" title="Скопировать код"><i class="ti ti-copy"></i></button>` : ''}
+        ${s.reg_token
+          ? `<span style="font-size:11px;color:var(--muted)">Код:</span>
+             <code style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace">${s.reg_token}</code>
+             <button class="btn btn-sm" onclick="copyRegToken('${s.reg_token}')" title="Скопировать код"><i class="ti ti-copy"></i></button>`
+          : `<button class="btn btn-sm" onclick="generateStudentToken('${s.id}')" title="Создать Telegram-код"><i class="ti ti-key"></i> Создать код</button>`
+        }
       </div>
     </div>
     <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">
@@ -597,6 +608,15 @@ function renderStudentHwTabInline(studentId) {
 
 export function copyRegToken(token) {
   navigator.clipboard.writeText(token).then(() => toast('Код скопирован'));
+}
+
+export async function generateStudentToken(id) {
+  const token = genToken();
+  try {
+    await dbUpdate('students', id, { reg_token: token });
+    toast('Код создан: ' + token);
+    openStudentDetail(id);
+  } catch (e) { toast('Ошибка: ' + e.message); }
 }
 
 export function selectChip(el, hiddenId, value) {
