@@ -1,6 +1,6 @@
-import { CACHE, dbInsert, dbUpdate, dbDelete } from '../core/store.js';
+import { CACHE, dbInsert, dbUpdate, dbDelete, ensureLoaded } from '../core/store.js';
 import { state } from '../core/state.js';
-import { uid, fmt, fmtDate, today, dateStr, g, GROUP_COLORS } from '../utils/helpers.js';
+import { uid, fmt, fmtDate, today, dateStr, g, GROUP_COLORS, esc } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { addHistoryEntry } from '../core/history.js';
@@ -52,7 +52,8 @@ function getWeekDays(anchor) {
 
 function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
 
-export function renderCalendar() {
+export async function renderCalendar() {
+  await ensureLoaded(['lessons', 'groups', 'students']);
   const el = document.getElementById('cal-container');
   if (!el) return;
   const now = new Date();
@@ -105,14 +106,14 @@ export function renderCalendar() {
         const endM = endMin % 60;
         const timeStr = `${l.start_time || '?'} – ${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
         const rName = roleName(l.led_by);
-        return `<div class="cal-event${past ? ' past' : ''}" style="top:${top}px;height:${h}px;background:${gc}18;color:${gc};border-left-color:${gc}" onclick="event.stopPropagation();openLessonCard('${l.id}')">
-          <div class="cal-event-title">${l.topic || 'Занятие'}</div>
-          <div class="cal-event-time">${timeStr} · ${gr ? gr.name.slice(0, 14) : ''}</div>
+        return `<div class="cal-event${past ? ' past' : ''}" style="top:${top}px;height:${h}px;background:${gc}18;color:${gc};border-left-color:${gc}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
+          <div class="cal-event-title">${esc(l.topic) || 'Занятие'}</div>
+          <div class="cal-event-time">${timeStr} · ${gr ? esc(gr.name).slice(0, 14) : ''}</div>
           ${rName ? `<div style="font-size:9px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px"><i class="ti ti-user-check" style="font-size:8px"></i> ${rName}</div>` : ''}
           ${past ? `<div class="cal-event-past">✓ прошло</div>` : ''}
         </div>`;
       }).join('');
-      return `<div class="cal-day-col" onclick="openLessonFromCalendar('${ds}')">
+      return `<div class="cal-day-col" data-action="openLessonFromCalendar" data-id="${esc(ds)}">
         ${hourLines}${halfLines}${nowLine}${eventBlocks}
       </div>`;
     }).join('');
@@ -169,10 +170,10 @@ export function renderCalendar() {
       const d = new Date(l.date + 'T00:00:00');
       const dayStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
       const rn = roleName(l.led_by);
-      return `<div style="padding:8px 10px;margin-bottom:6px;border-radius:var(--r);border:1px solid var(--border);border-left:3px solid ${gc};cursor:pointer;opacity:${past ? .5 : 1}" onclick="openLessonCard('${l.id}')">
+      return `<div style="padding:8px 10px;margin-bottom:6px;border-radius:var(--r);border:1px solid var(--border);border-left:3px solid ${gc};cursor:pointer;opacity:${past ? .5 : 1}" data-action="openLessonCard" data-id="${esc(l.id)}">
           <div style="font-size:10px;color:var(--muted);font-weight:600">${dayStr} · ${l.start_time || '?'}</div>
-          <div style="font-size:12px;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l.topic || 'Занятие'}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">${gr ? gr.name.slice(0, 20) : '—'}${rn ? `&nbsp;· <b style="color:${gc}">${rn}</b>` : ''}</div>
+          <div style="font-size:12px;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(l.topic) || 'Занятие'}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${gr ? esc(gr.name).slice(0, 20) : '—'}${rn ? `&nbsp;· <b style="color:${gc}">${esc(rn)}</b>` : ''}</div>
         </div>`;
     }).join('') : '<div style="font-size:12px;color:var(--hint)">Занятий нет</div>'}
     </div>`;
@@ -187,13 +188,13 @@ export function renderCalendar() {
       const dayLessons = (CACHE.lessons || []).filter(l => l.date === ds).sort((a, b) => (a.start_time || '') > (b.start_time || '') ? 1 : -1);
       const isToday = isSameDay(d, now);
       const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-      return `<div class="cal-mcell${other ? ' other' : ''}${isToday ? ' today' : ''}" style="${isWeekend && !other ? 'background:#fef9f0' : ''}" onclick="openLessonFromCalendar('${ds}')">
+      return `<div class="cal-mcell${other ? ' other' : ''}${isToday ? ' today' : ''}" style="${isWeekend && !other ? 'background:#fef9f0' : ''}" data-action="openLessonFromCalendar" data-id="${esc(ds)}">
               <div class="cal-mdate" style="${isWeekend && !other ? 'color:#d97706' : ''}">${d.getDate()}</div>
               ${dayLessons.slice(0, 3).map(l => {
         const gc = roleColor(l.led_by) || groupColor(l.group_id);
         const past = lessonIsPast(l);
-        return `<span class="cal-mpill${past ? ' past' : ''}" style="background:${gc}20;color:${past ? 'var(--muted)' : gc}" onclick="event.stopPropagation();openLessonCard('${l.id}')">
-                  ${past ? '✓ ' : ''}<span style="overflow:hidden;text-overflow:ellipsis">${l.start_time || ''} ${l.topic || 'Занятие'}</span>
+        return `<span class="cal-mpill${past ? ' past' : ''}" style="background:${gc}20;color:${past ? 'var(--muted)' : gc}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
+                  ${past ? '✓ ' : ''}<span style="overflow:hidden;text-overflow:ellipsis">${l.start_time || ''} ${esc(l.topic) || 'Занятие'}</span>
                 </span>`;
       }).join('')}
               ${dayLessons.length > 3 ? `<span style="font-size:10px;color:var(--hint)">+${dayLessons.length - 3} ещё</span>` : ''}
@@ -222,8 +223,8 @@ export function openLessonFromCalendar(date) {
       <div style="margin-top:4px">${checkboxes}</div>
     </div>
     <div class="modal-footer">
-      <button class="btn" onclick="closeModal()">Отмена</button>
-      <button class="btn btn-p" onclick="openLessonFormFromPicker('${dateVal}')">Далее →</button>
+      <button class="btn" data-action="closeModal">Отмена</button>
+      <button class="btn btn-p" data-action="openLessonFormFromPicker" data-date="${esc(dateVal)}">Далее →</button>
     </div>
   </div>`);
 }
@@ -282,8 +283,8 @@ export function openLessonFormModal(date, gid, existingId) {
     </div>
     <div class="fg"><label>Заметка к занятию</label><textarea class="fi" id="lf-notes" rows="2">${v.notes || ''}</textarea></div>
     <div class="modal-footer">
-      <button class="btn" onclick="closeModal()">Отмена</button>
-      <button class="btn btn-p" onclick="saveLessonForm('${existingId || ''}')">Сохранить</button>
+      <button class="btn" data-action="closeModal">Отмена</button>
+      <button class="btn btn-p" data-action="saveLessonForm" data-id="${esc(existingId || '')}">Сохранить</button>
     </div>
   </div>`);
 }
@@ -373,16 +374,16 @@ export function openLessonCard(lid) {
   modal(`<div class="modal" style="max-width:540px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
       <div>
-        <div style="font-size:15px;font-weight:700">${l.topic || 'Без темы'}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:3px">${gr ? gr.name : ''} · ${l.date} · ${timeStr}</div>
+        <div style="font-size:15px;font-weight:700">${esc(l.topic) || 'Без темы'}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">${gr ? esc(gr.name) : ''} · ${l.date} · ${timeStr}</div>
         ${isPast ? `<span style="font-size:11px;color:var(--hint);font-style:italic">✓ занятие прошло</span>` : `<span class="b b-g" style="font-size:10px">Предстоящее</span>`}
       </div>
       <div style="display:flex;gap:6px">
-        ${role.isOwner || role.canEdit ? `<button class="btn btn-sm" onclick="closeModal();openLessonFormModal('${l.date}','${l.group_id}','${l.id}')"><i class="ti ti-edit"></i></button><button class="btn btn-sm btn-icon" onclick="closeModal();deleteLesson('${l.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
-        <button class="btn" onclick="closeModal()"><i class="ti ti-x"></i></button>
+        ${role.isOwner || role.canEdit ? `<button class="btn btn-sm" data-action="openLessonFormModal" data-date="${esc(l.date)}" data-group-id="${esc(l.group_id)}" data-id="${esc(l.id)}"><i class="ti ti-edit"></i></button><button class="btn btn-sm btn-icon" data-action="calDeleteLesson" data-id="${esc(l.id)}"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
+        <button class="btn" data-action="closeModal"><i class="ti ti-x"></i></button>
       </div>
     </div>
-    ${l.led_by ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px"><i class="ti ti-user-check" style="font-size:11px"></i> Ведёт: <b>${l.led_by === 'owner' ? 'Владелец' : ((CACHE.roles || []).find(r => r.id === l.led_by) || {}).name || l.led_by}</b></div>` : ''}
+    ${l.led_by ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px"><i class="ti ti-user-check" style="font-size:11px"></i> Ведёт: <b>${l.led_by === 'owner' ? 'Владелец' : esc(((CACHE.roles || []).find(r => r.id === l.led_by) || {}).name || l.led_by)}</b></div>` : ''}
     ${(l.lesson_link || l.materials_link) ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
       ${l.lesson_link ? `<a href="${l.lesson_link}" target="_blank" class="btn btn-sm"><i class="ti ti-video"></i> Запись занятия</a>` : ''}
       ${l.materials_link ? `<a href="${l.materials_link}" target="_blank" class="btn btn-sm"><i class="ti ti-books"></i> Материалы</a>` : ''}
@@ -395,13 +396,13 @@ export function openLessonCard(lid) {
     const hwLabel = hw ? { done: '✓ ДЗ сделал', missing: '✗ ДЗ не сдал', pending: '⏳ ДЗ не проверено' }[hw.status] || '' : '';
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
           <span style="color:${a.present ? 'var(--green)' : 'var(--red)'}">${a.present ? '✓' : '✗'}</span>
-          <span style="flex:1;font-weight:500">${stu ? stu.name : '?'}</span>
-          ${a.note ? `<span style="font-size:11px;color:var(--muted)">${a.note}</span>` : ''}
+          <span style="flex:1;font-weight:500">${stu ? esc(stu.name) : '?'}</span>
+          ${a.note ? `<span style="font-size:11px;color:var(--muted)">${esc(a.note)}</span>` : ''}
           ${hwLabel ? `<span style="font-size:10px;color:${hw.status === 'done' ? 'var(--green)' : hw.status === 'missing' ? 'var(--red)' : 'var(--muted)'}">${hwLabel}</span>` : ''}
         </div>`;
   }).join('')}
     </div>` : (isPast ? '<div style="font-size:12px;color:var(--hint);margin-bottom:10px">Посещаемость не заполнена</div>' : '')}
-    ${l.notes ? `<div style="font-size:13px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px"><i class="ti ti-notes"></i> ${l.notes}</div>` : ''}
+    ${l.notes ? `<div style="font-size:13px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px"><i class="ti ti-notes"></i> ${esc(l.notes)}</div>` : ''}
   </div>`);
 }
 
@@ -471,10 +472,10 @@ export async function calSubscribe() {
       Или нажми «Открыть в Calendar» — приложение откроется само.
     </div>
     <div class="modal-footer" style="flex-wrap:wrap;gap:6px">
-      <button class="btn" onclick="closeModal()">Закрыть</button>
-      <button class="btn" onclick="exportICS()"><i class="ti ti-calendar-download"></i> Скачать .ics</button>
-      <button class="btn" onclick="navigator.clipboard.writeText('${webcalUrl}').then(()=>toast('URL скопирован'))"><i class="ti ti-copy"></i> Скопировать URL</button>
-      <a href="${webcalUrl}" class="btn btn-p" onclick="closeModal()"><i class="ti ti-brand-apple"></i> Открыть в Calendar</a>
+      <button class="btn" data-action="closeModal">Закрыть</button>
+      <button class="btn" data-action="exportICS"><i class="ti ti-calendar-download"></i> Скачать .ics</button>
+      <button class="btn" onclick="navigator.clipboard.writeText('${esc(webcalUrl)}').then(()=>toast('URL скопирован'))"><i class="ti ti-copy"></i> Скопировать URL</button>
+      <a href="${esc(webcalUrl)}" class="btn btn-p" data-action="closeModal"><i class="ti ti-brand-apple"></i> Открыть в Calendar</a>
     </div>
   </div>`);
 }

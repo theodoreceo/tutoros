@@ -79,11 +79,13 @@ export function applyRole(role) {
   document.getElementById('app').style.display = 'flex';
   applyRoleUI(role);
   _renderDevSwitcher(role);
-  import('./router.js').then(({ navigate }) => {
+  import('./router.js').then(({ navigate, navigateFromHash }) => {
+    const fromHash = navigateFromHash();
     const homePage = role.isOwner
       ? 'dashboard'
       : (ROLE_TYPES[role.role_type]?.homePage || role.pages?.[0] || 'dashboard');
-    navigate(homePage);
+    const target = fromHash && (role.isOwner || (role.pages || []).includes(fromHash)) ? fromHash : homePage;
+    navigate(target, { replace: true });
   });
 }
 

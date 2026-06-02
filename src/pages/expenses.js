@@ -1,6 +1,6 @@
-import { CACHE, dbInsert, dbDelete } from '../core/store.js';
+import { CACHE, dbInsert, dbDelete, ensureLoaded } from '../core/store.js';
 import { state } from '../core/state.js';
-import { uid, fmt, fmtDate, today, thisMonth, lastMonth, g } from '../utils/helpers.js';
+import { uid, fmt, fmtDate, today, thisMonth, lastMonth, g, esc } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { addHistoryEntry } from '../core/history.js';
@@ -13,7 +13,8 @@ function expenseCats() {
 }
 function saveExpenseCategories(cats) { localStorage.setItem('tutoros_expense_cats', JSON.stringify(cats)); }
 
-export function renderExpenses() {
+export async function renderExpenses() {
+  await ensureLoaded(['expenses']);
   const total = (CACHE.expenses || []).reduce((s, e) => s + e.amount, 0);
   const curM = thisMonth();
   const thisM = (CACHE.expenses || []).filter(e => e.date?.startsWith(curM)).reduce((s, e) => s + e.amount, 0);
@@ -47,10 +48,10 @@ export function renderExpenses() {
       </td>
     </tr>`;
     const rows = items.map(e => `<tr>
-      <td>${fmtDate(e.date)}</td><td><span class="b b-gray">${e.category}</span></td>
-      <td style="color:var(--muted)">${e.note || ''}</td>
+      <td>${fmtDate(e.date)}</td><td><span class="b b-gray">${esc(e.category)}</span></td>
+      <td style="color:var(--muted)">${esc(e.note) || ''}</td>
       <td class="amount-neg">−${fmt(e.amount)} ₽</td>
-      <td>${canOwner ? `<button class="btn btn-sm btn-icon" onclick="deleteExpense('${e.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}</td>
+      <td>${canOwner ? `<button class="btn btn-sm btn-icon" data-action="deleteExpense" data-id="${esc(e.id)}"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}</td>
     </tr>`).join('');
     return header + rows;
   }).join('');
@@ -67,7 +68,7 @@ export function openExpenseModal() {
         <label>Категория</label>
         <div style="display:flex;gap:6px">
           <select class="fi" id="ef-cat" style="flex:1" onchange="toggleChannelField()">${catOpts}</select>
-          <button class="btn btn-sm" onclick="addExpenseCategory()" title="Добавить категорию" style="flex-shrink:0;padding:0 10px"><i class="ti ti-plus"></i></button>
+          <button class="btn btn-sm" data-action="addExpenseCategory" title="Добавить категорию" style="flex-shrink:0;padding:0 10px"><i class="ti ti-plus"></i></button>
         </div>
       </div>
     </div>
@@ -88,7 +89,7 @@ export function openExpenseModal() {
         <option>Другое</option>
       </select>
     </div>
-    <div class="modal-footer"><button class="btn" onclick="closeModal()">Отмена</button><button class="btn btn-p" onclick="saveExpense()">Сохранить</button></div>
+    <div class="modal-footer"><button class="btn" data-action="closeModal">Отмена</button><button class="btn btn-p" data-action="saveExpense">Сохранить</button></div>
   </div>`);
   toggleChannelField();
 }

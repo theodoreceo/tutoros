@@ -44,6 +44,8 @@ import {
   updateHwBadge, openCreateHwModal, updateHwLessonOpts, saveNewHw, changeHwStatus,
 } from './pages/homework.js';
 import { renderCuratorDashPage } from './pages/curator-dash.js';
+import { renderManagerDashPage } from './pages/manager-dash.js';
+import { renderMarketerDashPage } from './pages/marketer-dash.js';
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 
@@ -65,6 +67,7 @@ async function init() {
   const loadingEl = document.getElementById('loading-screen');
 
   initSidebar();
+  setupDelegation();
   registerRenderer('dashboard', renderDashboard);
   registerRenderer('history', renderHistoryPage);
   registerRenderer('students', renderStudents);
@@ -78,6 +81,8 @@ async function init() {
   registerRenderer('analytics', renderAnalytics);
   registerRenderer('access', renderAccess);
   registerRenderer('curator_dash', renderCuratorDashPage);
+  registerRenderer('manager_dash', renderManagerDashPage);
+  registerRenderer('marketer_dash', renderMarketerDashPage);
 
   const showSetup = (formFn) => {
     if (loadingEl) loadingEl.style.display = 'none';
@@ -121,145 +126,166 @@ async function init() {
   }
 }
 
-// ─── WINDOW GLOBALS (for HTML inline onclick handlers) ────────────────────────
+// ─── EVENT DELEGATION ─────────────────────────────────────────────────────────
 
-// Core
-window.navigate = navigate;
-window.closeModal = closeModal;
-window.toast = toast;
-window.logout = logout;
-window.promptSwitchRole = promptSwitchRole;
-window.confirmSwitch = confirmSwitch;
-window.selectRole = selectRole;
-window.devSwitchRole = devSwitchRole;
-window.showLoginForm = showLoginForm;
-window.showRegisterForm = showRegisterForm;
-window.handleLogin = handleLogin;
-window.handleRegister = handleRegister;
-window.clearDemoData = async () => { if (confirm('Сбросить все данные?')) { await clearDemoData(); location.reload(); } };
-window.seedDemoData = async () => {
-  if (!confirm('Загрузить тестовые данные в пустую базу?')) return;
-  await seedDemoData();
-  location.reload();
-};
-window.toggleDemoMode = () => {
-  const going = !isDemoMode();
-  const msg = going
-    ? 'Включить демо-режим?\n\nДанные из вашей базы не изменятся — вы просто увидите тестовые данные.'
-    : 'Выйти из демо-режима и вернуться к реальной базе данных?';
-  if (!confirm(msg)) return;
-  setDemoMode(going);
-  location.reload();
-};
+// Central event delegation - replaces all window.* globals
+const ACTION_MAP = {
+  // Navigation
+  navigate: (el) => navigate(el.dataset.pg || el.dataset.arg),
+  logout: () => logout(),
+  promptSwitchRole: () => promptSwitchRole(),
+  confirmSwitch: (el) => confirmSwitch(el.dataset.id),
+  selectRole: (el) => selectRole(el.dataset.id),
+  devSwitchRole: (el) => devSwitchRole(el.dataset.id),
+  showLoginForm: () => showLoginForm(),
+  showRegisterForm: (el) => showRegisterForm(el.dataset.token || null),
+  handleLogin: (el, e) => { e.preventDefault(); handleLogin(e); },
+  handleRegister: (el, e) => { e.preventDefault(); handleRegister(e); },
+  closeModal: () => closeModal(),
 
-// Students
-window.renderStudents = renderStudents;
-window.renderCRMStudents = renderCRMStudents;
-window.renderPipeline = renderPipeline;
-window.setCRMView = setCRMView;
-window.setCRMStatusFilter = setCRMStatusFilter;
-window.openStudentModal = openStudentModal;
-window.calcLTV = calcLTV;
-window.editStudent = editStudent;
-window.saveStudent = saveStudent;
-window.deleteStudent = deleteStudent;
-window.openStudentDetail = openStudentDetail;
-window.openStatusDateModal = openStatusDateModal;
-window.confirmStatusChange = confirmStatusChange;
-window.openTrialFromCalendar = openTrialFromCalendar;
-window.scheduleTrialLesson = scheduleTrialLesson;
-window.openPaymentModalFor = openPaymentModalFor;
-window.addStudentNote = addStudentNote;
-window.selectChip = selectChip;
-window.resetStudentRisk = resetStudentRisk;
-window.copyRegToken = copyRegToken;
-window.generateStudentToken = generateStudentToken;
+  clearDemoData: async () => { if (confirm('Сбросить все данные?')) { await clearDemoData(); location.reload(); } },
+  seedDemoData: async () => { if (!confirm('Загрузить тестовые данные в пустую базу?')) return; await seedDemoData(); location.reload(); },
+  toggleDemoMode: () => {
+    const going = !isDemoMode();
+    const msg = going ? 'Включить демо-режим?\n\nДанные из вашей базы не изменятся — вы просто увидите тестовые данные.' : 'Выйти из демо-режима и вернуться к реальной базе данных?';
+    if (!confirm(msg)) return;
+    setDemoMode(going);
+    location.reload();
+  },
 
-// Groups
-window.renderGroups = renderGroups;
-window.openGroupModal = openGroupModal;
-window.editGroup = editGroup;
-window.saveGroup = saveGroup;
-window.deleteGroup = deleteGroup;
-window.openGroupDetail = openGroupDetail;
-window.closeGroupDetail = closeGroupDetail;
-window.renderGroupDetail = renderGroupDetail;
-window.renderLessonJournal = renderLessonJournal;
-window.openLessonModal = openLessonModal;
-window.saveLesson = saveLesson;
-window.deleteLesson = deleteLesson;
+  // Students
+  openStudentModal: () => openStudentModal(),
+  editStudent: (el) => editStudent(el.dataset.id),
+  saveStudent: () => saveStudent(),
+  deleteStudent: (el) => deleteStudent(el.dataset.id),
+  openStudentDetail: (el) => openStudentDetail(el.dataset.id),
+  openStatusDateModal: (el) => openStatusDateModal(el.dataset.id, el.dataset.status),
+  confirmStatusChange: () => confirmStatusChange(),
+  openTrialFromCalendar: (el) => openTrialFromCalendar(el.dataset.id),
+  scheduleTrialLesson: () => scheduleTrialLesson(),
+  openPaymentModalFor: (el) => openPaymentModalFor(el.dataset.id),
+  addStudentNote: (el) => addStudentNote(el.dataset.id),
+  selectChip: (el) => selectChip(el.dataset.field, el.dataset.value, el),
+  resetStudentRisk: (el) => resetStudentRisk(el.dataset.id),
+  copyRegToken: (el) => copyRegToken(el.dataset.token),
+  generateStudentToken: (el) => generateStudentToken(el.dataset.id),
+  setCRMView: (el) => setCRMView(el.dataset.view),
+  setCRMStatusFilter: (el) => setCRMStatusFilter(el.dataset.status),
+  calcLTV: () => calcLTV(),
 
-// Calendar
-window.setCalView = setCalView;
-window.calNav = calNav;
-window.calToday = calToday;
-window.renderCalendar = renderCalendar;
-window.openLessonFromCalendar = openLessonFromCalendar;
-window.openLessonFormFromPicker = openLessonFormFromPicker;
-window.openLessonFormModal = openLessonFormModal;
-window.toggleAttendance = toggleAttendance;
-window.saveLessonForm = saveLessonForm;
-window.openLessonCard = openLessonCard;
-window.exportICS = exportICS;
-window.calSubscribe = calSubscribe;
+  // Groups
+  openGroupModal: () => openGroupModal(),
+  editGroup: (el) => editGroup(el.dataset.id),
+  saveGroup: () => saveGroup(),
+  deleteGroup: (el) => deleteGroup(el.dataset.id),
+  openGroupDetail: (el) => openGroupDetail(el.dataset.id),
+  closeGroupDetail: () => closeGroupDetail(),
+  renderGroupDetail: (el) => renderGroupDetail(el.dataset.id),
+  renderLessonJournal: (el) => renderLessonJournal(el.dataset.id),
+  openLessonModal: (el) => openLessonModal(el.dataset.id),
+  saveLesson: () => saveLesson(),
+  deleteLesson: (el) => deleteLesson(el.dataset.id),
+  setGroupHwStatus: (el) => setGroupHwStatus(el.dataset.id, el.dataset.status),
 
-window.setGroupHwStatus = setGroupHwStatus;
-window.setCalHwStatus = setCalHwStatus;
+  // Calendar
+  setCalView: (el) => setCalView(el.dataset.view),
+  calNav: (el) => calNav(parseInt(el.dataset.dir)),
+  calToday: () => calToday(),
+  openLessonFromCalendar: (el) => openLessonFromCalendar(el.dataset.id),
+  openLessonFormFromPicker: (el) => openLessonFormFromPicker(el.dataset.date, el.dataset.groupId),
+  openLessonFormModal: (el) => openLessonFormModal(el.dataset.id),
+  toggleAttendance: (el) => toggleAttendance(el.dataset.lessonId, el.dataset.studentId),
+  saveLessonForm: () => saveLessonForm(),
+  openLessonCard: (el) => openLessonCard(el.dataset.id),
+  calDeleteLesson: (el) => calDeleteLesson(el.dataset.id),
+  exportICS: () => exportICS(),
+  calSubscribe: () => calSubscribe(),
+  setCalHwStatus: (el) => setCalHwStatus(el.dataset.id, el.dataset.status),
 
-// Income
-window.openPaymentModal = openPaymentModal;
-window.savePayment = savePayment;
-window.deletePayment = deletePayment;
+  // Income
+  openPaymentModal: () => openPaymentModal(),
+  savePayment: () => savePayment(),
+  deletePayment: (el) => deletePayment(el.dataset.id),
 
-// Expenses
-window.openExpenseModal = openExpenseModal;
-window.toggleChannelField = toggleChannelField;
-window.addExpenseCategory = addExpenseCategory;
-window.saveExpense = saveExpense;
-window.deleteExpense = deleteExpense;
+  // Expenses
+  openExpenseModal: () => openExpenseModal(),
+  toggleChannelField: () => toggleChannelField(),
+  addExpenseCategory: () => addExpenseCategory(),
+  saveExpense: () => saveExpense(),
+  deleteExpense: (el) => deleteExpense(el.dataset.id),
 
-// Analytics
-window.setAnTab = setAnTab;
-window.setAnPeriod = setAnPeriod;
+  // Analytics
+  setAnTab: (el) => setAnTab(el.dataset.tab),
+  setAnPeriod: (el) => setAnPeriod(parseInt(el.dataset.months)),
 
-// Access
-window.openRoleModal = openRoleModal;
-window.editRole = editRole;
-window.saveRole = saveRole;
-window.deleteRole = deleteRole;
-window.toggleAssistantGroup = toggleAssistantGroup;
-window.openInviteModal = openInviteModal;
-window.createInvite = createInvite;
+  // Access
+  openRoleModal: () => openRoleModal(),
+  editRole: (el) => editRole(el.dataset.id),
+  saveRole: () => saveRole(),
+  deleteRole: (el) => deleteRole(el.dataset.id),
+  toggleAssistantGroup: (el) => toggleAssistantGroup(el.dataset.roleId, el.dataset.groupId),
+  openInviteModal: (el) => openInviteModal(el.dataset.roleId),
+  createInvite: () => createInvite(),
 
-// Homework
-window.setHwTab = setHwTab;
-window.openReviewModal = openReviewModal;
-window.saveReview = saveReview;
-window.updateScorePreview = updateScorePreview;
-window.updateTotalScore = updateTotalScore;
-window.renderAllHwFiltered = renderAllHwFiltered;
-window.openCreateHwModal = openCreateHwModal;
-window.updateHwLessonOpts = updateHwLessonOpts;
-window.saveNewHw = saveNewHw;
-window.changeHwStatus = changeHwStatus;
+  // Homework
+  setHwTab: (el) => setHwTab(el.dataset.tab),
+  openReviewModal: (el) => openReviewModal(el.dataset.id),
+  saveReview: () => saveReview(),
+  updateScorePreview: () => updateScorePreview(),
+  updateTotalScore: () => updateTotalScore(),
+  renderAllHwFiltered: () => renderAllHwFiltered(),
+  openCreateHwModal: () => openCreateHwModal(),
+  updateHwLessonOpts: () => updateHwLessonOpts(),
+  saveNewHw: () => saveNewHw(),
+  changeHwStatus: (el) => changeHwStatus(el.dataset.id, el.dataset.status),
 
-// Dashboard
-window.setDashTab = setDashTab;
+  // Dashboard
+  setDashTab: (el) => setDashTab(el.dataset.tab),
 
-// Mobile sidebar
-window.toggleSidebar = () => {
-  const sb = document.getElementById('sidebar');
-  const ov = document.getElementById('sb-overlay');
-  const open = sb?.classList.toggle('open');
-  ov?.classList.toggle('show', open);
-};
-window.closeSidebar = () => {
-  document.getElementById('sidebar')?.classList.remove('open');
-  document.getElementById('sb-overlay')?.classList.remove('show');
+  // History
+  undoHistoryEntry: (el) => undoHistoryEntry(el.dataset.id),
+
+  // Mobile sidebar
+  toggleSidebar: () => {
+    const sb = document.getElementById('sidebar');
+    const ov = document.getElementById('sb-overlay');
+    const open = sb?.classList.toggle('open');
+    ov?.classList.toggle('show', open);
+  },
+  closeSidebar: () => {
+    document.getElementById('sidebar')?.classList.remove('open');
+    document.getElementById('sb-overlay')?.classList.remove('show');
+  },
 };
 
-// History
-window.undoHistoryEntry = undoHistoryEntry;
+function setupDelegation() {
+  document.body.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    const action = el.dataset.action;
+    const handler = ACTION_MAP[action];
+    if (handler) {
+      e.preventDefault();
+      handler(el, e);
+    }
+  });
+
+  // Form submit delegation
+  document.body.addEventListener('submit', (e) => {
+    const action = e.target.dataset.action;
+    if (!action) return;
+    const handler = ACTION_MAP[action];
+    if (handler) {
+      e.preventDefault();
+      handler(e.target, e);
+    }
+  });
+}
+
+// Keep these as window globals for static HTML elements (index.html header/sidebar)
+window.toggleDemoMode = ACTION_MAP.toggleDemoMode;
+window.toggleSidebar = ACTION_MAP.toggleSidebar;
+window.closeSidebar = ACTION_MAP.closeSidebar;
 
 // ─── START ────────────────────────────────────────────────────────────────────
 

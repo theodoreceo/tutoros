@@ -1,5 +1,5 @@
-import { CACHE } from '../core/store.js';
-import { fmt, fmtDate, days30Start, days60Start } from '../utils/helpers.js';
+import { CACHE, ensureLoaded } from '../core/store.js';
+import { fmt, fmtDate, days30Start, days60Start, esc } from '../utils/helpers.js';
 import { calculateForecast } from '../core/forecast.js';
 
 let _anTab = 'overview';
@@ -42,7 +42,8 @@ function median(arr) {
   return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
 }
 
-export function renderAnalytics() {
+export async function renderAnalytics() {
+  await ensureLoaded(['students', 'payments', 'expenses', 'lessons']);
   const periodStart = anPeriodStart();
   const students = CACHE.students || [];
   const payments = CACHE.payments || [];
@@ -377,9 +378,9 @@ export function renderAnalytics() {
         const months = studentLifetimeMonths(s);
         const actualLTV = studentActualLTV(s);
         return `<div class="ch-row">
-          <span><b>${s.name}</b></span>
+          <span><b>${esc(s.name)}</b></span>
           <span style="color:var(--muted)">${startEntry ? fmtDate(startEntry.date) : ''} — ${fmtDate(s.left_at)}</span>
-          <span><span class="tag" style="margin:0">${s.source || '—'}</span></span>
+          <span><span class="tag" style="margin:0">${esc(s.source) || '—'}</span></span>
           <span>${months ? months + ' мес' : '—'}</span>
           <span class="amount-pos">${actualLTV ? fmt(actualLTV) + ' ₽' : '—'}</span>
         </div>`;

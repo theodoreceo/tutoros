@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase.js';
-import { CACHE, dbInsert, dbUpdate, dbDelete, isDemoMode } from '../core/store.js';
-import { uid, g, ALL_PAGES, ROLE_TYPES } from '../utils/helpers.js';
+import { CACHE, dbInsert, dbUpdate, dbDelete, isDemoMode, ensureLoaded } from '../core/store.js';
+import { uid, g, ALL_PAGES, ROLE_TYPES, esc } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 
@@ -8,7 +8,8 @@ function assistantRoles() {
   return (CACHE.roles || []).filter(r => r.role_type !== 'owner');
 }
 
-export function renderAccess() {
+export async function renderAccess() {
+  await ensureLoaded(['roles', 'assistant_groups']);
   const el = document.getElementById('roles-list');
   if (!el) return;
 
@@ -23,7 +24,7 @@ export function renderAccess() {
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <code style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:3px 10px;font-size:13px;font-family:monospace">${ownerRole.reg_token}</code>
-        <button class="btn btn-sm" onclick="copyRegToken('${ownerRole.reg_token}')" title="Скопировать"><i class="ti ti-copy"></i></button>
+        <button class="btn btn-sm" data-action="copyRegToken" data-id="${esc(ownerRole.reg_token)}" title="Скопировать"><i class="ti ti-copy"></i></button>
       </div>
     </div>` : '';
 
@@ -39,7 +40,7 @@ export function renderAccess() {
             <div style="flex:1;min-width:0">
               <div style="display:flex;align-items:center;gap:7px">
                 <span style="width:10px;height:10px;border-radius:50%;background:${r.color || '#64748b'};flex-shrink:0;display:inline-block"></span>
-                <span style="font-size:14px;font-weight:600">${r.name}</span>
+                <span style="font-size:14px;font-weight:600">${esc(r.name)}</span>
               </div>
               <div style="margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                 <span class="b b-bl"><i class="ti ${roleIcon}" style="font-size:10px"></i> ${roleLabel}</span>
@@ -53,7 +54,7 @@ export function renderAccess() {
                   ? `<span style="display:flex;align-items:center;gap:5px">
                        <span style="font-size:11px;color:var(--muted)">Telegram-код:</span>
                        <code style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-size:11px;font-family:monospace">${r.reg_token}</code>
-                       <button class="btn btn-sm" style="padding:1px 6px" onclick="copyRegToken('${r.reg_token}')" title="Скопировать код"><i class="ti ti-copy" style="font-size:11px"></i></button>
+                       <button class="btn btn-sm" style="padding:1px 6px" data-action="copyRegToken" data-id="${esc(r.reg_token)}" title="Скопировать код"><i class="ti ti-copy" style="font-size:11px"></i></button>
                        ${r.telegram_id ? '<i class="ti ti-brand-telegram" style="color:#2aabee;font-size:13px" title="Бот привязан"></i>' : ''}
                      </span>`
                   : ''
@@ -62,11 +63,11 @@ export function renderAccess() {
             </div>
             <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
               ${!isDemoMode() && !linked
-                ? `<button class="btn btn-sm" onclick="openInviteModal('${r.id}')" title="Пригласить"><i class="ti ti-mail"></i> Пригласить</button>`
+                ? `<button class="btn btn-sm" data-action="openInviteModal" data-id="${esc(r.id)}" title="Пригласить"><i class="ti ti-mail"></i> Пригласить</button>`
                 : ''
               }
-              <button class="btn btn-sm btn-icon" onclick="editRole('${r.id}')"><i class="ti ti-edit"></i></button>
-              <button class="btn btn-sm btn-icon" onclick="deleteRole('${r.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>
+              <button class="btn btn-sm btn-icon" data-action="editRole" data-id="${esc(r.id)}"><i class="ti ti-edit"></i></button>
+              <button class="btn btn-sm btn-icon" data-action="deleteRole" data-id="${esc(r.id)}"><i class="ti ti-trash" style="color:var(--red)"></i></button>
             </div>
           </div>
         </div>`;
@@ -90,14 +91,14 @@ function renderAssistantGroupsSection() {
       return `<div class="card" style="margin-bottom:10px">
         <div style="font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:7px">
           <span style="width:10px;height:10px;border-radius:50%;background:${role.color || '#64748b'};flex-shrink:0;display:inline-block"></span>
-          ${role.name}
+          ${esc(role.name)}
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px">
           ${(CACHE.groups || []).map(gr => {
             const checked = myGroups.has(gr.id);
             return `<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid ${checked ? 'var(--accent-mid)' : 'var(--border)'};border-radius:var(--r);cursor:pointer;font-size:13px;background:${checked ? 'var(--accent-bg)' : 'var(--surface)'}">
-              <input type="checkbox" ${checked ? 'checked' : ''} style="accent-color:var(--accent-mid)" onchange="toggleAssistantGroup('${role.id}','${gr.id}',this.checked)">
-              ${gr.name}
+              <input type="checkbox" ${checked ? 'checked' : ''} style="accent-color:var(--accent-mid)" data-action="toggleAssistantGroup" data-role-id="${esc(role.id)}" data-group-id="${esc(gr.id)}">
+              ${esc(gr.name)}
             </label>`;
           }).join('')}
           ${!(CACHE.groups || []).length ? '<div style="font-size:12px;color:var(--hint)">Групп нет</div>' : ''}
@@ -140,7 +141,7 @@ export function openRoleModal(id) {
         </label>`).join('')}
       </div>
     </div>
-    <div class="modal-footer"><button class="btn" onclick="closeModal()">Отмена</button><button class="btn btn-p" onclick="saveRole('${id || ''}')">Сохранить</button></div>
+    <div class="modal-footer"><button class="btn" data-action="closeModal">Отмена</button><button class="btn btn-p" data-action="saveRole" data-id="${esc(id || '')}">Сохранить</button></div>
   </div>`);
 }
 
@@ -176,7 +177,7 @@ export function openInviteModal(roleId) {
   modal(`<div class="modal" style="max-width:420px">
     <div class="modal-title"><i class="ti ti-mail" style="margin-right:6px"></i>Пригласить ассистента</div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
-      Роль: <strong>${role.name}</strong> (${ROLE_TYPES[role.role_type]?.label || role.role_type})
+      Роль: <strong>${esc(role.name)}</strong> (${esc(ROLE_TYPES[role.role_type]?.label || role.role_type)})
     </p>
     <div id="invite-form-body">
       <div class="fg">
@@ -186,8 +187,8 @@ export function openInviteModal(roleId) {
       <div id="invite-result"></div>
     </div>
     <div class="modal-footer">
-      <button class="btn" onclick="closeModal()">Закрыть</button>
-      <button class="btn btn-p" id="invite-submit-btn" onclick="createInvite('${roleId}')">Создать ссылку</button>
+      <button class="btn" data-action="closeModal">Закрыть</button>
+      <button class="btn btn-p" id="invite-submit-btn" data-action="createInvite" data-id="${esc(roleId)}">Создать ссылку</button>
     </div>
   </div>`);
   setTimeout(() => document.getElementById('invite-email')?.focus(), 50);
@@ -218,10 +219,10 @@ export async function createInvite(roleId) {
 
   if (formBody) formBody.innerHTML = `
     <div style="background:var(--surface-alt,var(--surface));border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-top:4px">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Ссылка для <strong>${email}</strong>:</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Ссылка для <strong>${esc(email)}</strong>:</div>
       <div style="display:flex;gap:8px;align-items:center">
-        <input class="fi" value="${inviteUrl}" readonly onclick="this.select()" style="font-size:12px;font-family:monospace">
-        <button class="btn btn-sm" onclick="navigator.clipboard.writeText('${inviteUrl}').then(()=>toast('Скопировано'))">
+        <input class="fi" value="${esc(inviteUrl)}" readonly onclick="this.select()" style="font-size:12px;font-family:monospace">
+        <button class="btn btn-sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.value).then(()=>toast('Скопировано'))">
           <i class="ti ti-copy"></i>
         </button>
       </div>

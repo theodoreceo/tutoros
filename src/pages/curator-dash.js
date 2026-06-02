@@ -1,4 +1,4 @@
-import { CACHE } from '../core/store.js';
+import { CACHE, ensureLoaded } from '../core/store.js';
 import { state } from '../core/state.js';
 import { db } from '../lib/db.js';
 import { calcRiskScore } from '../core/risk.js';
@@ -138,7 +138,93 @@ function groupCard(group, m) {
   </div>`;
 }
 
+function _renderWeekLessons(groups, lessons) {
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - now.getDay() + 1);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const ws = weekStart.toISOString().slice(0, 10);
+  const we = weekEnd.toISOString().slice(0, 10);
+  const weekLessons = lessons.filter(l => l.date >= ws && l.date <= we).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+  if (!weekLessons.length) return '';
+  const dayNames = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+  return `
+    <div style="margin-top:20px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Занятия на этой неделе</div>
+      <div class="card" style="padding:0;overflow:hidden">
+        ${weekLessons.map(l => {
+          const grp = groups.find(g => g.id === l.group_id);
+          const d = new Date(l.date + 'T00:00:00');
+          const dayLabel = dayNames[d.getDay() === 0 ? 6 : d.getDay() - 1];
+          const dateLabel = d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+          const attendCount = l.attendance ? Object.values(l.attendance).filter(v => v).length : 0;
+          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border)">
+            <div style="font-size:11px;font-weight:600;color:var(--accent-mid);min-width:32px">${dayLabel}</div>
+            <div style="font-size:11px;color:var(--muted);min-width:36px">${dateLabel}</div>
+            <div style="font-size:12px;font-weight:600;color:var(--accent-mid);min-width:40px">${l.time || '—'}</div>
+            <div style="flex:1;font-size:13px">${grp?.name || '—'}</div>
+            <div style="font-size:11px;color:var(--muted)">${attendCount} уч.</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function _renderHwBacklog(groups, hwSubmissions, hwAssignments) {
+  const pending = hwSubmissions.filter(s => s.status === 'submitted');
+  if (!pending.length) return '';
+  const assignmentMap = Object.fromEntries(hwAssignments.map(a => [a.id, a]));
+  const byGroup = {};
+  for (const sub of pending) {
+    const assignment = assignmentMap[sub.assignment_id];
+    const groupId = assignment?.group_id || 'unknown';
+    byGroup[groupId] = (byGroup[groupId] || 0) + 1;
+  }
+  const rows = Object.entries(byGroup).map(([gid, count]) => {
+    const grp = groups.find(g => g.id === gid);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border)">
+      <div style="flex:1;font-size:13px">${grp?.name || 'Неизвестная группа'}</div>
+      <span style="font-size:12px;font-weight:700;color:${count > 5 ? 'var(--red)' : 'var(--amber)'}">${count}</span>
+      <div style="font-size:11px;color:var(--muted)">на проверке</div>
+    </div>`;
+  }).join('');
+  return `
+    <div style="margin-top:16px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">ДЗ на проверке по группам</div>
+      <div class="card" style="padding:0;overflow:hidden">${rows}</div>
+    </div>
+  `;
+}
+
+function _renderLessonCompletionRate(groups, lessons) {
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const monthEnd = now.toISOString().slice(0, 10);
+  const monthLessons = lessons.filter(l => l.date >= monthStart && l.date <= monthEnd);
+  if (!monthLessons.length) return '';
+  const total = monthLessons.length;
+  const withAttendance = monthLessons.filter(l => l.attendance && Object.values(l.attendance).some(v => v)).length;
+  const rate = total ? Math.round(withAttendance / total * 100) : 0;
+  const color = rate >= 80 ? 'var(--green)' : rate >= 50 ? 'var(--amber)' : 'var(--red)';
+  return `
+    <div style="margin-top:16px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Посещаемость в этом месяце</div>
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          <div style="flex:1;font-size:13px">Занятий с отметками посещаемости</div>
+          <div style="font-size:18px;font-weight:700;color:${color}">${rate}%</div>
+          <div style="font-size:11px;color:var(--muted)">${withAttendance} / ${total}</div>
+        </div>
+        <div class="prog" style="height:6px"><div class="prog-f" style="width:${rate}%;background:${color}"></div></div>
+      </div>
+    </div>
+  `;
+}
+
 export async function renderCuratorDashPage() {
+  await ensureLoaded(['groups', 'students', 'lessons', 'homework_assignments', 'homework_submissions', 'payments']);
   const el = document.getElementById('curator-dash-content');
   if (!el) return;
 
@@ -198,5 +284,9 @@ export async function renderCuratorDashPage() {
 
     <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">По группам</div>
     ${metrics.map(({ group, m }) => groupCard(group, m)).join('')}
+
+    ${_renderWeekLessons(groups, CACHE.lessons || [])}
+    ${_renderHwBacklog(groups, CACHE.homework_submissions || [], CACHE.homework_assignments || [])}
+    ${_renderLessonCompletionRate(groups, CACHE.lessons || [])}
   `;
 }

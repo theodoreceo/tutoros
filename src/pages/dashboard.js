@@ -1,6 +1,6 @@
-import { CACHE } from '../core/store.js';
+import { CACHE, ensureLoaded } from '../core/store.js';
 import { state } from '../core/state.js';
-import { fmt, fmtDate, days30Start, days60Start, dateStr } from '../utils/helpers.js';
+import { fmt, fmtDate, days30Start, days60Start, dateStr, esc } from '../utils/helpers.js';
 import { calcRiskScore, studentSubscriptionStatus } from '../core/risk.js';
 import { GROUP_COLORS } from '../utils/helpers.js';
 
@@ -23,7 +23,8 @@ function groupShort(id) {
   return g ? g.name.slice(0, 24) + (g.name.length > 24 ? '…' : '') : '—';
 }
 
-export function renderDashboard() {
+export async function renderDashboard() {
+  await ensureLoaded(['students', 'payments', 'expenses', 'groups', 'lessons']);
   const students = CACHE.students;
   const active = students.filter(s => s.crm_status === 'active');
   const d30 = days30Start(), d60 = days60Start();
@@ -99,8 +100,8 @@ export function renderDashboard() {
         const memberCount = gr ? CACHE.students.filter(s => s.group_id === gr.id && s.crm_status === 'active').length : 0;
         return `<div class="today-lesson" style="border-left-color:${gc}" onclick="navigate('lessons_cal')">
           <div style="font-size:10px;color:var(--accent-mid);font-weight:600;margin-bottom:2px">${fmtLessonDate(l.date)} · ${l.start_time || '?'}</div>
-          <div class="today-lesson-name">${gr ? gr.name : 'Без группы'}</div>
-          <div class="today-lesson-meta">${l.topic || 'Тема не указана'}</div>
+          <div class="today-lesson-name">${gr ? esc(gr.name) : 'Без группы'}</div>
+          <div class="today-lesson-meta">${esc(l.topic) || 'Тема не указана'}</div>
           <div style="margin-top:4px;font-size:10px;color:var(--hint)"><i class="ti ti-users" style="font-size:10px"></i> ${memberCount} уч.</div>
         </div>`;
       }).join('')}
@@ -114,30 +115,30 @@ export function renderDashboard() {
   const actions = [];
   active.forEach(s => {
     const sub = studentSubscriptionStatus(s);
-    if (sub && sub.daysLeft < 0) actions.push({ level: 'urgent', icon: 'ti-clock-x', title: `${s.name} — абонемент просрочен на ${Math.abs(sub.daysLeft)} дн.`, sub: `${s.source || ''}${s.group_id ? ' · ' + groupShort(s.group_id) : ''}`, action: `openPaymentModalFor('${s.id}')`, actionLabel: 'Добавить оплату' });
+    if (sub && sub.daysLeft < 0) actions.push({ level: 'urgent', icon: 'ti-clock-x', title: `${esc(s.name)} — абонемент просрочен на ${Math.abs(sub.daysLeft)} дн.`, sub: `${esc(s.source) || ''}${s.group_id ? ' · ' + esc(groupShort(s.group_id)) : ''}`, action: `openPaymentModalFor('${s.id}')`, actionLabel: 'Добавить оплату' });
   });
-  active.filter(s => !s.paid).forEach(s => actions.push({ level: 'urgent', icon: 'ti-cash-off', title: `${s.name} — не оплачен`, sub: `${s.source || ''}${s.group_id ? ' · ' + groupShort(s.group_id) : ''}`, action: `openPaymentModalFor('${s.id}')`, actionLabel: 'Добавить оплату' }));
+  active.filter(s => !s.paid).forEach(s => actions.push({ level: 'urgent', icon: 'ti-cash-off', title: `${esc(s.name)} — не оплачен`, sub: `${esc(s.source) || ''}${s.group_id ? ' · ' + esc(groupShort(s.group_id)) : ''}`, action: `openPaymentModalFor('${s.id}')`, actionLabel: 'Добавить оплату' }));
   active.forEach(s => {
     const { level, reasons } = calcRiskScore(s);
-    if (level === 'high' && !actions.find(a => a.title.startsWith(s.name))) actions.push({ level: 'urgent', icon: 'ti-alert-triangle', title: `${s.name} — высокий риск`, sub: reasons.join(' · '), action: `openStudentDetail('${s.id}')`, actionLabel: 'Открыть' });
+    if (level === 'high' && !actions.find(a => a.title.startsWith(esc(s.name)))) actions.push({ level: 'urgent', icon: 'ti-alert-triangle', title: `${esc(s.name)} — высокий риск`, sub: esc(reasons.join(' · ')), action: `openStudentDetail('${s.id}')`, actionLabel: 'Открыть' });
   });
   active.forEach(s => {
     const sub = studentSubscriptionStatus(s);
-    if (sub && sub.daysLeft >= 0 && sub.daysLeft <= 7) actions.push({ level: 'important', icon: 'ti-clock', title: `${s.name} — абонемент истекает через ${sub.daysLeft} дн.`, sub: `до ${fmtDate(sub.sub_end)}`, action: `openPaymentModalFor('${s.id}')`, actionLabel: 'Продлить' });
+    if (sub && sub.daysLeft >= 0 && sub.daysLeft <= 7) actions.push({ level: 'important', icon: 'ti-clock', title: `${esc(s.name)} — абонемент истекает через ${sub.daysLeft} дн.`, sub: `до ${fmtDate(sub.sub_end)}`, action: `openPaymentModalFor('${s.id}')`, actionLabel: 'Продлить' });
   });
   const hwByStudent = {};
   (CACHE.hw_submissions || []).filter(h => h.status === 'missing').forEach(h => { hwByStudent[h.student_id] = (hwByStudent[h.student_id] || 0) + 1; });
   Object.entries(hwByStudent).forEach(([sid, cnt]) => {
     const s = students.find(x => x.id === sid);
-    if (s) actions.push({ level: 'important', icon: 'ti-home-off', title: `${s.name} — ${cnt} ДЗ не сдано`, sub: '', action: `openStudentDetail('${sid}')`, actionLabel: 'Карточка' });
+    if (s) actions.push({ level: 'important', icon: 'ti-home-off', title: `${esc(s.name)} — ${cnt} ДЗ не сдано`, sub: '', action: `openStudentDetail('${sid}')`, actionLabel: 'Карточка' });
   });
   active.forEach(s => {
     const { level, reasons } = calcRiskScore(s);
-    if (level === 'med' && !actions.find(a => a.title.startsWith(s.name))) actions.push({ level: 'important', icon: 'ti-alert-circle', title: `${s.name}`, sub: reasons.join(' · '), action: `openStudentDetail('${s.id}')`, actionLabel: 'Карточка' });
+    if (level === 'med' && !actions.find(a => a.title.startsWith(esc(s.name)))) actions.push({ level: 'important', icon: 'ti-alert-circle', title: `${esc(s.name)}`, sub: esc(reasons.join(' · ')), action: `openStudentDetail('${s.id}')`, actionLabel: 'Карточка' });
   });
   students.filter(s => s.crm_status === 'lead').forEach(s => {
     const age = Math.round((Date.now() - new Date(s.created_at)) / 86400000);
-    if (age >= 3) actions.push({ level: 'notice', icon: 'ti-user-question', title: `Лид: ${s.name} — ${age} дн. без движения`, sub: `${s.source || ''}`, action: `openStudentDetail('${s.id}')`, actionLabel: 'Карточка' });
+    if (age >= 3) actions.push({ level: 'notice', icon: 'ti-user-question', title: `Лид: ${esc(s.name)} — ${age} дн. без движения`, sub: `${esc(s.source) || ''}`, action: `openStudentDetail('${s.id}')`, actionLabel: 'Карточка' });
   });
 
   // HW queue alerts
@@ -231,7 +232,7 @@ export function renderDashboard() {
     else histEl.innerHTML = entries.map(e => `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
       <div style="width:8px;height:8px;border-radius:50%;background:var(--accent-mid);flex-shrink:0;margin-top:4px"></div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:500">${e.description || e.action}</div>
+        <div style="font-size:13px;font-weight:500">${esc(e.description || e.action)}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px"><i class="ti ti-user" style="font-size:10px"></i> ${e.actor} · ${new Date(e.timestamp).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
       </div>
     </div>`).join('');

@@ -1,3 +1,4 @@
+export const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 export const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
 export const fmtDate = (s) => { if (!s) return '—'; const d = new Date(s); return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' }); };
@@ -25,6 +26,8 @@ export const ALL_PAGES = [
   { id: 'hw_students',  label: 'Ученики' },
   { id: 'access',       label: 'Доступы' },
   { id: 'curator_dash', label: 'Дашборд' },
+  { id: 'manager_dash', label: 'Дашборд' },
+  { id: 'marketer_dash', label: 'Дашборд' },
 ];
 
 export const STATUS_CONFIG = {
@@ -52,5 +55,6 @@ export const GROUP_COLORS = ['#2563eb','#16a34a','#d97706','#7c3aed','#db2777','
 
 export const ROLE_TYPES = {
   curator:  { label: 'Куратор',    icon: 'ti-school',       pages: ['curator_dash', 'groups', 'lessons_cal', 'homework', 'hw_students'], homePage: 'curator_dash' },
-  marketer: { label: 'Маркетолог', icon: 'ti-speakerphone', pages: ['students', 'crm_students'],                                          homePage: 'crm_students' },
+  marketer: { label: 'Маркетолог', icon: 'ti-speakerphone', pages: ['marketer_dash', 'students', 'crm_students'], homePage: 'marketer_dash' },
+  manager:  { label: 'Менеджер',   icon: 'ti-briefcase',    pages: ['manager_dash', 'students', 'crm_students', 'groups', 'lessons_cal', 'income', 'expenses', 'analytics', 'homework'], homePage: 'manager_dash' },
 };

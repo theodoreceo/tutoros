@@ -14,6 +14,8 @@ const TITLES = {
   tasks:        'Задачи ассистентам',
   homework:     'Домашние задания',
   access:       'Управление доступами',
+  curator_dash: 'Дашборд куратора',
+  manager_dash: 'Дашборд менеджера',
 };
 
 const renderers = {};
@@ -22,12 +24,22 @@ export function registerRenderer(page, fn) {
   renderers[page] = fn;
 }
 
-export function navigate(pg) {
+export function navigate(pg, { replace = false } = {}) {
   const role = state.currentRole;
   if (role && !role.isOwner && role.pages && !role.pages.includes(pg)) {
     import('../components/toast.js').then(({ toast }) => toast('Нет доступа'));
     return;
   }
+  const hash = '#' + pg;
+  if (replace) {
+    history.replaceState({ pg }, '', hash);
+  } else if (location.hash !== hash) {
+    history.pushState({ pg }, '', hash);
+  }
+  _render(pg);
+}
+
+function _render(pg) {
   document.querySelectorAll('.sb-item').forEach(el => el.classList.toggle('on', el.dataset.pg === pg));
   document.querySelectorAll('.pg').forEach(el => el.classList.toggle('on', el.id === `pg-${pg}`));
   const titleEl = document.getElementById('page-title');
@@ -39,9 +51,18 @@ export function setupNav() {
   document.querySelectorAll('.sb-item[data-pg]').forEach(el => {
     el.addEventListener('click', () => {
       navigate(el.dataset.pg);
-      // close mobile drawer
       document.getElementById('sidebar')?.classList.remove('open');
       document.getElementById('sb-overlay')?.classList.remove('show');
     });
   });
+
+  window.addEventListener('popstate', (e) => {
+    const pg = e.state?.pg || location.hash.slice(1);
+    if (pg && renderers[pg]) _render(pg);
+  });
+}
+
+export function navigateFromHash() {
+  const pg = location.hash.slice(1);
+  return pg || null;
 }

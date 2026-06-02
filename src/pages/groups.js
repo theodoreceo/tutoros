@@ -1,6 +1,6 @@
-import { CACHE, dbInsert, dbUpdate, dbDelete } from '../core/store.js';
+import { CACHE, dbInsert, dbUpdate, dbDelete, ensureLoaded } from '../core/store.js';
 import { state } from '../core/state.js';
-import { uid, fmt, fmtDate, fmtDateLong, today, g, STATUS_CONFIG, dateStr } from '../utils/helpers.js';
+import { uid, fmt, fmtDate, fmtDateLong, today, g, STATUS_CONFIG, dateStr, esc } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { addHistoryEntry } from '../core/history.js';
@@ -41,7 +41,8 @@ function renderCuratorDash() {
   </div>`;
 }
 
-export function renderGroups() {
+export async function renderGroups() {
+  await ensureLoaded(['groups', 'students', 'lessons']);
   renderCuratorDash();
   const el = document.getElementById('groups-list');
   if (!el) return;
@@ -63,17 +64,17 @@ export function renderGroups() {
     const unpaid = members.filter(s => !s.paid).length;
     const lastLesson = [...lessons].sort((a, b) => new Date(b.date) - new Date(a.date))[0];
     const fillPct = gr.capacity ? Math.round(members.length / gr.capacity * 100) : 0;
-    return `<div class="card" style="cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor='var(--accent-mid)'" onmouseout="this.style.borderColor=''" onclick="openGroupDetail('${gr.id}')">
+    return `<div class="card" style="cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor='var(--accent-mid)'" onmouseout="this.style.borderColor=''" data-action="openGroupDetail" data-id="${esc(gr.id)}">
       <div class="card-header" style="margin-bottom:10px">
         <div>
-          <div style="font-size:14px;font-weight:600">${gr.name}</div>
+          <div style="font-size:14px;font-weight:600">${esc(gr.name)}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:3px"><i class="ti ti-clock" style="font-size:11px"></i> ${gr.schedule || '—'}</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center" onclick="event.stopPropagation()">
           ${unpaid ? `<span class="b b-r"><i class="ti ti-cash-off" style="font-size:10px"></i> ${unpaid} не оплат.</span>` : ''}
           ${role.isOwner ? `<span class="b b-g">${fmt(mrr)} ₽/мес</span>` : ''}
-          ${role.isOwner ? `<button class="btn btn-sm btn-icon" onclick="editGroup('${gr.id}')"><i class="ti ti-edit"></i></button>
-          <button class="btn btn-sm btn-icon" onclick="deleteGroup('${gr.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
+          ${role.isOwner ? `<button class="btn btn-sm btn-icon" data-action="editGroup" data-id="${esc(gr.id)}"><i class="ti ti-edit"></i></button>
+          <button class="btn btn-sm btn-icon" data-action="deleteGroup" data-id="${esc(gr.id)}"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
         </div>
       </div>
       <div style="display:flex;gap:16px;align-items:center;margin-bottom:10px">
@@ -88,7 +89,7 @@ export function renderGroups() {
       <div style="display:flex;flex-wrap:wrap;gap:6px">
         ${allMembers.length ? allMembers.slice(0, 6).map(s => {
       const st = STATUS_CONFIG[s.crm_status || 'lead'];
-      return `<span class="b ${st.cls}" style="font-size:10px">${s.name.split(' ')[0]}</span>`;
+      return `<span class="b ${st.cls}" style="font-size:10px">${esc(s.name.split(' ')[0])}</span>`;
     }).join('') + (allMembers.length > 6 ? `<span class="b b-gray" style="font-size:10px">+${allMembers.length - 6}</span>` : '')
       : '<span style="font-size:12px;color:var(--hint)">Нет учеников</span>'}
       </div>
@@ -100,13 +101,13 @@ export function openGroupModal(id) {
   const gr = id ? (CACHE.groups || []).find(x => x.id === id) : null;
   const v = gr || { name: '', schedule: '', price_per_student: 2000, capacity: 8 };
   modal(`<div class="modal"><div class="modal-title">${gr ? 'Редактировать' : 'Новая группа'}</div>
-    <div class="form-row"><div class="fg" style="grid-column:1/-1"><label>Название</label><input class="fi" id="gf-name" value="${v.name}" placeholder="ЕГЭ Математика — группа А"></div></div>
+    <div class="form-row"><div class="fg" style="grid-column:1/-1"><label>Название</label><input class="fi" id="gf-name" value="${esc(v.name)}" placeholder="ЕГЭ Математика — группа А"></div></div>
     <div class="form-row">
-      <div class="fg"><label>Расписание</label><input class="fi" id="gf-schedule" value="${v.schedule || ''}" placeholder="Вт/Пт 17:00"></div>
+      <div class="fg"><label>Расписание</label><input class="fi" id="gf-schedule" value="${esc(v.schedule || '')}" placeholder="Вт/Пт 17:00"></div>
       <div class="fg"><label>Цена ₽/уч/ч</label><input class="fi" type="number" id="gf-price" value="${v.price_per_student}"></div>
       <div class="fg"><label>Макс. учеников</label><input class="fi" type="number" id="gf-cap" value="${v.capacity}"></div>
     </div>
-    <div class="modal-footer"><button class="btn" onclick="closeModal()">Отмена</button><button class="btn btn-p" onclick="saveGroup('${id || ''}')">Сохранить</button></div>
+    <div class="modal-footer"><button class="btn" data-action="closeModal">Отмена</button><button class="btn btn-p" data-action="saveGroup" data-id="${esc(id || '')}">Сохранить</button></div>
   </div>`);
 }
 
@@ -192,7 +193,7 @@ export function renderGroupDetail() {
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
           <span class="b ${st.cls}" style="font-size:10px;padding:1px 6px;flex-shrink:0">${st.label}</span>
-          <span style="font-size:13px;font-weight:600;cursor:pointer" onclick="openStudentDetail('${s.id}')">${s.name}</span>
+          <span style="font-size:13px;font-weight:600;cursor:pointer" data-action="openStudentDetail" data-id="${esc(s.id)}">${esc(s.name)}</span>
           ${warnFlag}
         </div>
         <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">${subBadge}${!s.paid ? `<span class="b b-r" style="font-size:10px">Не оплачен</span>` : ''}${hwBadge}</div>
@@ -220,7 +221,7 @@ export function renderLessonJournal(lessons) {
   el.innerHTML = lessons.map(l => {
     const absentNames = (l.student_attendance || []).filter(a => !a.present).map(a => {
       const s = (CACHE.students || []).find(x => x.id === a.student_id);
-      return s ? s.name.split(' ')[0] : '?';
+      return s ? esc(s.name.split(' ')[0]) : '?';
     });
     const diffMap = { easy: 'chip-easy', medium: 'chip-medium', hard: 'chip-hard' };
     const diffLabel = { easy: '😊 Лёгкое', medium: '🤔 Среднее', hard: '🔥 Сложное' };
@@ -240,9 +241,9 @@ export function renderLessonJournal(lessons) {
           return `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)">
             <span style="flex:1;font-size:12px">${s.name.split(' ')[0]}</span>
             ${canEdit ? `
-              <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;${status === 'done' ? 'background:var(--green-bg);color:var(--green);' : 'opacity:.5'}" onclick="setGroupHwStatus('${l.id}','${l.group_id}','${s.id}','done')">✅ Сдал</button>
-              <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;${status === 'missing' ? 'background:var(--red-bg);color:var(--red);' : 'opacity:.5'}" onclick="setGroupHwStatus('${l.id}','${l.group_id}','${s.id}','missing')">❌ Не сдал</button>
-              <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;${status === 'pending' ? 'background:var(--amber-bg);color:var(--amber);' : 'opacity:.5'}" onclick="setGroupHwStatus('${l.id}','${l.group_id}','${s.id}','pending')">⏳ Ждём</button>
+              <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;${status === 'done' ? 'background:var(--green-bg);color:var(--green);' : 'opacity:.5'}" data-action="setGroupHwStatus" data-id="${esc(l.id)}" data-group-id="${esc(l.group_id)}" data-student-id="${esc(s.id)}" data-status="done">✅ Сдал</button>
+              <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;${status === 'missing' ? 'background:var(--red-bg);color:var(--red);' : 'opacity:.5'}" data-action="setGroupHwStatus" data-id="${esc(l.id)}" data-group-id="${esc(l.group_id)}" data-student-id="${esc(s.id)}" data-status="missing">❌ Не сдал</button>
+              <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;${status === 'pending' ? 'background:var(--amber-bg);color:var(--amber);' : 'opacity:.5'}" data-action="setGroupHwStatus" data-id="${esc(l.id)}" data-group-id="${esc(l.group_id)}" data-student-id="${esc(s.id)}" data-status="pending">⏳ Ждём</button>
             ` : `<span style="font-size:13px;color:${colorMap[status]}">${statusMap[status]}</span>`}
           </div>`;
         }).join('');
@@ -262,11 +263,11 @@ export function renderLessonJournal(lessons) {
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div style="flex:1;min-width:0">
           <div class="lesson-date">${fmtDateLong(l.date)}</div>
-          <div class="lesson-topic">${l.topic || 'Без темы'}</div>
+          <div class="lesson-topic">${esc(l.topic || 'Без темы')}</div>
         </div>
         ${canEdit ? `<div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">
-          <button class="btn btn-sm btn-icon" onclick="openLessonModal('${l.id}')"><i class="ti ti-edit"></i></button>
-          <button class="btn btn-sm btn-icon" onclick="deleteLesson('${l.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>
+          <button class="btn btn-sm btn-icon" data-action="openLessonModal" data-id="${esc(l.id)}"><i class="ti ti-edit"></i></button>
+          <button class="btn btn-sm btn-icon" data-action="deleteLesson" data-id="${esc(l.id)}"><i class="ti ti-trash" style="color:var(--red)"></i></button>
         </div>` : ''}
       </div>
       <div class="lesson-chips">
@@ -277,7 +278,7 @@ export function renderLessonJournal(lessons) {
       <div class="lesson-meta">
         ${absentNames.length ? absentNames.map(n => `<span class="absent-chip"><i class="ti ti-user-off"></i> ${n}</span>`).join('') : `<span style="font-size:11px;color:var(--muted)"><i class="ti ti-users"></i> Все присутствовали</span>`}
       </div>
-      ${l.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"><i class="ti ti-notes" style="font-size:11px"></i> ${l.notes}</div>` : ''}
+      ${l.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"><i class="ti ti-notes" style="font-size:11px"></i> ${esc(l.notes)}</div>` : ''}
       ${hwBlock}
     </div>`;
   }).join('');
@@ -293,13 +294,13 @@ export function openLessonModal(id) {
   const memberChecks = members.length ? members.map(s => `
     <label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--r);cursor:pointer;font-size:13px;background:var(--surface)">
       <input type="checkbox" class="absent-check" data-id="${s.id}" ${(v.absent_ids || []).includes(s.id) ? 'checked' : ''} style="accent-color:var(--red)">
-      ${s.name}
+      ${esc(s.name)}
     </label>`).join('') : '<div style="color:var(--hint);font-size:13px">В группе нет учеников</div>';
   modal(`<div class="modal" style="max-width:600px"><div class="modal-title">${l ? 'Редактировать занятие' : 'Добавить занятие'}</div>
-    <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">Группа: ${gr.name}</div>
+    <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px">Группа: ${esc(gr.name)}</div>
     <div class="form-row">
       <div class="fg"><label>Дата занятия</label><input class="fi" type="date" id="lf-date" value="${v.date}"></div>
-      <div class="fg" style="grid-column:1/-1"><label>Тема занятия</label><input class="fi" id="lf-topic" value="${v.topic || ''}" placeholder="Тригонометрия: формулы приведения"></div>
+      <div class="fg" style="grid-column:1/-1"><label>Тема занятия</label><input class="fi" id="lf-topic" value="${esc(v.topic || '')}" placeholder="Тригонометрия: формулы приведения"></div>
     </div>
     <div class="fg" style="margin-bottom:12px">
       <label style="margin-bottom:6px;display:flex;align-items:center;gap:4px"><i class="ti ti-user-off" style="color:var(--red)"></i> Отсутствующие</label>
@@ -309,32 +310,32 @@ export function openLessonModal(id) {
       <div class="fg">
         <label style="margin-bottom:6px;display:block"><i class="ti ti-chart-bar" style="font-size:11px"></i> Сложность</label>
         <div class="chip-row">
-          <span class="chip diff-easy ${v.difficulty === 'easy' ? 'active' : ''}" onclick="selectChip(this,'lf-difficulty','easy')">😊 Лёгкое</span>
-          <span class="chip diff-medium${v.difficulty === 'medium' ? 'active' : ''}" onclick="selectChip(this,'lf-difficulty','medium')">🤔 Среднее</span>
-          <span class="chip diff-hard ${v.difficulty === 'hard' ? 'active' : ''}" onclick="selectChip(this,'lf-difficulty','hard')">🔥 Сложное</span>
+          <span class="chip diff-easy ${v.difficulty === 'easy' ? 'active' : ''}" data-action="selectChip" data-field="lf-difficulty" data-value="easy">😊 Лёгкое</span>
+          <span class="chip diff-medium${v.difficulty === 'medium' ? 'active' : ''}" data-action="selectChip" data-field="lf-difficulty" data-value="medium">🤔 Среднее</span>
+          <span class="chip diff-hard ${v.difficulty === 'hard' ? 'active' : ''}" data-action="selectChip" data-field="lf-difficulty" data-value="hard">🔥 Сложное</span>
         </div>
         <input type="hidden" id="lf-difficulty" value="${v.difficulty || 'medium'}">
       </div>
       <div class="fg">
         <label style="margin-bottom:6px;display:block"><i class="ti ti-mood-smile" style="font-size:11px"></i> Настроение</label>
         <div class="chip-row">
-          <span class="chip mood-good ${v.mood === 'good' ? 'active' : ''}" onclick="selectChip(this,'lf-mood','good')">👍 Хорошо</span>
-          <span class="chip mood-neutral${v.mood === 'neutral' ? 'active' : ''}" onclick="selectChip(this,'lf-mood','neutral')">😐 Нейтр.</span>
-          <span class="chip mood-bad ${v.mood === 'bad' ? 'active' : ''}" onclick="selectChip(this,'lf-mood','bad')">👎 Плохо</span>
+          <span class="chip mood-good ${v.mood === 'good' ? 'active' : ''}" data-action="selectChip" data-field="lf-mood" data-value="good">👍 Хорошо</span>
+          <span class="chip mood-neutral${v.mood === 'neutral' ? 'active' : ''}" data-action="selectChip" data-field="lf-mood" data-value="neutral">😐 Нейтр.</span>
+          <span class="chip mood-bad ${v.mood === 'bad' ? 'active' : ''}" data-action="selectChip" data-field="lf-mood" data-value="bad">👎 Плохо</span>
         </div>
         <input type="hidden" id="lf-mood" value="${v.mood || 'neutral'}">
       </div>
       <div class="fg">
         <label style="margin-bottom:6px;display:block"><i class="ti ti-home" style="font-size:11px"></i> Домашка</label>
         <div class="chip-row">
-          <span class="chip hw-yes${v.hw === 'assigned' ? 'active' : ''}" onclick="selectChip(this,'lf-hw','assigned')">✅ Дана</span>
-          <span class="chip hw-no ${v.hw === 'not_assigned' ? 'active' : ''}" onclick="selectChip(this,'lf-hw','not_assigned')">— Не дана</span>
+          <span class="chip hw-yes${v.hw === 'assigned' ? 'active' : ''}" data-action="selectChip" data-field="lf-hw" data-value="assigned">✅ Дана</span>
+          <span class="chip hw-no ${v.hw === 'not_assigned' ? 'active' : ''}" data-action="selectChip" data-field="lf-hw" data-value="not_assigned">— Не дана</span>
         </div>
         <input type="hidden" id="lf-hw" value="${v.hw || 'assigned'}">
       </div>
     </div>
-    <div class="fg"><label>Заметка <span style="font-size:11px;color:var(--hint);font-weight:400">(необязательно)</span></label><textarea class="fi" id="lf-notes" placeholder="Что разобрали, кому что объяснить...">${v.notes || ''}</textarea></div>
-    <div class="modal-footer"><button class="btn" onclick="closeModal()">Отмена</button><button class="btn btn-p" onclick="saveLesson('${id || ''}')">Сохранить</button></div>
+    <div class="fg"><label>Заметка <span style="font-size:11px;color:var(--hint);font-weight:400">(необязательно)</span></label><textarea class="fi" id="lf-notes" placeholder="Что разобрали, кому что объяснить...">${esc(v.notes || '')}</textarea></div>
+    <div class="modal-footer"><button class="btn" data-action="closeModal">Отмена</button><button class="btn btn-p" data-action="saveLesson" data-id="${esc(id || '')}">Сохранить</button></div>
   </div>`);
 }
 

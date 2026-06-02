@@ -1,7 +1,7 @@
-import { CACHE } from '../core/store.js';
+import { CACHE, ensureLoaded } from '../core/store.js';
 import { db } from '../lib/db.js';
 import { state } from '../core/state.js';
-import { uid, fmtDate, today } from '../utils/helpers.js';
+import { uid, fmtDate, today, esc } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { addHistoryEntry } from '../core/history.js';
@@ -60,6 +60,7 @@ export function setHwTab(tab) {
 }
 
 export async function renderHomeworkPage() {
+  await ensureLoaded(['homework_assignments', 'homework_submissions', 'students', 'groups', 'lessons']);
   await updateHwBadge();
   if (_hwTab === 'queue')        await renderHwQueue();
   else if (_hwTab === 'overdue') await renderOverdueHw();
@@ -95,15 +96,15 @@ async function renderHwQueue() {
     return `<div class="card" style="display:flex;align-items:center;gap:14px;padding:12px 16px;margin-bottom:8px">
       <div style="width:36px;height:36px;border-radius:50%;background:var(--accent-mid);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex-shrink:0">${initials}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:600">${stu ? stu.name : '—'}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">${assignment ? assignment.topic || '—' : '—'}</div>
+        <div style="font-size:13px;font-weight:600">${stu ? esc(stu.name) : '—'}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${assignment ? esc(assignment.topic) || '—' : '—'}</div>
         <div style="font-size:11px;color:var(--hint);margin-top:2px">
           Сдано: ${submittedAgo}
           ${overdue ? '<span class="b b-r" style="font-size:10px;margin-left:6px">просрочено</span>' : ''}
           ${sub.submission_url ? `<i class="ti ${sourceIcon(sub.source)}" style="margin-left:8px;font-size:12px;color:var(--accent-mid)"></i>` : ''}
         </div>
       </div>
-      <button class="btn btn-sm btn-p" onclick="openReviewModal('${sub.id}')"><i class="ti ti-pencil-check"></i> Проверить</button>
+      <button class="btn btn-sm btn-p" data-action="openReviewModal" data-id="${esc(sub.id)}"><i class="ti ti-pencil-check"></i> Проверить</button>
     </div>`;
   }).join('');
   el.innerHTML = rows;
@@ -236,8 +237,8 @@ async function renderAllHw() {
             const checker = sub.checked_by ? ((CACHE.roles || []).find(r => r.id === sub.checked_by) || {}).name || 'Владелец' : '—';
             const { text: scoreText, color: scoreColor } = scoreDisplay(sub, assignment);
             return `<tr>
-              <td><b>${stu ? stu.name : '—'}</b></td>
-              <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${assignment ? assignment.topic || '—' : '—'}${assignment?.is_advanced ? ' <span class="b b-a" style="font-size:10px">Сложный</span>' : ''}</td>
+              <td><b>${stu ? esc(stu.name) : '—'}</b></td>
+              <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${assignment ? esc(assignment.topic) || '—' : '—'}${assignment?.is_advanced ? ' <span class="b b-a" style="font-size:10px">Сложный</span>' : ''}</td>
               <td><span class="b ${ht.cls}">${ht.label}</span></td>
               <td>${assignment?.due_date ? `<span style="color:${overdue && sub.status !== 'checked' ? 'var(--red)' : 'inherit'}">${fmtDate(assignment.due_date)}${overdue && sub.status !== 'checked' ? ' <i class="ti ti-alert-circle" style="font-size:11px"></i>' : ''}</span>` : '—'}</td>
               <td><span class="b ${st.cls}">${st.label}</span></td>
@@ -246,12 +247,12 @@ async function renderAllHw() {
               <td style="white-space:nowrap">
                 ${assignment?.hw_type === 'brief' ? '' :
                   sub.status === 'submitted' ? `
-                    <button class="btn btn-sm btn-p" onclick="openReviewModal('${sub.id}')">Проверить</button>
-                    <button class="btn btn-sm" onclick="changeHwStatus('${sub.id}','assigned')" title="Вернуть"><i class="ti ti-rotate-left"></i></button>
+                    <button class="btn btn-sm btn-p" data-action="openReviewModal" data-id="${esc(sub.id)}">Проверить</button>
+                    <button class="btn btn-sm" data-action="changeHwStatus" data-id="${esc(sub.id)}" data-status="assigned" title="Вернуть"><i class="ti ti-rotate-left"></i></button>
                   ` : sub.status === 'checked' ? `
-                    <button class="btn btn-sm" onclick="openReviewModal('${sub.id}')"><i class="ti ti-edit"></i> Изменить</button>
+                    <button class="btn btn-sm" data-action="openReviewModal" data-id="${esc(sub.id)}"><i class="ti ti-edit"></i> Изменить</button>
                   ` : sub.status === 'assigned' || sub.status === 'overdue' ? `
-                    <button class="btn btn-sm" onclick="changeHwStatus('${sub.id}','submitted')"><i class="ti ti-upload"></i> Принять</button>
+                    <button class="btn btn-sm" data-action="changeHwStatus" data-id="${esc(sub.id)}" data-status="submitted"><i class="ti ti-upload"></i> Принять</button>
                   ` : ''
                 }
               </td>
@@ -333,7 +334,7 @@ export async function renderHwStudentsPage() {
     return `<div class="card" style="padding:14px 16px;margin-bottom:8px">
       <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
         <div style="flex:1;min-width:160px">
-          <div style="font-size:13px;font-weight:600;cursor:pointer;color:var(--fg)" onclick="openStudentDetail('${s.id}')">${s.name}</div>
+          <div style="font-size:13px;font-weight:600;cursor:pointer;color:var(--fg)" data-action="openStudentDetail" data-id="${esc(s.id)}">${esc(s.name)}</div>
           <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">${subBadge}</div>
         </div>
         <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12px;color:var(--muted)">
@@ -420,8 +421,8 @@ export async function openReviewModal(submissionId) {
   modal(`<div class="modal" style="max-width:560px">
     <div class="modal-title"><i class="ti ti-pencil-check"></i> Проверка работы</div>
     <div class="card" style="padding:10px 14px;margin-bottom:14px;background:var(--surface2)">
-      <div style="font-size:13px;font-weight:700">${stu ? stu.name : '—'}</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">${assignment ? assignment.topic || '—' : '—'}</div>
+      <div style="font-size:13px;font-weight:700">${stu ? esc(stu.name) : '—'}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">${assignment ? esc(assignment.topic) || '—' : '—'}</div>
       ${assignment?.due_date ? `<div style="font-size:11px;color:var(--hint);margin-top:2px">Срок: ${fmtDate(assignment.due_date)}</div>` : ''}
     </div>
     ${filesBlock}
@@ -431,8 +432,8 @@ export async function openReviewModal(submissionId) {
       <textarea class="fi" id="rv-comment" rows="3" placeholder="Общий отзыв на работу...">${sub.comment || ''}</textarea>
     </div>
     <div class="modal-footer">
-      <button class="btn" onclick="closeModal()">Отмена</button>
-      <button class="btn btn-p" onclick="saveReview('${submissionId}')">Сохранить проверку</button>
+      <button class="btn" data-action="closeModal">Отмена</button>
+      <button class="btn btn-p" data-action="saveReview" data-id="${esc(submissionId)}">Сохранить проверку</button>
     </div>
   </div>`);
   updateScorePreview();
@@ -578,8 +579,8 @@ export async function openCreateHwModal() {
       <i class="ti ti-info-circle"></i> ДЗ автоматически назначится всем активным ученикам группы
     </div>
     <div class="modal-footer">
-      <button class="btn" onclick="closeModal()">Отмена</button>
-      <button class="btn btn-p" onclick="saveNewHw()"><i class="ti ti-check"></i> Создать</button>
+      <button class="btn" data-action="closeModal">Отмена</button>
+      <button class="btn btn-p" data-action="saveNewHw"><i class="ti ti-check"></i> Создать</button>
     </div>
   </div>`);
 }

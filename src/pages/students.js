@@ -1,6 +1,6 @@
-import { CACHE, dbInsert, dbUpdate, dbDelete } from '../core/store.js';
+import { CACHE, dbInsert, dbUpdate, dbDelete, ensureLoaded } from '../core/store.js';
 import { state } from '../core/state.js';
-import { uid, fmt, fmtDate, today, g, STATUS_CONFIG, PIPELINE_STAGES } from '../utils/helpers.js';
+import { uid, fmt, fmtDate, today, g, STATUS_CONFIG, PIPELINE_STAGES, esc } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { addHistoryEntry } from '../core/history.js';
@@ -25,9 +25,10 @@ export function setCRMStatusFilter(status) {
 }
 
 // CRM — полная таблица всех учеников
-export function renderStudents() {
+export async function renderStudents() {
+  await ensureLoaded(['students', 'groups', 'payments', 'student_notes', 'events']);
   const gf = document.getElementById('student-filter');
-  if (gf) gf.innerHTML = '<option value="">Все группы</option>' + (CACHE.groups || []).map(g => `<option value="${g.id}">${g.name.slice(0, 30)}</option>`).join('');
+  if (gf) gf.innerHTML = '<option value="">Все группы</option>' + (CACHE.groups || []).map(g => `<option value="${esc(g.id)}">${esc(g.name.slice(0, 30))}</option>`).join('');
   const search = ((document.getElementById('student-search') || {}).value || '').toLowerCase();
   const gFilter = (document.getElementById('student-filter') || {}).value || '';
   const stFilter = (document.getElementById('student-status-filter') || {}).value || '';
@@ -52,10 +53,10 @@ export function renderStudents() {
     const contact = s.contact || s.phone || '—';
     const subBadge = renderSubscriptionBadge(s);
     const { level } = calcRiskScore(s);
-    const resetBtn = level !== 'low' ? `<button class="btn btn-sm" style="font-size:10px;padding:2px 6px" onclick="event.stopPropagation();resetStudentRisk('${s.id}')" title="Сбросить риск"><i class="ti ti-refresh"></i></button>` : '';
-    return `<tr style="cursor:pointer" onclick="openStudentDetail('${s.id}')">
+    const resetBtn = level !== 'low' ? `<button class="btn btn-sm" style="font-size:10px;padding:2px 6px" data-action="resetStudentRisk" data-id="${esc(s.id)}" onclick="event.stopPropagation()" title="Сбросить риск"><i class="ti ti-refresh"></i></button>` : '';
+    return `<tr style="cursor:pointer" data-action="openStudentDetail" data-id="${esc(s.id)}">
       <td><span class="b ${st.cls}"><i class="ti ${st.icon}" style="font-size:11px;margin-right:3px"></i>${st.label}</span></td>
-      <td><b>${s.name}</b><br><span style="font-size:11px;color:var(--muted)">${s.source || ''}</span></td>
+      <td><b>${esc(s.name)}</b><br><span style="font-size:11px;color:var(--muted)">${esc(s.source || '')}</span></td>
       <td>${s.grade}</td>
       <td style="max-width:140px;word-break:break-all"><span style="font-size:12px">${contact}</span></td>
       <td><span class="b ${s.format === 'individual' ? 'b-bl' : 'b-gray'}">${s.format === 'individual' ? 'Инд' : 'Группа'}</span><br><span style="font-size:11px;color:var(--muted)">${groupShort(s.group_id)}</span></td>
@@ -65,15 +66,16 @@ export function renderStudents() {
       <td class="fin-col" style="text-align:right;font-weight:600;color:var(--green);${role.isOwner ? '' : 'display:none'}">${ltv ? fmt(ltv) + ' ₽/мес' : '—'}</td>
       <td>${s.trial_score || '—'} → <b>${s.target_score || '—'}</b></td>
       <td style="white-space:nowrap">${riskBadge(s)} ${resetBtn}</td>
-      <td style="white-space:nowrap" onclick="event.stopPropagation()">${canEdit ? `<button class="btn btn-sm btn-icon" onclick="editStudent('${s.id}')"><i class="ti ti-edit"></i></button>
-        <button class="btn btn-sm btn-icon" onclick="deleteStudent('${s.id}')"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
+      <td style="white-space:nowrap" onclick="event.stopPropagation()">${canEdit ? `<button class="btn btn-sm btn-icon" data-action="editStudent" data-id="${esc(s.id)}"><i class="ti ti-edit"></i></button>
+        <button class="btn btn-sm btn-icon" data-action="deleteStudent" data-id="${esc(s.id)}"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
       </td>
     </tr>`;
   }).join('');
 }
 
 // Воронка — pipeline без активных, с поиском и 30-дневным скрытием ушедших
-export function renderCRMStudents() {
+export async function renderCRMStudents() {
+  await ensureLoaded(['students', 'groups', 'payments', 'student_notes', 'events']);
   renderMarketingDash();
   renderPipeline();
 }
@@ -104,7 +106,8 @@ function renderMarketingDash() {
   </div>`;
 }
 
-export function renderPipeline() {
+export async function renderPipeline() {
+  await ensureLoaded(['students', 'groups', 'payments', 'student_notes', 'events']);
   const board = document.getElementById('pipeline-board');
   if (!board) return;
   const role = state.currentRole || {};
@@ -150,11 +153,11 @@ export function renderPipeline() {
           const tgIcon = s.telegram_id
             ? `<i class="ti ti-brand-telegram" style="color:#2aabee;font-size:11px" title="Telegram привязан"></i>`
             : s.reg_token
-              ? `<span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer" onclick="event.stopPropagation();copyRegToken('${s.reg_token}')" title="Скопировать код ${s.reg_token}"><i class="ti ti-brand-telegram" style="color:var(--muted);font-size:11px"></i><code style="font-size:10px;color:var(--muted)">${s.reg_token}</code></span>`
+              ? `<span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer" data-action="copyRegToken" data-token="${esc(s.reg_token)}" onclick="event.stopPropagation()" title="Скопировать код ${esc(s.reg_token)}"><i class="ti ti-brand-telegram" style="color:var(--muted);font-size:11px"></i><code style="font-size:10px;color:var(--muted)">${esc(s.reg_token)}</code></span>`
               : '';
-          return `<div class="pipeline-card ${riskCls}" onclick="openStudentDetail('${s.id}')">
-            <div class="pipeline-card-name">${s.name}</div>
-            <div style="font-size:11px;color:var(--muted)">${s.source || ''} · ${s.grade || ''}кл</div>
+          return `<div class="pipeline-card ${riskCls}" data-action="openStudentDetail" data-id="${esc(s.id)}">
+            <div class="pipeline-card-name">${esc(s.name)}</div>
+            <div style="font-size:11px;color:var(--muted)">${esc(s.source || '')} · ${s.grade || ''}кл</div>
             <div class="pipeline-card-meta">
               ${contact}
               ${level !== 'low' ? `<span class="risk-badge ${level}" style="font-size:9px;padding:1px 5px">${reasons[0] || ''}</span>` : ''}
@@ -162,7 +165,7 @@ export function renderPipeline() {
             </div>
           </div>`;
         }).join('') : `<div class="pipeline-empty">Нет</div>`}
-        ${role.isOwner && !['stopped','exam_passed','left'].includes(stage.id) ? `<div style="margin-top:4px"><button class="btn btn-sm" style="width:100%;justify-content:center;font-size:11px;color:var(--hint)" onclick="openStudentModal()"><i class="ti ti-plus"></i></button></div>` : ''}
+        ${role.isOwner && !['stopped','exam_passed','left'].includes(stage.id) ? `<div style="margin-top:4px"><button class="btn btn-sm" style="width:100%;justify-content:center;font-size:11px;color:var(--hint)" data-action="openStudentModal"><i class="ti ti-plus"></i></button></div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -176,8 +179,8 @@ export function openStudentModal(id) {
   const ltv = (v.price_per_hour && v.lessons_per_month) ? (+v.price_per_hour * +v.lessons_per_month) : 0;
   modal(`<div class="modal"><div class="modal-title">${s ? 'Редактировать' : 'Добавить ученика'}</div>
     <div class="form-row">
-      <div class="fg"><label>Имя</label><input class="fi" id="sf-name" value="${v.name || ''}"></div>
-      <div class="fg"><label>Контакт (ВКонтакте / WhatsApp / Telegram)</label><input class="fi" id="sf-contact" value="${v.contact || v.phone || ''}" placeholder="@username или +7..."></div>
+      <div class="fg"><label>Имя</label><input class="fi" id="sf-name" value="${esc(v.name || '')}"></div>
+      <div class="fg"><label>Контакт (ВКонтакте / WhatsApp / Telegram)</label><input class="fi" id="sf-contact" value="${esc(v.contact || v.phone || '')}" placeholder="@username или +7..."></div>
     </div>
     <div class="form-row">
       <div class="fg"><label>Статус</label><select class="fi" id="sf-status">
@@ -211,10 +214,10 @@ export function openStudentModal(id) {
       <div class="fg"><label>Пробный балл</label><input class="fi" type="number" id="sf-trial" value="${v.trial_score || ''}"></div>
       <div class="fg"><label>Целевой балл</label><input class="fi" type="number" id="sf-target" value="${v.target_score || ''}"></div>
     </div>
-    <div class="fg"><label>Заметки</label><textarea class="fi" id="sf-notes">${v.notes || ''}</textarea></div>
+    <div class="fg"><label>Заметки</label><textarea class="fi" id="sf-notes">${esc(v.notes || '')}</textarea></div>
     <div class="modal-footer">
-      <button class="btn" onclick="closeModal()">Отмена</button>
-      <button class="btn btn-p" onclick="saveStudent('${id || ''}')">Сохранить</button>
+      <button class="btn" data-action="closeModal">Отмена</button>
+      <button class="btn btn-p" data-action="saveStudent" data-id="${esc(id || '')}">Сохранить</button>
     </div>
   </div>`);
 }
@@ -258,8 +261,8 @@ export function openStatusDateModal(id, newStatus, existing, todayStr) {
       <input type="date" class="fi" id="status-change-date" value="${todayStr}">
     </div>
     <div class="modal-footer">
-      <button class="btn" onclick="closeModal();editStudent('${id}')">Назад</button>
-      <button class="btn btn-p" onclick="confirmStatusChange('${id}','${newStatus}')">Подтвердить</button>
+      <button class="btn" data-action="closeModal" data-next-action="editStudent" data-id="${esc(id)}">Назад</button>
+      <button class="btn btn-p" data-action="confirmStatusChange" data-id="${esc(id)}" data-status="${esc(newStatus)}">Подтвердить</button>
     </div>
   </div>`);
 }
@@ -380,12 +383,12 @@ export function openStudentDetail(id) {
   modal(`<div class="modal" style="max-width:640px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
       <div>
-        <div style="font-size:17px;font-weight:700">${s.name}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">${s.source || ''} · ${s.grade || ''}кл · <span class="b ${(STATUS_CONFIG[s.crm_status] || { cls: 'b-gray' }).cls}" style="font-size:10px">${(STATUS_CONFIG[s.crm_status] || { label: '—' }).label}</span></div>
+        <div style="font-size:17px;font-weight:700">${esc(s.name)}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(s.source || '')} · ${s.grade || ''}кл · <span class="b ${(STATUS_CONFIG[s.crm_status] || { cls: 'b-gray' }).cls}" style="font-size:10px">${(STATUS_CONFIG[s.crm_status] || { label: '—' }).label}</span></div>
       </div>
       <div style="display:flex;gap:6px;align-items:center">
-        ${role.isOwner ? `<button class="btn btn-sm" onclick="closeModal();editStudent('${id}')"><i class="ti ti-edit"></i> Редакт.</button>` : ''}
-        <button class="btn" onclick="closeModal()"><i class="ti ti-x"></i></button>
+        ${role.isOwner ? `<button class="btn btn-sm" data-action="editStudent" data-id="${esc(id)}" data-close-modal="true"><i class="ti ti-edit"></i> Редакт.</button>` : ''}
+        <button class="btn" data-action="closeModal"><i class="ti ti-x"></i></button>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(${role.isOwner ? 4 : 2},1fr);gap:8px;margin-bottom:16px">
@@ -393,7 +396,7 @@ export function openStudentDetail(id) {
         <div class="met-label">Риск</div>
         <div class="met-val" style="font-size:16px;color:${riskColor}">${riskLabel}</div>
         <div class="met-sub" style="font-size:10px">${reasons[0] || 'всё хорошо'}</div>
-        ${level !== 'low' ? `<button class="btn btn-sm" style="margin-top:6px;font-size:10px;padding:2px 8px" onclick="resetStudentRisk('${id}')"><i class="ti ti-refresh"></i> Сбросить риск</button>` : ''}
+        ${level !== 'low' ? `<button class="btn btn-sm" style="margin-top:6px;font-size:10px;padding:2px 8px" data-action="resetStudentRisk" data-id="${esc(id)}"><i class="ti ti-refresh"></i> Сбросить риск</button>` : ''}
       </div>
       ${role.isOwner ? `<div class="met" style="padding:10px 12px"><div class="met-label">MRR</div><div class="met-val" style="font-size:16px">${ltv ? fmt(ltv) + ' ₽' : '—'}</div><div class="met-sub">в месяц</div></div>
       <div class="met" style="padding:10px 12px"><div class="met-label">LTV факт.</div><div class="met-val" style="font-size:16px">${actualLTV ? fmt(actualLTV) + ' ₽' : '—'}</div><div class="met-sub">итого оплат</div></div>` : ''}
@@ -409,9 +412,9 @@ export function openStudentDetail(id) {
       <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         ${s.reg_token
           ? `<span style="font-size:11px;color:var(--muted)">Код:</span>
-             <code style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace">${s.reg_token}</code>
-             <button class="btn btn-sm" onclick="copyRegToken('${s.reg_token}')" title="Скопировать код"><i class="ti ti-copy"></i></button>`
-          : `<button class="btn btn-sm" onclick="generateStudentToken('${s.id}')" title="Создать Telegram-код"><i class="ti ti-key"></i> Создать код</button>`
+             <code style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;font-family:monospace">${esc(s.reg_token)}</code>
+             <button class="btn btn-sm" data-action="copyRegToken" data-token="${esc(s.reg_token)}" title="Скопировать код"><i class="ti ti-copy"></i></button>`
+          : `<button class="btn btn-sm" data-action="generateStudentToken" data-id="${esc(s.id)}" title="Создать Telegram-код"><i class="ti ti-key"></i> Создать код</button>`
         }
       </div>
     </div>
@@ -425,19 +428,19 @@ export function openStudentDetail(id) {
     <div id="notes-thread-${id}">${renderNotesThread(id)}</div>
     <div class="note-add-row">
       <textarea class="fi" id="note-input-${id}" placeholder="Добавить заметку..." rows="2" style="min-height:38px"></textarea>
-      <button class="btn btn-p btn-sm" style="flex-shrink:0;align-self:flex-end" onclick="addStudentNote('${id}')"><i class="ti ti-send"></i></button>
+      <button class="btn btn-p btn-sm" style="flex-shrink:0;align-self:flex-end" data-action="addStudentNote" data-id="${esc(id)}"><i class="ti ti-send"></i></button>
     </div>
     <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">
       <i class="ti ti-clipboard-list" style="margin-right:5px"></i>Домашние задания
     </div>
     <div style="max-height:220px;overflow-y:auto">${renderStudentHwTabInline(id)}</div>
     ${role.isOwner ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-      ${s.crm_status === 'lead' ? `<button class="btn btn-sm" onclick="closeModal();openStatusDateModal('${id}','trial_scheduled',CACHE.students.find(x=>x.id==='${id}'),new Date().toISOString().slice(0,10))"><i class="ti ti-calendar-check"></i> → Пробник назначен</button>` : ''}
-      ${s.crm_status === 'trial_scheduled' ? `<button class="btn btn-sm" onclick="closeModal();openTrialFromCalendar('${id}')"><i class="ti ti-calendar-plus"></i> Назначить в календаре</button><button class="btn btn-sm btn-p" onclick="closeModal();openStatusDateModal('${id}','trial_done',CACHE.students.find(x=>x.id==='${id}'),new Date().toISOString().slice(0,10))"><i class="ti ti-star"></i> → Пробник проведён</button>` : ''}
-      ${(s.crm_status === 'trial_done' || s.crm_status === 'trial') ? `<button class="btn btn-sm btn-p" onclick="closeModal();openStatusDateModal('${id}','active',CACHE.students.find(x=>x.id==='${id}'),new Date().toISOString().slice(0,10))"><i class="ti ti-user-star"></i> → Занимается</button>` : ''}
-      ${['lead', 'trial_scheduled', 'trial_done', 'trial'].includes(s.crm_status) ? `<button class="btn btn-sm" style="color:var(--red)" onclick="closeModal();openStatusDateModal('${id}','refused',CACHE.students.find(x=>x.id==='${id}'),new Date().toISOString().slice(0,10))"><i class="ti ti-user-off"></i> → Отказался</button>` : ''}
-      ${s.crm_status === 'active' ? `<button class="btn btn-sm btn-p" onclick="closeModal();openPaymentModalFor('${id}')"><i class="ti ti-cash"></i> Добавить платёж</button>` : ''}
-      ${s.crm_status === 'active' ? `<button class="btn btn-sm" style="color:var(--red)" onclick="closeModal();openStatusDateModal('${id}','stopped',CACHE.students.find(x=>x.id==='${id}'),new Date().toISOString().slice(0,10))"><i class="ti ti-door-exit"></i> → Отказался от занятий</button>` : ''}
+      ${s.crm_status === 'lead' ? `<button class="btn btn-sm" data-action="openStatusDateModal" data-id="${esc(id)}" data-status="trial_scheduled" data-close-modal="true"><i class="ti ti-calendar-check"></i> → Пробник назначен</button>` : ''}
+      ${s.crm_status === 'trial_scheduled' ? `<button class="btn btn-sm" data-action="openTrialFromCalendar" data-id="${esc(id)}" data-close-modal="true"><i class="ti ti-calendar-plus"></i> Назначить в календаре</button><button class="btn btn-sm btn-p" data-action="openStatusDateModal" data-id="${esc(id)}" data-status="trial_done" data-close-modal="true"><i class="ti ti-star"></i> → Пробник проведён</button>` : ''}
+      ${(s.crm_status === 'trial_done' || s.crm_status === 'trial') ? `<button class="btn btn-sm btn-p" data-action="openStatusDateModal" data-id="${esc(id)}" data-status="active" data-close-modal="true"><i class="ti ti-user-star"></i> → Занимается</button>` : ''}
+      ${['lead', 'trial_scheduled', 'trial_done', 'trial'].includes(s.crm_status) ? `<button class="btn btn-sm" style="color:var(--red)" data-action="openStatusDateModal" data-id="${esc(id)}" data-status="refused" data-close-modal="true"><i class="ti ti-user-off"></i> → Отказался</button>` : ''}
+      ${s.crm_status === 'active' ? `<button class="btn btn-sm btn-p" data-action="openPaymentModalFor" data-id="${esc(id)}" data-close-modal="true"><i class="ti ti-cash"></i> Добавить платёж</button>` : ''}
+      ${s.crm_status === 'active' ? `<button class="btn btn-sm" style="color:var(--red)" data-action="openStatusDateModal" data-id="${esc(id)}" data-status="stopped" data-close-modal="true"><i class="ti ti-door-exit"></i> → Отказался от занятий</button>` : ''}
     </div>` : ''}
   </div>`);
 }
@@ -457,7 +460,7 @@ export function openTrialFromCalendar(studentId) {
   const todayStr = today();
   const gOpts = (CACHE.groups || []).map(gr => `<option value="${gr.id}">${gr.name}</option>`).join('');
   modal(`<div class="modal" style="max-width:420px">
-    <div class="modal-title"><i class="ti ti-calendar-check"></i> Назначить пробное · ${s.name}</div>
+    <div class="modal-title"><i class="ti ti-calendar-check"></i> Назначить пробное · ${esc(s.name)}</div>
     <div class="fg" style="margin-bottom:10px">
       <label>Дата пробного занятия</label>
       <input type="date" class="fi" id="trial-date" value="${todayStr}">
@@ -474,8 +477,8 @@ export function openTrialFromCalendar(studentId) {
       </select>
     </div>
     <div class="modal-footer">
-      <button class="btn" onclick="closeModal()">Отмена</button>
-      <button class="btn btn-p" onclick="scheduleTrialLesson('${studentId}')">Назначить пробник</button>
+      <button class="btn" data-action="closeModal">Отмена</button>
+      <button class="btn btn-p" data-action="scheduleTrialLesson" data-id="${esc(studentId)}">Назначить пробник</button>
     </div>
   </div>`);
 }
@@ -524,10 +527,10 @@ function renderNotesThread(studentId) {
     const isOwner = n.author === 'Владелец';
     return `<div class="note-item${isOwner ? ' owner' : ''}">
       <div class="note-meta">
-        <span class="note-author"><i class="ti ti-${isOwner ? 'crown' : 'user'}" style="font-size:10px"></i> ${n.author}</span>
+        <span class="note-author"><i class="ti ti-${isOwner ? 'crown' : 'user'}" style="font-size:10px"></i> ${esc(n.author)}</span>
         <span class="note-date">${new Date(n.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
       </div>
-      <div class="note-text">${n.text}</div>
+      <div class="note-text">${esc(n.text)}</div>
     </div>`;
   }).join('')}</div>`;
 }
