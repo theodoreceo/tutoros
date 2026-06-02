@@ -33,8 +33,15 @@ export function applyRoleUI(role) {
     section.style.display = hasVisible ? '' : 'none';
   });
 
+  // Main dashboard: owner only
   const dashItem = document.querySelector('.sb-item[data-pg="dashboard"]');
   if (dashItem) dashItem.style.display = role.isOwner ? '' : 'none';
+
+  // Role-specific dashboards: hidden for owner (they have their own dashboard)
+  ['curator_dash', 'manager_dash', 'marketer_dash'].forEach(pg => {
+    const item = document.querySelector(`.sb-item[data-pg="${pg}"]`);
+    if (item && role.isOwner) item.style.display = 'none';
+  });
 
   document.querySelectorAll('.owner-only').forEach(el => el.style.display = role.isOwner ? '' : 'none');
   document.querySelectorAll('.edit-only').forEach(el => el.style.display = (role.canEdit || role.isOwner) ? '' : 'none');
