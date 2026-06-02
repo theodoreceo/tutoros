@@ -126,37 +126,37 @@ async function handleText(msg) {
   if (text === '➕ создать дз'    && curator)  return startHwCreation(chatId, tid, curator);
   if (text === '📋 мои задания'    && curator)  return showMyDz(chatId, tid, curator, 0);
   if (text === '❓ помощь') {
-    if (student) return send(chatId, 'Команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт', rkbd(STUDENT_KBD));
-    if (curator) return send(chatId, 'Команды:\n/newdz — создать ДЗ\n/mydz — список ДЗ\n/unlink — отвязать аккаунт', rkbd(CURATOR_KBD));
-    return send(chatId, 'Введи регистрационный код для подключения.');
+    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт (не жми просто так!)', rkbd(STUDENT_KBD));
+    if (curator) return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ\n/unlink — отвязать аккаунт', rkbd(CURATOR_KBD));
+    return send(chatId, 'введи код, который тебе скинул куратор.\nесли куратор еше не скинул тебе код, попроси его в лс.\nпо всем вопросам с ботом пиши');
   }
 
   // /start
   if (text === '/start') {
     if (student) {
       await setSession(tid, { step: 'student' });
-      return send(chatId, `Привет, <b>${student.name}</b>! 👋\n\nИспользуй кнопки ниже или команды:\n/dz — задания · /mydz — результаты`, rkbd(STUDENT_KBD));
+      return send(chatId, `привет, <b>${student.name}</b>! \n\nиспользуй кнопки ниже или команды:\n/dz — задания · /mydz — результаты`, rkbd(STUDENT_KBD));
     }
     if (curator) {
       await setSession(tid, { step: 'curator' });
-      return send(chatId, `Привет, <b>${curator.name}</b>! 👋\n\nИспользуй кнопки ниже или команды:\n/newdz — создать ДЗ · /mydz — мои ДЗ`, rkbd(CURATOR_KBD));
+      return send(chatId, `привет, <b>${curator.name}</b>! \n\nиспользуй кнопки ниже или команды:\n/newdz — создать ДЗ · /mydz — мои ДЗ`, rkbd(CURATOR_KBD));
     }
     await setSession(tid, {});
-    return send(chatId, `Добро пожаловать в бот TutorOS!\n\nВведи регистрационный код для подключения.\nКод есть в TutorOS: карточка ученика или страница Доступ.`);
+    return send(chatId, `добро пожаловать в бот домашкинс!\n\nвведи код, который тебе скинул куратор.\nесли куратор еще не отправил тебе код, напиши ему в лс.\n\nпо всем вопросам с ботом пиши в лс @teddymgmt или в чат курса`);
   }
 
   // /unlink
   if (text === '/unlink') {
-    if (!student && !curator) return send(chatId, 'Ты не зарегистрирован.');
-    return send(chatId, `Отвязать аккаунт <b>${(student || curator).name}</b>?`,
+    if (!student && !curator) return send(chatId, 'ты не зарегистрирован :(');
+    return send(chatId, `если ты не <b>${(student || curator).name}</b>?, отвяжи аккаунт`,
       kbd([[{ text: '✅ да, отвязать', callback_data: 'unlink:confirm' }, { text: '❌ отмена', callback_data: 'unlink:cancel' }]]));
   }
 
   // /help
   if (text === '/help') {
-    if (student) return send(chatId, '/dz — задания\n/mydz — результаты\n/unlink — отвязать аккаунт', rkbd(STUDENT_KBD));
-    if (curator) return send(chatId, '/newdz — создать ДЗ\n/mydz — список ДЗ\n/unlink — отвязать аккаунт', rkbd(CURATOR_KBD));
-    return send(chatId, 'Введи регистрационный код для подключения.');
+    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт (не жми просто так!)', rkbd(STUDENT_KBD));
+    if (curator) return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ\n/unlink — отвязать аккаунт', rkbd(CURATOR_KBD));
+    return send(chatId, 'введи код, который тебе скинул куратор.\nесли куратор еше не скинул тебе код, попроси его в лс.\nпо всем вопросам с ботом пиши');
   }
 
   // Student commands
@@ -176,12 +176,12 @@ async function handleText(msg) {
       const subId = sess.step.slice('await_files:'.length);
       const files = sess.data?.files || [];
       if (text.toLowerCase() === 'готово') {
-        if (!files.length) return send(chatId, 'Пришли хотя бы один файл с выполненным заданием.');
+        if (!files.length) return send(chatId, 'пришли хотя бы один файл с выполненным заданием!');
         return finalizeStudentFiles(chatId, student, subId, files);
       }
-      return send(chatId, 'Прикрепи фото или PDF-файл. Когда пришлёшь всё — нажми кнопку «Отправить работу».');
+      return send(chatId, 'прикрепи фото или .pdf-файл. когда пришлёшь всё — нажми кнопку «Отправить работу».');
     }
-    return send(chatId, 'Используй /dz для заданий или /help.');
+    return send(chatId, 'неизвестная команда.\nиспользуй /dz для заданий или /help.');
   }
 
   // Curator commands
@@ -194,18 +194,18 @@ async function handleText(msg) {
       const hwId = sess.step.slice('edit_hw_topic:'.length);
       await sbPatch('homework_assignments', `id=eq.${hwId}`, { topic: text });
       await setSession(tid, { step: 'curator' });
-      return send(chatId, `✅ Тема обновлена: <b>${text}</b>`, kbd([[{ text: '← назад к дз', callback_data: `dz:${hwId}` }]]));
+      return send(chatId, `✅ тема обновлена: <b>${text}</b>`, kbd([[{ text: '← назад к дз', callback_data: `dz:${hwId}` }]]));
     }
     if (typeof sess.step === 'string' && sess.step.startsWith('edit_hw_date:')) {
       const hwId = sess.step.slice('edit_hw_date:'.length);
       const raw  = text === '-' ? '' : text;
       if (raw && !/^\d{2}\.\d{2}\.\d{4}$/.test(raw)) {
-        return send(chatId, 'Неверный формат. Введи ДД.ММ.ГГГГ или «-»:');
+        return send(chatId, 'неверный формат. Введи ДД.ММ.ГГГГ или «-»:');
       }
       const due = raw ? raw.split('.').reverse().join('-') : '';
       await sbPatch('homework_assignments', `id=eq.${hwId}`, { due_date: due });
       await setSession(tid, { step: 'curator' });
-      return send(chatId, `✅ Дедлайн обновлён: <b>${due || 'не указан'}</b>`, kbd([[{ text: '← назад к дз', callback_data: `dz:${hwId}` }]]));
+      return send(chatId, `✅ дедлайн обновлён: <b>${due || 'не указан'}</b>`, kbd([[{ text: '← назад к дз', callback_data: `dz:${hwId}` }]]));
     }
     return handleCuratorStep(chatId, tid, curator, sess, text);
   }
@@ -235,9 +235,9 @@ async function handleMedia(msg) {
       const newData = { ...sess.data, file_id: fileId };
       await setSession(tid, { step: 'await_count', data: newData });
       const hwType = newData.hw_type;
-      return send(chatId, '📎 Файл получен!\n\n' + (hwType === 'brief'
-        ? 'Сколько заданий (ответов) в этой работе?'
-        : 'Сколько заданий в этой работе?'));
+      return send(chatId, 'файл получен!\n\n' + (hwType === 'brief'
+        ? 'сколько заданий (ответов) в этой работе?'
+        : 'сколько заданий в этой работе?'));
     }
   }
 
@@ -248,15 +248,15 @@ async function handleMedia(msg) {
       const subId = sess.step.slice('await_files:'.length);
       const files = [...(sess.data?.files || []), { type: fileType, file_id: fileId }];
       await setSession(tid, { step: `await_files:${subId}`, data: { ...sess.data, files } });
-      return send(chatId, `📎 Файл получен (всего: ${files.length})`,
+      return send(chatId, `📎 файл получен (всего: ${files.length})`,
         kbd([[{ text: '✅ отправить работу', callback_data: `submit_files:${subId}` }],
              [{ text: '❌ отменить',         callback_data: 'cancel_files' }]]));
     }
-    return send(chatId, 'Сначала открой задание через /dz.');
+    return send(chatId, 'сначала открой задание через /dz.');
   }
 
   if (!student && !curator) {
-    return send(chatId, 'Сначала зарегистрируйся, отправив регистрационный код.');
+    return send(chatId, 'сначала зарегистрируйся, отправив регистрационный код.');
   }
 }
 
@@ -270,25 +270,25 @@ async function handleRegistration(chatId, tid, token) {
   ]);
 
   if (sm) {
-    if (sm.telegram_id) return send(chatId, 'Этот код уже использован.');
+    if (sm.telegram_id) return send(chatId, 'этот код уже использован.\nотправь скриншот этого сообщения куратору!');
     await sbPatch('students', `id=eq.${sm.id}`, { telegram_id: tid });
     await setSession(tid, { step: 'student' });
-    return send(chatId, `✅ Подключён как <b>${sm.name}</b>!\n\nИспользуй кнопки ниже 👇`, rkbd(STUDENT_KBD));
+    return send(chatId, `ты успешно подключен как <b>${sm.name}</b>!\n\nесли это не ты, напиши своему куратору!\nчтобы пользоваться ботом, используй кнопки ниже 👇`, rkbd(STUDENT_KBD));
   }
   if (rm) {
-    if (rm.telegram_id) return send(chatId, 'Этот код уже использован.');
+    if (rm.telegram_id) return send(chatId, 'этот код уже использован.\nотправь скриншот этого сообщения куратору!');
     await sbPatch('roles', `id=eq.${rm.id}`, { telegram_id: tid });
     await setSession(tid, { step: 'curator' });
-    return send(chatId, `✅ Подключён как <b>${rm.name}</b>!\n\nИспользуй кнопки ниже 👇`, rkbd(CURATOR_KBD));
+    return send(chatId, `ты успешно подключен как <b>${rm.name}</b>!\n\nесли это не ты, напиши @teddymgmt!\nчтобы пользоваться ботом, используй кнопки ниже 👇`, rkbd(CURATOR_KBD));
   }
-  return send(chatId, 'Код не найден. Проверь и попробуй снова.');
+  return send(chatId, 'код не найден. проверь, правильно ли ты ввел свой код.\nесли код правильный, скинь скриншот этого сообщения куратору');
 }
 
 // ── Student: list HW ──────────────────────────────────────────────────────────
 
 async function handleStudentListHw(chatId, student) {
   const subs = await sbSelect('homework_submissions', `student_id=eq.${student.id}&status=eq.assigned`);
-  if (!subs.length) return send(chatId, 'Нет активных заданий. Всё сдано! ✅');
+  if (!subs.length) return send(chatId, 'все задания сданы, молодец:)');
 
   const aIds      = [...new Set(subs.map(s => s.assignment_id))];
   const assignments = await sbSelect('homework_assignments',
@@ -307,7 +307,7 @@ async function handleStudentListHw(chatId, student) {
     buttons.push([{ text: `${i + 1}. ${(a.topic || 'ДЗ').slice(0, 28)}${dueBtn}`, callback_data: `hw:${sub.id}` }]);
   });
 
-  if (!lines.length) return send(chatId, 'Нет активных заданий.');
+  if (!lines.length) return send(chatId, 'нет активных заданий!');
   return send(chatId, `задания (${lines.length}):\n\n${lines.join('\n')}\n\nвыбери для сдачи:`, kbd(buttons));
 }
 
@@ -353,7 +353,7 @@ async function showStudentStats(chatId, student) {
     `✅ проверено: <b>${checked.length}</b>\n` +
     `⭐ средний балл: <b>${scoreBar}</b>`;
 
-  if (!done.length) return send(chatId, header + '\n\nПока нет сданных работ.');
+  if (!done.length) return send(chatId, header + '\n\nпока нет сданных работ:(');
 
   const buttons = done.slice(0, 10).map(sub => {
     const a    = aMap[sub.assignment_id];
@@ -371,7 +371,7 @@ async function showStudentStats(chatId, student) {
 
 async function showStudentSubDetail(chatId, student, subId) {
   const sub = await sbOne('homework_submissions', `id=eq.${subId}&student_id=eq.${student.id}`);
-  if (!sub) return send(chatId, 'Не найдено.');
+  if (!sub) return send(chatId, 'не найдено.');
 
   const assignment = await sbOne('homework_assignments',
     `id=eq.${sub.assignment_id}&select=id,topic,description,due_date,hw_type,task_config`);
@@ -462,10 +462,10 @@ async function submitBriefAnswers(chatId, student, subId, correct, given) {
 
 async function handleStudentAnswer(chatId, student, subId, text, sess) {
   const sub = await sbOne('homework_submissions', `id=eq.${subId}&student_id=eq.${student.id}`);
-  if (!sub) return send(chatId, 'Задание не найдено.');
+  if (!sub) return send(chatId, 'задание не найдено.');
 
   const assignment = await sbOne('homework_assignments', `id=eq.${sub.assignment_id}`);
-  if (!assignment) return send(chatId, 'Задание не найдено.');
+  if (!assignment) return send(chatId, 'задание не найдено.');
 
   const now = new Date().toISOString();
 
@@ -512,7 +512,7 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
 
 async function finalizeStudentFiles(chatId, student, subId, files) {
   const sub = await sbOne('homework_submissions', `id=eq.${subId}&student_id=eq.${student.id}`);
-  if (!sub) return send(chatId, 'Задание не найдено.');
+  if (!sub) return send(chatId, 'задание не найдено.');
 
   const assignment = await sbOne('homework_assignments', `id=eq.${sub.assignment_id}`);
 
@@ -539,12 +539,12 @@ async function startHwCreation(chatId, tid, curator) {
   if (curator.role_type === 'owner' || curator['isOwner']) {
     groups = await sbSelect('groups', 'order=name.asc');
   } else {
-    if (!agRows.length) return send(chatId, 'У тебя нет назначенных групп.');
+    if (!agRows.length) return send(chatId, 'у тебя нет назначенных групп:(');
     const gIds = agRows.map(ag => ag.group_id);
     groups = await sbSelect('groups', `id=in.(${gIds.join(',')})`);
   }
 
-  if (!groups.length) return send(chatId, 'Группы не найдены.');
+  if (!groups.length) return send(chatId, 'группы не найдены.');
 
   const allGroups      = groups.map(g => ({ id: g.id, name: g.name }));
   const selectedGroups = [];
@@ -569,12 +569,12 @@ async function handleCuratorStep(chatId, tid, curator, sess, text) {
   switch (sess.step) {
     case 'await_topic':
       await setSession(tid, { step: 'await_date', data: { ...sess.data, topic: text } });
-      return send(chatId, 'Введи дедлайн (ДД.ММ.ГГГГ) или «-» без дедлайна:');
+      return send(chatId, 'введи дедлайн (ДД.ММ.ГГГГ) или «-», если дедлайн не нужен:');
 
     case 'await_date': {
       const due = text === '-' ? '' : text;
       if (due && !/^\d{2}\.\d{2}\.\d{4}$/.test(due)) {
-        return send(chatId, 'Неверный формат. Введи ДД.ММ.ГГГГ или «-»:');
+        return send(chatId, 'неверный формат. введи ДД.ММ.ГГГГ или «-»:');
       }
       const dueFmt = due ? due.split('.').reverse().join('-') : '';
       await setSession(tid, { step: 'await_hwtype', data: { ...sess.data, due_date: dueFmt } });
@@ -598,7 +598,7 @@ async function handleCuratorStep(chatId, tid, curator, sess, text) {
 
     case 'await_count': {
       const n = parseInt(text, 10);
-      if (!n || n < 1 || n > 50) return send(chatId, 'Введи число от 1 до 50:');
+      if (!n || n < 1 || n > 50) return send(chatId, 'введи число от 1 до 50:');
       if (sess.data.hw_type === 'brief') {
         await setSession(tid, { step: 'await_answers', data: { ...sess.data, total: n, collected: [] } });
         return send(chatId, `введи ответ на <b>задание 1</b> из ${n}:`);
@@ -620,7 +620,7 @@ async function handleCuratorStep(chatId, tid, curator, sess, text) {
 
     case 'await_scores': {
       const score = parseFloat(text.replace(',', '.'));
-      if (isNaN(score) || score < 0) return send(chatId, 'Введи число (например: 5 или 2.5):');
+      if (isNaN(score) || score < 0) return send(chatId, 'введи число (например: 5 или 2.5):');
       const scores = [...(sess.data.scores || []), score];
       const total  = sess.data.total;
       if (scores.length < total) {
@@ -631,7 +631,7 @@ async function handleCuratorStep(chatId, tid, curator, sess, text) {
     }
 
     default:
-      return send(chatId, 'Используй /newdz для создания задания.');
+      return send(chatId, 'используй /newdz для создания задания.');
   }
 }
 
@@ -711,10 +711,10 @@ async function finishHwCreation(chatId, tid, curator, data) {
   const warnLine    = subErrors ? `\n⚠️ Ошибок при создании записей: ${subErrors}` : '';
 
   return send(chatId,
-    `✅ ДЗ создано!\n${groupsLine}\nТема: <b>${data.topic}</b>\n` +
-    `Тип: <b>${typeLabel}</b>\nДедлайн: <b>${data.due_date || 'не указан'}</b>\n` +
-    `Учеников: <b>${totalStudents}</b>${extra}${warnLine}\n\n` +
-    `В TutorOS обнови страницу (F5) чтобы увидеть ДЗ.`);
+    `✅ дз создано!\n${groupsLine}\nтема: <b>${data.topic}</b>\n` +
+    `тип: <b>${typeLabel}</b>\nдедлайн: <b>${data.due_date || 'не указан'}</b>\n` +
+    `учеников: <b>${totalStudents}</b>${extra}${warnLine}\n\n` +
+    `в TutorOS обнови страницу (F5) чтобы увидеть ДЗ.`);
 }
 
 // ── Curator: list my DZ ───────────────────────────────────────────────────────
@@ -732,7 +732,7 @@ async function showMyDz(chatId, tid, curator, offset) {
       `group_id=in.(${gIds.join(',')})&order=assigned_at.desc&limit=10&offset=${offset}`);
   }
 
-  if (!assignments.length) return send(chatId, offset === 0 ? 'ДЗ не найдено.' : 'Больше ДЗ нет.');
+  if (!assignments.length) return send(chatId, offset === 0 ? 'дз не найдено.' : 'Больше ДЗ нет.');
 
   const typeEmoji = { brief: '🔢', detailed: '📝', trial: '📋' };
   const lines   = assignments.map((a, i) =>
@@ -750,7 +750,7 @@ async function showMyDz(chatId, tid, curator, offset) {
 
 async function showDzDetail(chatId, hwId) {
   const a = await sbOne('homework_assignments', `id=eq.${hwId}`);
-  if (!a) return send(chatId, 'ДЗ не найдено.');
+  if (!a) return send(chatId, 'дз не найдено.');
 
   const groups    = await sbSelect('groups', `id=eq.${a.group_id}&select=name`);
   const groupName = groups[0]?.name || '—';
@@ -799,12 +799,12 @@ async function handleCallback(cq) {
   if (data.startsWith('dz_et:') && curator) {
     const hwId = data.slice(6);
     await setSession(tid, { step: `edit_hw_topic:${hwId}` });
-    return send(chatId, 'Введи новую тему:');
+    return send(chatId, 'введи новую тему:');
   }
   if (data.startsWith('dz_ed:') && curator) {
     const hwId = data.slice(6);
     await setSession(tid, { step: `edit_hw_date:${hwId}` });
-    return send(chatId, 'Введи новый дедлайн (ДД.ММ.ГГГГ) или «-» чтобы убрать:');
+    return send(chatId, 'введи новый дедлайн (ДД.ММ.ГГГГ) или «-» чтобы убрать:');
   }
   if (data.startsWith('dz_del:') && curator) {
     const hwId = data.slice(7);
@@ -831,9 +831,9 @@ async function handleCallback(cq) {
     if (student) await sbPatch('students', `id=eq.${student.id}`, { telegram_id: null });
     if (curator) await sbPatch('roles',    `id=eq.${curator.id}`, { telegram_id: null });
     await setSession(tid, {});
-    return send(chatId, 'Аккаунт отвязан. Введи новый регистрационный код для повторного подключения.');
+    return send(chatId, 'аккаунт отвязан. введи новый код, который тебе скинет куратор.');
   }
-  if (data === 'unlink:cancel') return send(chatId, 'Отмена.');
+  if (data === 'unlink:cancel') return send(chatId, 'отмена.');
 
   // Multi-group toggle
   if (data.startsWith('grp_toggle:') && curator && sess.step === 'await_group') {
@@ -848,8 +848,8 @@ async function handleCallback(cq) {
 
     const selectedNames = allGroups.filter(g => newSelected.includes(g.id)).map(g => g.name);
     const statusText    = newSelected.length
-      ? `Выбрано: ${selectedNames.join(', ')}\n\nДобавь ещё или подтверди:`
-      : 'Выбери группы (можно несколько):';
+      ? `выбрано: ${selectedNames.join(', ')}\n\nдобавь ещё или подтверди:`
+      : 'выбери группы (можно несколько):';
 
     await tg('editMessageText', {
       chat_id:      chatId,
@@ -865,17 +865,17 @@ async function handleCallback(cq) {
   if (data === 'grp_confirm' && curator && sess.step === 'await_group') {
     const allGroups  = sess.data?.all_groups || [];
     const selected   = sess.data?.selected_groups || [];
-    if (!selected.length) return send(chatId, 'Выбери хотя бы одну группу.');
+    if (!selected.length) return send(chatId, 'выбери хотя бы одну группу.');
     const groupNames = allGroups.filter(g => selected.includes(g.id)).map(g => g.name).join(', ');
     await setSession(tid, { step: 'await_topic', data: { ...sess.data, group_ids: selected, group_names: groupNames } });
-    return send(chatId, `Группы: <b>${groupNames}</b>\n\nВведи тему задания:`);
+    return send(chatId, `группы: <b>${groupNames}</b>\n\nвведи тему задания:`);
   }
 
   // Curator: HW type selection
   if (data.startsWith('hwtype:') && curator && sess.step === 'await_hwtype') {
     const hwType = data.slice(7);
     await setSession(tid, { step: 'await_pdf', data: { ...sess.data, hw_type: hwType } });
-    return send(chatId, 'Отправь PDF-файл с заданием (или напиши «-» чтобы пропустить):');
+    return send(chatId, 'отправь PDF-файл с заданием (или напиши «-» чтобы пропустить):');
   }
 
   // Student taps HW
@@ -883,10 +883,10 @@ async function handleCallback(cq) {
     const subId = data.slice(3);
     const sub   = await sbOne('homework_submissions',
       `id=eq.${subId}&student_id=eq.${student.id}&status=eq.assigned`);
-    if (!sub) return send(chatId, 'Задание уже сдано или не найдено.');
+    if (!sub) return send(chatId, 'задание уже сдано или не найдено.');
 
     const assignment = await sbOne('homework_assignments', `id=eq.${sub.assignment_id}`);
-    if (!assignment) return send(chatId, 'Задание не найдено.');
+    if (!assignment) return send(chatId, 'задание не найдено.');
 
     if (assignment.file_id) {
       await tg('sendDocument', { chat_id: chatId, document: assignment.file_id });
@@ -916,14 +916,14 @@ async function handleCallback(cq) {
   if (data.startsWith('submit_files:') && student) {
     const subId = data.slice('submit_files:'.length);
     const files = sess.data?.files || [];
-    if (!files.length) return send(chatId, 'Пришли хотя бы один файл с выполненным заданием.');
+    if (!files.length) return send(chatId, 'пришли хотя бы один файл с выполненным заданием!');
     return finalizeStudentFiles(chatId, student, subId, files);
   }
 
   // Student cancels file submission
   if (data === 'cancel_files' && student) {
     await setSession(tid, { step: 'student' });
-    return send(chatId, 'Сдача отменена. /dz — посмотреть задания.');
+    return send(chatId, 'сдача отменена. /dz — посмотреть задания.');
   }
 
   // Brief answer: go back to edit
