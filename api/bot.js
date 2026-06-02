@@ -126,8 +126,8 @@ async function handleText(msg) {
   if (text === '➕ создать дз'    && curator)  return startHwCreation(chatId, tid, curator);
   if (text === '📋 мои задания'    && curator)  return showMyDz(chatId, tid, curator, 0);
   if (text === '❓ помощь') {
-    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт (не жми просто так!)', rkbd(STUDENT_KBD));
-    if (curator) return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ\n/unlink — отвязать аккаунт', rkbd(CURATOR_KBD));
+    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт (не жми просто так!)\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', rkbd(STUDENT_KBD));
+    if (curator) return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ\n/unlink — отвязать аккаунт\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', rkbd(CURATOR_KBD));
     return send(chatId, 'введи код, который тебе скинул куратор.\nесли куратор еще не скинул тебе код, попроси его в лс.\nпо всем вопросам с ботом пиши @teddymgmt');
   }
 
@@ -154,8 +154,8 @@ async function handleText(msg) {
 
   // /help
   if (text === '/help') {
-    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт (не жми просто так!)', rkbd(STUDENT_KBD));
-    if (curator) return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ\n/unlink — отвязать аккаунт', rkbd(CURATOR_KBD));
+    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт (не жми просто так!)\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', rkbd(STUDENT_KBD));
+    if (curator) return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ\n/unlink — отвязать аккаунт\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', rkbd(CURATOR_KBD));
     return send(chatId, 'введи код, который тебе скинул куратор.\nесли куратор еще не скинул тебе код, попроси его в лс.\nпо всем вопросам с ботом пиши @teddymgmt');
   }
 
