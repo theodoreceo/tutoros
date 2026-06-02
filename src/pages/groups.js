@@ -1,5 +1,5 @@
 import { CACHE, dbInsert, dbUpdate, dbDelete, ensureLoaded } from '../core/store.js';
-import { state } from '../core/state.js';
+import { state, effectiveRole } from '../core/state.js';
 import { uid, fmt, fmtDate, fmtDateLong, today, g, STATUS_CONFIG, dateStr, esc } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
@@ -11,7 +11,7 @@ export async function renderGroups() {
   await ensureLoaded(['groups', 'students', 'lessons']);
   const el = document.getElementById('groups-list');
   if (!el) return;
-  const role = state.currentRole || {};
+  const role = effectiveRole();
 
   // Curators only see their assigned groups
   let groups = CACHE.groups || [];
@@ -132,7 +132,7 @@ export function renderGroupDetail() {
   const hwTotal = allHw.length;
   const hwPct = hwTotal ? Math.round(hwDone / hwTotal * 100) : null;
 
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const metricsEl = document.getElementById('gd-metrics');
   if (metricsEl) metricsEl.innerHTML = `
     <div class="met"><div class="met-label">Учеников</div><div class="met-val">${active.length}<span style="font-size:13px;color:var(--muted)">/${gr.capacity || '∞'}</span></div><div class="met-sub">${gr.schedule || '—'}</div></div>
@@ -181,7 +181,7 @@ export function renderLessonJournal(lessons) {
     el.innerHTML = `<div class="card" style="text-align:center;padding:32px 20px;color:var(--hint)"><i class="ti ti-notebook" style="font-size:28px;display:block;margin-bottom:8px;opacity:.3"></i>Занятий пока нет.<br><span style="font-size:12px">Добавьте первое занятие.</span></div>`;
     return;
   }
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const canEdit = role.canEdit || role.isOwner;
   el.innerHTML = lessons.map(l => {
     const absentNames = (l.student_attendance || []).filter(a => !a.present).map(a => {

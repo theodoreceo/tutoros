@@ -1,6 +1,6 @@
 import { CACHE, ensureLoaded } from '../core/store.js';
 import { db } from '../lib/db.js';
-import { state } from '../core/state.js';
+import { state, effectiveRole } from '../core/state.js';
 import { uid, fmtDate, today, esc } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
@@ -26,7 +26,7 @@ function sourceIcon(source) {
 }
 
 function getMyAssistantId() {
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   return role.isOwner ? null : role.id;
 }
 
@@ -141,7 +141,7 @@ async function renderHwQueue() {
 async function renderOverdueHw() {
   const el = document.getElementById('hw-tab-overdue');
   if (!el) return;
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const assistantId = role.isOwner ? null : role.id;
 
   let subs = (CACHE.homework_submissions || []).filter(s => s.status === 'assigned');
@@ -202,7 +202,7 @@ async function renderOverdueHw() {
 async function renderAllHw() {
   const el = document.getElementById('hw-tab-all');
   if (!el) return;
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const assistantId = role.isOwner ? null : role.id;
 
   let subs = CACHE.homework_submissions || [];
@@ -300,7 +300,7 @@ export async function renderHwStudentsPage() {
   const el = document.getElementById('hw-students-list');
   if (!el) return;
 
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const assistantId = role.isOwner ? null : role.id;
 
   let students = (CACHE.students || []).filter(s => ['active', 'trial'].includes(s.crm_status));
@@ -552,7 +552,7 @@ function getLessonOptsForGroup(groupId) {
 }
 
 export async function openCreateHwModal() {
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const assistantId = role.isOwner ? null : role.id;
 
   let availableGroups = CACHE.groups || [];
@@ -678,7 +678,7 @@ export async function changeHwStatus(submissionId, newStatus) {
 }
 
 function renderHwStatsTab() {
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const isCurator = role.role_type === 'curator';
 
   // Filter students to curator's groups if applicable

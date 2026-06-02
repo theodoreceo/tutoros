@@ -1,5 +1,5 @@
 import { CACHE, dbInsert, dbUpdate, dbDelete, ensureLoaded } from '../core/store.js';
-import { state } from '../core/state.js';
+import { state, effectiveRole } from '../core/state.js';
 import { uid, fmt, fmtDate, today, g, STATUS_CONFIG, PIPELINE_STAGES, esc } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
@@ -27,7 +27,7 @@ export function setCRMStatusFilter(status) {
 // CRM — полная таблица всех учеников
 export async function renderStudents() {
   await ensureLoaded(['students', 'groups', 'payments', 'student_notes', 'events']);
-  const isCurator = (state.currentRole?.role_type === 'curator');
+  const isCurator = (effectiveRole()?.role_type === 'curator');
   const gf = document.getElementById('student-filter');
   if (gf) gf.innerHTML = '<option value="">Все группы</option>' + (CACHE.groups || []).map(g => `<option value="${esc(g.id)}">${esc(g.name.slice(0, 30))}</option>`).join('');
   const search = ((document.getElementById('student-search') || {}).value || '').toLowerCase();
@@ -44,7 +44,7 @@ export async function renderStudents() {
   if (!tbody) return;
   if (!students.length) { tbody.innerHTML = ''; if (empty) empty.style.display = ''; return; }
   if (empty) empty.style.display = 'none';
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const canEdit = role.canEdit || role.isOwner;
   // Toggle financial columns visibility (hidden for curator and non-owner)
   document.querySelectorAll('.fin-col').forEach(el => { el.style.display = (role.isOwner && !isCurator) ? '' : 'none'; });
@@ -111,7 +111,7 @@ export async function renderPipeline() {
   await ensureLoaded(['students', 'groups', 'payments', 'student_notes', 'events']);
   const board = document.getElementById('pipeline-board');
   if (!board) return;
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const search = ((document.getElementById('pipeline-search') || {}).value || '').toLowerCase();
   const now = Date.now();
   const cutoff30 = now - 30 * 86400000;
@@ -363,7 +363,7 @@ export function openStudentDetail(id) {
   }).join('') : '<div class="empty" style="padding:12px 0;font-size:12px">Событий пока нет</div>';
   const riskColor = level === 'high' ? 'var(--red)' : level === 'med' ? 'var(--amber)' : 'var(--green)';
   const riskLabel = level === 'high' ? 'Высокий' : level === 'med' ? 'Средний' : 'OK';
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const isCurator = (role.role_type === 'curator');
   const hwAll = (CACHE.hw_submissions || []).filter(h => h.student_id === id);
   const hwDone = hwAll.filter(h => h.status === 'done').length;
@@ -524,7 +524,7 @@ function renderNotesThread(studentId) {
   const notes = (CACHE.student_notes || []).filter(n => n.student_id === studentId)
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   if (!notes.length) return '<div style="font-size:12px;color:var(--hint);padding:8px 0">Заметок пока нет</div>';
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   return `<div class="notes-thread">${notes.map(n => {
     const isOwner = n.author === 'Владелец';
     return `<div class="note-item${isOwner ? ' owner' : ''}">
@@ -542,7 +542,7 @@ export async function addStudentNote(studentId) {
   if (!ta) return;
   const text = ta.value.trim();
   if (!text) { toast('Введите текст заметки'); return; }
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const note = { id: uid(), student_id: studentId, text, author: role.name || 'Владелец', created_at: new Date().toISOString() };
   await dbInsert('student_notes', note);
   ta.value = '';

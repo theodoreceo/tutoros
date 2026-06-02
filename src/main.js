@@ -4,7 +4,8 @@ import { supabase } from './lib/supabase.js';
 import { initSupabase, clearDemoData, seedDemoData, isDemoMode, setDemoMode, CACHE } from './core/store.js';
 import { state } from './core/state.js';
 import {
-  restoreSession, selectRole, devSwitchRole, applyRoleUI, logout, promptSwitchRole, confirmSwitch,
+  restoreSession, selectRole, devSwitchRole, applyRoleUI, buildRole,
+  logout, promptSwitchRole, confirmSwitch,
   showLoginForm, showRegisterForm, handleLogin, handleRegister,
 } from './core/auth.js';
 import { navigate, registerRenderer, setupNav } from './core/router.js';
@@ -305,9 +306,9 @@ function _viewAsRole(roleId) {
   const role = (CACHE.roles || []).find(r => r.id === roleId);
   if (!role) return;
   const rt = ROLE_TYPES[role.role_type];
-  if (!rt?.homePage) { toast('У этой роли нет дашборда'); return; }
+  if (!rt) { toast('Неизвестный тип роли'); return; }
 
-  state.viewAsRole = role;
+  state.viewAsRole = buildRole(role);
 
   // Show banner
   const banner = document.getElementById('view-as-banner');
@@ -315,13 +316,20 @@ function _viewAsRole(roleId) {
   if (banner) banner.style.display = 'flex';
   if (nameEl) nameEl.textContent = `${role.name} (${rt.label})`;
 
-  navigate(rt.homePage);
+  // Redraw sidebar as this role sees it
+  applyRoleUI(state.viewAsRole);
+
+  navigate(rt.homePage || rt.pages?.[0] || 'dashboard');
 }
 
 function _exitViewAs() {
   state.viewAsRole = null;
   const banner = document.getElementById('view-as-banner');
   if (banner) banner.style.display = 'none';
+
+  // Restore owner sidebar
+  applyRoleUI(state.currentRole);
+
   navigate('dashboard');
 }
 

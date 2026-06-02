@@ -1,5 +1,5 @@
 import { CACHE, dbInsert, dbUpdate, dbDelete, ensureLoaded } from '../core/store.js';
-import { state } from '../core/state.js';
+import { state, effectiveRole } from '../core/state.js';
 import { uid, fmt, fmtDate, daysLeft, today, thisMonth, lastMonth, g, esc } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
@@ -37,7 +37,7 @@ export async function renderIncome() {
     groups[key].push(p);
   });
 
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const canOwner = role.isOwner;
   tbody.innerHTML = Object.entries(groups).map(([key, items]) => {
     const [year, mon] = key.split('-');

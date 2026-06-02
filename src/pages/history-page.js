@@ -1,5 +1,5 @@
 import { CACHE, dbInsert, dbUpdate, dbDelete, ensureLoaded } from '../core/store.js';
-import { state } from '../core/state.js';
+import { state, effectiveRole } from '../core/state.js';
 import { esc } from '../utils/helpers.js';
 import { addHistoryEntry } from '../core/history.js';
 import { toast } from '../components/toast.js';
@@ -10,7 +10,7 @@ export async function renderHistoryPage() {
   if (!el) return;
   const entries = (CACHE.history_log || []).slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   if (!entries.length) { el.innerHTML = '<div class="empty">История изменений пуста</div>'; return; }
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   el.innerHTML = entries.map(e => `
     <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)" id="hlog-${e.id}">
       <div style="width:10px;height:10px;border-radius:50%;background:var(--accent-mid);flex-shrink:0;margin-top:4px"></div>

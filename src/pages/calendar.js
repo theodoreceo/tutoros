@@ -1,5 +1,5 @@
 import { CACHE, dbInsert, dbUpdate, dbDelete, ensureLoaded } from '../core/store.js';
-import { state } from '../core/state.js';
+import { state, effectiveRole } from '../core/state.js';
 import { uid, fmt, fmtDate, today, dateStr, g, GROUP_COLORS, esc } from '../utils/helpers.js';
 import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
@@ -60,7 +60,7 @@ function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMo
 
 export async function renderCalendar() {
   await ensureLoaded(['lessons', 'groups', 'students']);
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const myGroupIds = _getCuratorGroupIds(role);
   const el = document.getElementById('cal-container');
   if (!el) return;
@@ -218,7 +218,7 @@ export async function renderCalendar() {
 
 export function openLessonFromCalendar(date) {
   const dateVal = date || dateStr(new Date());
-  const role = state.currentRole || {};
+  const role = effectiveRole();
   const curatorGroupIds = _getCuratorGroupIds(role);
   const groups = curatorGroupIds
     ? (CACHE.groups || []).filter(g => curatorGroupIds.has(g.id))
@@ -387,7 +387,7 @@ export function openLessonCard(lid) {
   const endMin = lh * 60 + lm + (l.duration || 60);
   const timeStr = `${l.start_time || '?'} – ${String(Math.floor(endMin / 60)).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`;
   const hwSubs = (CACHE.hw_submissions || []).filter(h => h.lesson_id === l.id);
-  const role = state.currentRole || {};
+  const role = effectiveRole();
 
   modal(`<div class="modal" style="max-width:540px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">

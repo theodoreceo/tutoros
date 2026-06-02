@@ -1,5 +1,5 @@
 import { CACHE, ensureLoaded } from '../core/store.js';
-import { state } from '../core/state.js';
+import { state, effectiveRole } from '../core/state.js';
 import { fmt, fmtDate, days30Start, days60Start, dateStr, esc } from '../utils/helpers.js';
 import { calcRiskScore, studentSubscriptionStatus } from '../core/risk.js';
 import { GROUP_COLORS } from '../utils/helpers.js';
@@ -142,7 +142,7 @@ export async function renderDashboard() {
   });
 
   // HW queue alerts
-  const role2 = state.currentRole || {};
+  const role2 = effectiveRole();
   const myGroupIds2 = role2.isOwner
     ? null
     : new Set((CACHE.assistant_groups || []).filter(ag => ag.assistant_id === role2.id).map(ag => ag.group_id));

@@ -1,5 +1,5 @@
 import { CACHE, ensureLoaded } from '../core/store.js';
-import { state } from '../core/state.js';
+import { state, effectiveRole } from '../core/state.js';
 import { calcRiskScore } from '../core/risk.js';
 import { esc } from '../utils/helpers.js';
 
@@ -222,8 +222,8 @@ export async function renderCuratorDashPage() {
   if (!el) return;
 
   // Use viewAsRole when owner is previewing a specific curator's view
-  const effectiveRole = state.viewAsRole || state.currentRole || {};
-  const assistantId = effectiveRole.isOwner ? null : effectiveRole.id;
+  const role = effectiveRole();
+  const assistantId = role.isOwner ? null : role.id;
 
   let groups = CACHE.groups || [];
   if (assistantId) {
