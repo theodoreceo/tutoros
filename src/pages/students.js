@@ -52,7 +52,6 @@ export async function renderStudents() {
     const st = STATUS_CONFIG[s.crm_status] || STATUS_CONFIG['lead'];
     const contact = s.contact || s.phone || '—';
     const { level } = calcRiskScore(s);
-    const resetBtn = level !== 'low' ? `<button class="btn btn-sm" style="font-size:10px;padding:2px 6px" data-action="resetStudentRisk" data-id="${esc(s.id)}" onclick="event.stopPropagation()" title="Сбросить риск"><i class="ti ti-refresh"></i></button>` : '';
     return `<tr style="cursor:pointer" data-action="openStudentDetail" data-id="${esc(s.id)}">
       <td><span class="b ${st.cls}"><i class="ti ${st.icon}" style="font-size:11px;margin-right:3px"></i>${st.label}</span></td>
       <td><b>${esc(s.name)}</b><br><span style="font-size:11px;color:var(--muted)">${esc(s.source || '')}</span></td>
@@ -60,7 +59,6 @@ export async function renderStudents() {
       <td style="max-width:140px;word-break:break-all"><span style="font-size:12px">${contact}</span></td>
       <td>${groupShort(s.group_id)}</td>
       ${!isCurator ? `<td class="fin-col" style="text-align:right">${s.monthly_price ? fmt(s.monthly_price) + ' ₽' : '—'}</td>` : ''}
-      <td style="white-space:nowrap">${riskBadge(s)} ${resetBtn}</td>
       <td style="white-space:nowrap" onclick="event.stopPropagation()">${canEdit ? `<button class="btn btn-sm btn-icon" data-action="editStudent" data-id="${esc(s.id)}"><i class="ti ti-edit"></i></button>
         <button class="btn btn-sm btn-icon" data-action="deleteStudent" data-id="${esc(s.id)}"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
       </td>
@@ -250,10 +248,11 @@ export function openStudentModal(id) {
         <option value="trial_scheduled" ${v.crm_status === 'trial_scheduled' ? 'selected' : ''}>Пробник назначен</option>
         <option value="trial_done" ${(v.crm_status === 'trial_done' || v.crm_status === 'trial') ? 'selected' : ''}>Пробник проведён</option>
         <option value="active" ${v.crm_status === 'active' ? 'selected' : ''}>Занимается</option>
+        ${effectiveRole().role_type !== 'marketer' ? `
         <option value="exam_passed" ${v.crm_status === 'exam_passed' ? 'selected' : ''}>Сдал экзамен</option>
-        <option value="stopped" ${v.crm_status === 'stopped' ? 'selected' : ''}>Отказался (не начал)</option>
-        <option value="left" ${v.crm_status === 'left' ? 'selected' : ''}>Ушел (бросил занятия)</option>
-        <option value="refused" ${v.crm_status === 'refused' ? 'selected' : ''}>Отказался (устаревший)</option>
+        <option value="left" ${v.crm_status === 'left' ? 'selected' : ''}>Ушел (бросил занятия)</option>` : ''}
+        <option value="stopped" ${v.crm_status === 'stopped' ? 'selected' : ''}>Отказался</option>
+        ${effectiveRole().role_type !== 'marketer' ? `<option value="refused" ${v.crm_status === 'refused' ? 'selected' : ''}>Отказался (устаревший)</option>` : ''}
       </select></div>
       <div class="fg"><label>Первый контакт</label><input class="fi" type="date" id="sf-first-contact" value="${v.first_contact_at || todayStr}"></div>
       <div class="fg"><label>Класс</label><select class="fi" id="sf-grade">${[7, 8, 9, 10, 11].map(x => `<option ${v.grade == x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>

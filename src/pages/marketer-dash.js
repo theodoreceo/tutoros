@@ -103,14 +103,25 @@ function _render() {
     .map(([src, d]) => ({ src, ...d, rate: d.leads ? Math.round(d.active / d.leads * 100) : 0 }))
     .sort((a, b) => b.leads - a.leads);
 
-  // Funnel stages for period
+  // Step-by-step conversions in period (via status_history)
+  const reachedTrial = students.filter(s =>
+    (s.status_history || []).some(h => h.status === 'trial_scheduled' && inPeriod(h.date))
+  );
+  const reachedTrialDone = students.filter(s =>
+    (s.status_history || []).some(h => h.status === 'trial_done' && inPeriod(h.date))
+  );
+  // Conv rates: each step relative to previous
+  const convLeadToTrial     = newLeads.length     ? Math.round(reachedTrial.length     / newLeads.length * 100)     : 0;
+  const convTrialToTrialDone = reachedTrial.length ? Math.round(reachedTrialDone.length / reachedTrial.length * 100) : 0;
+  const convTrialDoneToActive = reachedTrialDone.length ? Math.round(becameActive.length / reachedTrialDone.length * 100) : 0;
+
+  // Funnel stages for period — marketer only sees acquisition stages
   const stages = [
     { key: 'lead',            label: 'Лиды',            color: '#64748b' },
     { key: 'trial_scheduled', label: 'Пробник назначен', color: '#7c3aed' },
     { key: 'trial_done',      label: 'Пробник проведён',  color: '#d97706' },
     { key: 'active',          label: 'Стали учениками',  color: '#16a34a' },
     { key: 'stopped',         label: 'Отказались',       color: '#ef4444' },
-    { key: 'left',            label: 'Ушли',             color: '#dc2626' },
   ];
   const funnelStudents = students.filter(s => {
     const anyActivity = inPeriod(s.first_contact_at || s.created_at) ||
@@ -119,7 +130,9 @@ function _render() {
   });
   const stageCounts = {};
   stages.forEach(st => {
-    stageCounts[st.key] = funnelStudents.filter(s => s.crm_status === st.key).length;
+    stageCounts[st.key] = funnelStudents.filter(s =>
+      st.key === 'stopped' ? ['stopped','refused'].includes(s.crm_status) : s.crm_status === st.key
+    ).length;
   });
   const funnelTotal = funnelStudents.length || 1;
 
@@ -138,13 +151,29 @@ function _render() {
 
   el.innerHTML = `
     <!-- KPI row -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">
-      ${_kpi('Новых лидов',        newLeads.length,                                         delta(newLeads.length, prevLeads.length),        'ti-user-plus',   '#2563eb')}
-      ${_kpi('Новых учеников',     becameActive.length,                                     delta(becameActive.length, prevBecameActive.length), 'ti-users',   '#16a34a')}
-      ${_kpi('Конверсия',          conversionRate + '%',                                    '',                                              'ti-trending-up', conversionRate > 20 ? '#16a34a' : '#d97706')}
-      ${_kpi('Расходы на рекламу', totalMktSpend ? fmt(totalMktSpend) + ' ₽' : '—',        delta(totalMktSpend, prevMktSpend),              'ti-speakerphone','#7c3aed')}
-      ${_kpi('Стоимость привлечения', cpa ? fmt(cpa) + ' ₽' : '—',                         delta(cpa, prevCpa) ,                             'ti-coin',        '#0891b2')}
-      ${_kpi('ROMI',               romi !== null ? romi + '%' : '—',                        '',                                              'ti-chart-line',  romi >= 0 ? '#16a34a' : '#ef4444')}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:16px">
+      ${_kpi('Новых лидов',           newLeads.length,                                    delta(newLeads.length, prevLeads.length),           'ti-user-plus',   '#2563eb')}
+      ${_kpi('Новых учеников',        becameActive.length,                               delta(becameActive.length, prevBecameActive.length),  'ti-users',       '#16a34a')}
+      ${_kpi('Общая конверсия',       conversionRate + '%',                              '',                                                   'ti-trending-up', conversionRate > 20 ? '#16a34a' : '#d97706')}
+      ${_kpi('Расходы на рекламу',    totalMktSpend ? fmt(totalMktSpend) + ' ₽' : '—',  delta(totalMktSpend, prevMktSpend),                   'ti-speakerphone','#7c3aed')}
+      ${_kpi('Стоимость привлечения', cpa ? fmt(cpa) + ' ₽' : '—',                      delta(cpa, prevCpa),                                  'ti-coin',        '#0891b2')}
+      ${_kpi('ROMI',                  romi !== null ? romi + '%' : '—',                  '',                                                   'ti-chart-line',  romi !== null && romi >= 0 ? '#16a34a' : '#ef4444')}
+    </div>
+
+    <!-- Step-by-step conversions -->
+    <div class="card" style="margin-bottom:16px;padding:16px 20px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:14px">
+        <i class="ti ti-arrow-right" style="margin-right:4px"></i>Пошаговые конверсии за период
+      </div>
+      <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap">
+        ${_convStep(newLeads.length,       'Лиды',            '#64748b')}
+        ${_convArrow(convLeadToTrial)}
+        ${_convStep(reachedTrial.length,   'Пробник назначен', '#7c3aed')}
+        ${_convArrow(convTrialToTrialDone)}
+        ${_convStep(reachedTrialDone.length,'Пробник проведён', '#d97706')}
+        ${_convArrow(convTrialDoneToActive)}
+        ${_convStep(becameActive.length,   'Занимаются',      '#16a34a')}
+      </div>
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
@@ -207,6 +236,21 @@ function _render() {
       </div>` : '<div style="color:var(--muted);font-size:13px">Нет активных пробников</div>'}
     </div>
   `;
+}
+
+function _convStep(count, label, color) {
+  return `<div style="text-align:center;padding:10px 16px;background:${color}12;border-radius:10px;min-width:90px;flex:1">
+    <div style="font-size:22px;font-weight:800;color:${color}">${count}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.3">${label}</div>
+  </div>`;
+}
+
+function _convArrow(pct) {
+  const color = pct >= 50 ? '#16a34a' : pct >= 25 ? '#d97706' : '#ef4444';
+  return `<div style="display:flex;flex-direction:column;align-items:center;padding:0 6px;flex-shrink:0">
+    <div style="font-size:13px;font-weight:700;color:${color}">${pct}%</div>
+    <div style="font-size:16px;color:var(--muted)">→</div>
+  </div>`;
 }
 
 function _kpi(label, value, deltaHtml, icon, color) {
