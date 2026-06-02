@@ -54,20 +54,48 @@ export function setHwTab(tab) {
   document.getElementById('hw-tab-queue').style.display   = tab === 'queue'   ? '' : 'none';
   document.getElementById('hw-tab-overdue').style.display = tab === 'overdue' ? '' : 'none';
   document.getElementById('hw-tab-all').style.display     = tab === 'all'     ? '' : 'none';
+  const statsEl = document.getElementById('hw-tab-stats');
+  if (statsEl) statsEl.style.display = tab === 'stats' ? '' : 'none';
   if (tab === 'queue')        renderHwQueue();
   else if (tab === 'overdue') renderOverdueHw();
+  else if (tab === 'stats')   renderHwStatsTab();
   else                        renderAllHw();
 }
 
 export async function renderHomeworkPage() {
-  await ensureLoaded(['homework_assignments', 'homework_submissions', 'students', 'groups', 'lessons']);
+  await ensureLoaded(['homework_assignments', 'homework_submissions', 'students', 'groups', 'lessons', 'assistant_groups']);
   await updateHwBadge();
+
+  // Inject stats tab button if not already present
+  const hwTabsContainer = document.querySelector('#pg-homework > div[style*="flex"]');
+  if (hwTabsContainer && !document.querySelector('.hw-tab[data-tab="stats"]')) {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm hw-tab';
+    btn.dataset.tab = 'stats';
+    btn.dataset.action = 'setHwTab';
+    btn.innerHTML = '<i class="ti ti-chart-bar"></i> Статистика';
+    hwTabsContainer.appendChild(btn);
+  }
+
+  // Inject stats tab container if not present
+  if (!document.getElementById('hw-tab-stats')) {
+    const div = document.createElement('div');
+    div.id = 'hw-tab-stats';
+    div.style.display = 'none';
+    document.getElementById('pg-homework').appendChild(div);
+  }
+
   if (_hwTab === 'queue')        await renderHwQueue();
   else if (_hwTab === 'overdue') await renderOverdueHw();
+  else if (_hwTab === 'stats')   renderHwStatsTab();
   else                           await renderAllHw();
   document.getElementById('hw-tab-queue').style.display   = _hwTab === 'queue'   ? '' : 'none';
   document.getElementById('hw-tab-overdue').style.display = _hwTab === 'overdue' ? '' : 'none';
   document.getElementById('hw-tab-all').style.display     = _hwTab === 'all'     ? '' : 'none';
+  const statsEl = document.getElementById('hw-tab-stats');
+  if (statsEl) statsEl.style.display = _hwTab === 'stats' ? '' : 'none';
+  // Sync active state on tab buttons
+  document.querySelectorAll('.hw-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === _hwTab));
 }
 
 async function renderHwQueue() {
@@ -647,6 +675,96 @@ export async function changeHwStatus(submissionId, newStatus) {
   } catch (err) {
     toast('Ошибка: ' + err.message);
   }
+}
+
+function renderHwStatsTab() {
+  const role = state.currentRole || {};
+  const isCurator = role.role_type === 'curator';
+
+  // Filter students to curator's groups if applicable
+  let myGroupIds = null;
+  if (isCurator && !role.isOwner) {
+    const myAG = (CACHE.assistant_groups || []).filter(ag => ag.assistant_id === role.id);
+    myGroupIds = myAG.length ? new Set(myAG.map(ag => ag.group_id)) : new Set();
+  }
+
+  const students = (CACHE.students || []).filter(s =>
+    ['active', 'trial'].includes(s.crm_status) &&
+    (!myGroupIds || myGroupIds.has(s.group_id))
+  );
+
+  const assignments = (CACHE.homework_assignments || []).filter(a =>
+    !myGroupIds || myGroupIds.has(a.group_id)
+  );
+
+  const submissions = CACHE.homework_submissions || [];
+
+  // Per student stats
+  const stats = students.map(s => {
+    const group = (CACHE.groups || []).find(g => g.id === s.group_id);
+    const studentAssignments = assignments.filter(a => a.group_id === s.group_id);
+    const total = studentAssignments.length;
+    const submitted = submissions.filter(sub =>
+      sub.student_id === s.id &&
+      studentAssignments.some(a => a.id === sub.assignment_id) &&
+      ['submitted', 'checked'].includes(sub.status)
+    ).length;
+    const overdue = submissions.filter(sub =>
+      sub.student_id === s.id &&
+      studentAssignments.some(a => a.id === sub.assignment_id) &&
+      sub.status === 'overdue'
+    ).length;
+    const pct = total ? Math.round(submitted / total * 100) : null;
+    return { s, group, total, submitted, overdue, pct };
+  }).sort((a, b) => (a.pct ?? 101) - (b.pct ?? 101)); // worst first, null last
+
+  const el = document.getElementById('hw-tab-stats');
+  if (!el) return;
+
+  if (!stats.length) {
+    el.innerHTML = '<div class="empty">Нет учеников</div>';
+    return;
+  }
+
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+      Ученики отсортированы по проценту сданных ДЗ — сначала те, кто сдаёт меньше всего.
+    </div>
+    <div class="card" style="padding:0;overflow-x:auto">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>Ученик</th>
+            <th>Группа</th>
+            <th>Сдано / Всего</th>
+            <th>% выполнения</th>
+            <th>Просрочено</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${stats.map(({ s, group, total, submitted, overdue, pct }) => {
+            const color = pct === null ? 'var(--muted)' : pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--red)';
+            return `<tr>
+              <td><span style="cursor:pointer;font-weight:600" data-action="openStudentDetail" data-id="${esc(s.id)}">${esc(s.name)}</span></td>
+              <td style="color:var(--muted)">${group ? esc(group.name) : '—'}</td>
+              <td>${submitted} / ${total}</td>
+              <td>
+                ${pct !== null ? `
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="flex:1;height:6px;background:var(--surface2);border-radius:3px;min-width:60px">
+                      <div style="height:100%;width:${pct}%;background:${color};border-radius:3px"></div>
+                    </div>
+                    <span style="font-size:12px;font-weight:700;color:${color};min-width:32px">${pct}%</span>
+                  </div>
+                ` : '<span style="color:var(--muted)">—</span>'}
+              </td>
+              <td style="color:${overdue > 0 ? 'var(--red)' : 'var(--muted)'};font-weight:${overdue > 0 ? '700' : '400'}">${overdue || '—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
 }
 
 export function renderStudentHwTab(studentId) {

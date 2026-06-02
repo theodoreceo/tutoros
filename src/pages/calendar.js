@@ -7,6 +7,12 @@ import { addHistoryEntry } from '../core/history.js';
 import { addEvent } from '../core/events.js';
 import { recalcRisk } from '../core/risk.js';
 
+function _getCuratorGroupIds(role) {
+  if (!role || role.isOwner || role.role_type !== 'curator') return null;
+  const myAG = (CACHE.assistant_groups || []).filter(ag => ag.assistant_id === role.id);
+  return myAG.length ? new Set(myAG.map(ag => ag.group_id)) : null;
+}
+
 let _calView = 'week';
 let _calDate = new Date();
 const _hwBtnStates = {};
@@ -54,6 +60,8 @@ function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMo
 
 export async function renderCalendar() {
   await ensureLoaded(['lessons', 'groups', 'students']);
+  const role = state.currentRole || {};
+  const myGroupIds = _getCuratorGroupIds(role);
   const el = document.getElementById('cal-container');
   if (!el) return;
   const now = new Date();
@@ -83,7 +91,7 @@ export async function renderCalendar() {
 
     const dayCols = days.map(day => {
       const ds = dateStr(day);
-      const dayLessons = (CACHE.lessons || []).filter(l => l.date === ds);
+      const dayLessons = (CACHE.lessons || []).filter(l => l.date === ds && (!myGroupIds || myGroupIds.has(l.group_id)));
       const isToday = isSameDay(day, now);
       let nowLine = '';
       if (isToday) {
@@ -106,7 +114,8 @@ export async function renderCalendar() {
         const endM = endMin % 60;
         const timeStr = `${l.start_time || '?'} – ${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
         const rName = roleName(l.led_by);
-        return `<div class="cal-event${past ? ' past' : ''}" style="top:${top}px;height:${h}px;background:${gc}18;color:${gc};border-left-color:${gc}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
+        const isConsult = l.lesson_type === 'consultation';
+        return `<div class="cal-event${past ? ' past' : ''}${isConsult ? ' consult' : ''}" style="top:${top}px;height:${h}px;background:${isConsult ? '#7c3aed18' : gc+'18'};color:${isConsult ? '#7c3aed' : gc};border-left-color:${isConsult ? '#7c3aed' : gc};border-left-style:${isConsult ? 'dashed' : 'solid'}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
           <div class="cal-event-title">${esc(l.topic) || 'Занятие'}</div>
           <div class="cal-event-time">${timeStr} · ${gr ? esc(gr.name).slice(0, 14) : ''}</div>
           ${rName ? `<div style="font-size:9px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px"><i class="ti ti-user-check" style="font-size:8px"></i> ${rName}</div>` : ''}
@@ -158,7 +167,7 @@ export async function renderCalendar() {
 
     const monthLessons = (CACHE.lessons || []).filter(l => {
       const d = new Date(l.date + 'T00:00:00');
-      return d.getFullYear() === y && d.getMonth() === m;
+      return d.getFullYear() === y && d.getMonth() === m && (!myGroupIds || myGroupIds.has(l.group_id));
     }).sort((a, b) => a.date !== b.date ? (a.date > b.date ? 1 : -1) : (a.start_time || '').localeCompare(b.start_time || ''));
 
     const leftPanel = `<div style="width:240px;flex-shrink:0;border-right:1px solid var(--border);overflow-y:auto;max-height:calc(100vh-230px);padding:10px 12px">
@@ -185,7 +194,7 @@ export async function renderCalendar() {
           ${RU_DAYS.map((d, i) => `<div class="cal-month-head-cell" style="${i >= 5 ? 'color:var(--red)' : ''}">${d}</div>`).join('')}
           ${cells.map(({ d, other }) => {
       const ds = dateStr(d);
-      const dayLessons = (CACHE.lessons || []).filter(l => l.date === ds).sort((a, b) => (a.start_time || '') > (b.start_time || '') ? 1 : -1);
+      const dayLessons = (CACHE.lessons || []).filter(l => l.date === ds && (!myGroupIds || myGroupIds.has(l.group_id))).sort((a, b) => (a.start_time || '') > (b.start_time || '') ? 1 : -1);
       const isToday = isSameDay(d, now);
       const isWeekend = d.getDay() === 0 || d.getDay() === 6;
       return `<div class="cal-mcell${other ? ' other' : ''}${isToday ? ' today' : ''}" style="${isWeekend && !other ? 'background:#fef9f0' : ''}" data-action="openLessonFromCalendar" data-id="${esc(ds)}">
@@ -193,7 +202,8 @@ export async function renderCalendar() {
               ${dayLessons.slice(0, 3).map(l => {
         const gc = roleColor(l.led_by) || groupColor(l.group_id);
         const past = lessonIsPast(l);
-        return `<span class="cal-mpill${past ? ' past' : ''}" style="background:${gc}20;color:${past ? 'var(--muted)' : gc}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
+        const isConsult = l.lesson_type === 'consultation';
+        return `<span class="cal-mpill${past ? ' past' : ''}" style="background:${isConsult ? '#7c3aed20' : gc+'20'};color:${past ? 'var(--muted)' : (isConsult ? '#7c3aed' : gc)};border-left:2px ${isConsult ? 'dashed' : 'solid'} ${isConsult ? '#7c3aed' : gc}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
                   ${past ? '✓ ' : ''}<span style="overflow:hidden;text-overflow:ellipsis">${l.start_time || ''} ${esc(l.topic) || 'Занятие'}</span>
                 </span>`;
       }).join('')}
@@ -208,7 +218,11 @@ export async function renderCalendar() {
 
 export function openLessonFromCalendar(date) {
   const dateVal = date || dateStr(new Date());
-  const groups = CACHE.groups || [];
+  const role = state.currentRole || {};
+  const curatorGroupIds = _getCuratorGroupIds(role);
+  const groups = curatorGroupIds
+    ? (CACHE.groups || []).filter(g => curatorGroupIds.has(g.id))
+    : (CACHE.groups || []);
   if (!groups.length) { toast('Сначала создай хотя бы одну группу'); return; }
   const checkboxes = groups.map((gr, i) =>
     `<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r);cursor:pointer;transition:background .1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
@@ -248,7 +262,7 @@ export function openLessonFormModal(date, gid, existingId) {
   const groupIds = existingId ? [groupId] : (_pendingGroupIds.length ? _pendingGroupIds : [groupId]);
   const groupNames = groupIds.map(id => (CACHE.groups || []).find(g => g.id === id)?.name || id).join(', ');
 
-  const v = existing || { date, start_time: '18:00', duration: 60, topic: '', lesson_link: '', materials_link: '', notes: '', led_by: '' };
+  const v = existing || { date, start_time: '18:00', duration: 60, topic: '', lesson_link: '', materials_link: '', notes: '', led_by: '', lesson_type: 'lesson' };
 
   // Conductor dropdown: owner + all roles
   const conductorOpts = [
@@ -275,6 +289,10 @@ export function openLessonFormModal(date, gid, existingId) {
     </div>
     <div class="form-row" style="margin-bottom:10px">
       <div class="fg" style="flex:2"><label>Тема занятия</label><input class="fi" id="lf-topic" value="${v.topic || ''}" placeholder="Тригонометрия: формулы приведения"></div>
+      <div class="fg"><label>Тип</label><select class="fi" id="lf-type">
+  <option value="lesson" ${(!v.lesson_type || v.lesson_type === 'lesson') ? 'selected' : ''}>Занятие</option>
+  <option value="consultation" ${v.lesson_type === 'consultation' ? 'selected' : ''}>Консультация</option>
+</select></div>
       <div class="fg"><label>Ведёт занятие</label><select class="fi" id="lf-led-by">${conductorOpts}</select></div>
     </div>
     <div class="form-row" style="margin-bottom:12px">
@@ -328,11 +346,13 @@ export async function saveLessonForm(existingId) {
     const lessonIds = [];
     for (const gid of groupIds) {
       const lessonId = existingId || uid();
+      const lesson_type = (document.getElementById('lf-type') || {}).value || 'lesson';
       const obj = {
         id: lessonId,
         group_id: gid,
         date, start_time, duration, topic,
         lesson_link, materials_link, led_by,
+        lesson_type,
         task_ids: [],
         notes,
         created_at: existingId ? ((CACHE.lessons || []).find(x => x.id === existingId) || {}).created_at || createdAt : createdAt,
@@ -360,8 +380,6 @@ export function openLessonCard(lid) {
   const l = (CACHE.lessons || []).find(x => x.id === lid);
   if (!l) return;
   const gr = (CACHE.groups || []).find(g => g.id === l.group_id);
-  const attendance = l.student_attendance || [];
-  const absent = attendance.filter(a => !a.present);
   const nowDt = new Date();
   const [lh, lm] = (l.start_time || '00:00').split(':').map(Number);
   const lessonDt = new Date(l.date + 'T' + String(lh).padStart(2, '0') + ':' + String(lm).padStart(2, '0'));
@@ -376,6 +394,7 @@ export function openLessonCard(lid) {
       <div>
         <div style="font-size:15px;font-weight:700">${esc(l.topic) || 'Без темы'}</div>
         <div style="font-size:12px;color:var(--muted);margin-top:3px">${gr ? esc(gr.name) : ''} · ${l.date} · ${timeStr}</div>
+        ${l.lesson_type === 'consultation' ? `<span class="b" style="background:#7c3aed18;color:#7c3aed;font-size:10px;margin-top:4px;display:inline-block"><i class="ti ti-users-group" style="font-size:10px"></i> Консультация</span>` : ''}
         ${isPast ? `<span style="font-size:11px;color:var(--hint);font-style:italic">✓ занятие прошло</span>` : `<span class="b b-g" style="font-size:10px">Предстоящее</span>`}
       </div>
       <div style="display:flex;gap:6px">
@@ -388,20 +407,6 @@ export function openLessonCard(lid) {
       ${l.lesson_link ? `<a href="${l.lesson_link}" target="_blank" class="btn btn-sm"><i class="ti ti-video"></i> Запись занятия</a>` : ''}
       ${l.materials_link ? `<a href="${l.materials_link}" target="_blank" class="btn btn-sm"><i class="ti ti-books"></i> Материалы</a>` : ''}
     </div>` : ''}
-    ${attendance.length ? `<div style="margin-bottom:12px">
-      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Ученики</div>
-      ${attendance.map(a => {
-    const stu = (CACHE.students || []).find(s => s.id === a.student_id);
-    const hw = hwSubs.find(h => h.student_id === a.student_id);
-    const hwLabel = hw ? { done: '✓ ДЗ сделал', missing: '✗ ДЗ не сдал', pending: '⏳ ДЗ не проверено' }[hw.status] || '' : '';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
-          <span style="color:${a.present ? 'var(--green)' : 'var(--red)'}">${a.present ? '✓' : '✗'}</span>
-          <span style="flex:1;font-weight:500">${stu ? esc(stu.name) : '?'}</span>
-          ${a.note ? `<span style="font-size:11px;color:var(--muted)">${esc(a.note)}</span>` : ''}
-          ${hwLabel ? `<span style="font-size:10px;color:${hw.status === 'done' ? 'var(--green)' : hw.status === 'missing' ? 'var(--red)' : 'var(--muted)'}">${hwLabel}</span>` : ''}
-        </div>`;
-  }).join('')}
-    </div>` : (isPast ? '<div style="font-size:12px;color:var(--hint);margin-bottom:10px">Посещаемость не заполнена</div>' : '')}
     ${l.notes ? `<div style="font-size:13px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px"><i class="ti ti-notes"></i> ${esc(l.notes)}</div>` : ''}
   </div>`);
 }

@@ -2,6 +2,7 @@ import { CACHE, ensureLoaded } from '../core/store.js';
 import { state } from '../core/state.js';
 import { db } from '../lib/db.js';
 import { calcRiskScore } from '../core/risk.js';
+import { esc } from '../utils/helpers.js';
 
 function pct(n, d) { return d ? Math.round(n / d * 100) : 0; }
 
@@ -70,6 +71,14 @@ function calcGroupMetrics(groupId, assistantId) {
   // Risk count (score >= 2)
   const riskCount = students.filter(s => calcRiskScore(s).level === 'high').length;
 
+  // Payment status per student
+  const d30ago = new Date(); d30ago.setDate(d30ago.getDate() - 30);
+  const d30Str = d30ago.toISOString().slice(0, 10);
+  const paidStudentIds = new Set(
+    (CACHE.payments || []).filter(p => p.date >= d30Str).map(p => p.student_id)
+  );
+  const unpaidStudents = students.filter(s => !paidStudentIds.has(s.id));
+
   return {
     students: students.length,
     leftCount,
@@ -81,6 +90,7 @@ function calcGroupMetrics(groupId, assistantId) {
     avgTrialScore,
     trialGrowth,
     riskCount,
+    unpaidStudents,
   };
 }
 
@@ -135,6 +145,14 @@ function groupCard(group, m) {
         <div style="font-size:15px;font-weight:700">${trialLabel}</div>
       </div>
     </div>
+    ${m.unpaidStudents?.length ? `
+      <div style="padding:10px 16px;border-top:1px solid var(--border)">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:600">Нет оплаты 30+ дней</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${m.unpaidStudents.map(s => `<span class="b b-r" style="font-size:11px">${esc(s.name)}</span>`).join('')}
+        </div>
+      </div>
+    ` : ''}
   </div>`;
 }
 
@@ -198,30 +216,6 @@ function _renderHwBacklog(groups, hwSubmissions, hwAssignments) {
   `;
 }
 
-function _renderLessonCompletionRate(groups, lessons) {
-  const now = new Date();
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-  const monthEnd = now.toISOString().slice(0, 10);
-  const monthLessons = lessons.filter(l => l.date >= monthStart && l.date <= monthEnd);
-  if (!monthLessons.length) return '';
-  const total = monthLessons.length;
-  const withAttendance = monthLessons.filter(l => l.attendance && Object.values(l.attendance).some(v => v)).length;
-  const rate = total ? Math.round(withAttendance / total * 100) : 0;
-  const color = rate >= 80 ? 'var(--green)' : rate >= 50 ? 'var(--amber)' : 'var(--red)';
-  return `
-    <div style="margin-top:16px">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Посещаемость в этом месяце</div>
-      <div class="card" style="padding:14px 16px">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-          <div style="flex:1;font-size:13px">Занятий с отметками посещаемости</div>
-          <div style="font-size:18px;font-weight:700;color:${color}">${rate}%</div>
-          <div style="font-size:11px;color:var(--muted)">${withAttendance} / ${total}</div>
-        </div>
-        <div class="prog" style="height:6px"><div class="prog-f" style="width:${rate}%;background:${color}"></div></div>
-      </div>
-    </div>
-  `;
-}
 
 export async function renderCuratorDashPage() {
   await ensureLoaded(['groups', 'students', 'lessons', 'homework_assignments', 'homework_submissions', 'payments']);
@@ -270,6 +264,11 @@ export async function renderCuratorDashPage() {
     : '—';
 
   el.innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="btn btn-p btn-sm" data-action="navigate" data-pg="homework"><i class="ti ti-list-check" style="margin-right:4px"></i>Очередь ДЗ ${total.unchecked > 0 ? `<span style="background:rgba(255,255,255,.2);border-radius:8px;padding:0 6px;margin-left:4px">${total.unchecked}</span>` : ''}</button>
+      <button class="btn btn-sm" data-action="navigate" data-pg="lessons_cal"><i class="ti ti-calendar-plus" style="margin-right:4px"></i>Поставить консультацию</button>
+    </div>
+
     <div style="margin-bottom:16px">
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Общая статистика</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
@@ -287,6 +286,5 @@ export async function renderCuratorDashPage() {
 
     ${_renderWeekLessons(groups, CACHE.lessons || [])}
     ${_renderHwBacklog(groups, CACHE.homework_submissions || [], CACHE.homework_assignments || [])}
-    ${_renderLessonCompletionRate(groups, CACHE.lessons || [])}
   `;
 }

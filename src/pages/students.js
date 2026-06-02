@@ -27,6 +27,7 @@ export function setCRMStatusFilter(status) {
 // CRM — полная таблица всех учеников
 export async function renderStudents() {
   await ensureLoaded(['students', 'groups', 'payments', 'student_notes', 'events']);
+  const isCurator = (state.currentRole?.role_type === 'curator');
   const gf = document.getElementById('student-filter');
   if (gf) gf.innerHTML = '<option value="">Все группы</option>' + (CACHE.groups || []).map(g => `<option value="${esc(g.id)}">${esc(g.name.slice(0, 30))}</option>`).join('');
   const search = ((document.getElementById('student-search') || {}).value || '').toLowerCase();
@@ -45,8 +46,8 @@ export async function renderStudents() {
   if (empty) empty.style.display = 'none';
   const role = state.currentRole || {};
   const canEdit = role.canEdit || role.isOwner;
-  // Toggle financial columns visibility
-  document.querySelectorAll('.fin-col').forEach(el => { el.style.display = role.isOwner ? '' : 'none'; });
+  // Toggle financial columns visibility (hidden for curator and non-owner)
+  document.querySelectorAll('.fin-col').forEach(el => { el.style.display = (role.isOwner && !isCurator) ? '' : 'none'; });
   tbody.innerHTML = students.map(s => {
     const st = STATUS_CONFIG[s.crm_status] || STATUS_CONFIG['lead'];
     const ltv = (s.price_per_hour || 0) * (s.lessons_per_month || 0);
@@ -61,9 +62,9 @@ export async function renderStudents() {
       <td style="max-width:140px;word-break:break-all"><span style="font-size:12px">${contact}</span></td>
       <td><span class="b ${s.format === 'individual' ? 'b-bl' : 'b-gray'}">${s.format === 'individual' ? 'Инд' : 'Группа'}</span><br><span style="font-size:11px;color:var(--muted)">${groupShort(s.group_id)}</span></td>
       <td>${subBadge}</td>
-      <td class="fin-col" style="text-align:right;${role.isOwner ? '' : 'display:none'}">${s.price_per_hour ? fmt(s.price_per_hour) + ' ₽' : '—'}</td>
+      ${!isCurator ? `<td class="fin-col" style="text-align:right;${role.isOwner ? '' : 'display:none'}">${s.price_per_hour ? fmt(s.price_per_hour) + ' ₽' : '—'}</td>
       <td class="fin-col" style="text-align:center;${role.isOwner ? '' : 'display:none'}">${s.lessons_per_month ?? '—'}</td>
-      <td class="fin-col" style="text-align:right;font-weight:600;color:var(--green);${role.isOwner ? '' : 'display:none'}">${ltv ? fmt(ltv) + ' ₽/мес' : '—'}</td>
+      <td class="fin-col" style="text-align:right;font-weight:600;color:var(--green);${role.isOwner ? '' : 'display:none'}">${ltv ? fmt(ltv) + ' ₽/мес' : '—'}</td>` : ''}
       <td>${s.trial_score || '—'} → <b>${s.target_score || '—'}</b></td>
       <td style="white-space:nowrap">${riskBadge(s)} ${resetBtn}</td>
       <td style="white-space:nowrap" onclick="event.stopPropagation()">${canEdit ? `<button class="btn btn-sm btn-icon" data-action="editStudent" data-id="${esc(s.id)}"><i class="ti ti-edit"></i></button>
@@ -363,6 +364,7 @@ export function openStudentDetail(id) {
   const riskColor = level === 'high' ? 'var(--red)' : level === 'med' ? 'var(--amber)' : 'var(--green)';
   const riskLabel = level === 'high' ? 'Высокий' : level === 'med' ? 'Средний' : 'OK';
   const role = state.currentRole || {};
+  const isCurator = (role.role_type === 'curator');
   const hwAll = (CACHE.hw_submissions || []).filter(h => h.student_id === id);
   const hwDone = hwAll.filter(h => h.status === 'done').length;
   const hwMissing = hwAll.filter(h => h.status === 'missing').length;
@@ -391,14 +393,14 @@ export function openStudentDetail(id) {
         <button class="btn" data-action="closeModal"><i class="ti ti-x"></i></button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(${role.isOwner ? 4 : 2},1fr);gap:8px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:repeat(${role.isOwner && !isCurator ? 4 : 2},1fr);gap:8px;margin-bottom:16px">
       <div class="met" style="padding:10px 12px">
         <div class="met-label">Риск</div>
         <div class="met-val" style="font-size:16px;color:${riskColor}">${riskLabel}</div>
         <div class="met-sub" style="font-size:10px">${reasons[0] || 'всё хорошо'}</div>
         ${level !== 'low' ? `<button class="btn btn-sm" style="margin-top:6px;font-size:10px;padding:2px 8px" data-action="resetStudentRisk" data-id="${esc(id)}"><i class="ti ti-refresh"></i> Сбросить риск</button>` : ''}
       </div>
-      ${role.isOwner ? `<div class="met" style="padding:10px 12px"><div class="met-label">MRR</div><div class="met-val" style="font-size:16px">${ltv ? fmt(ltv) + ' ₽' : '—'}</div><div class="met-sub">в месяц</div></div>
+      ${role.isOwner && !isCurator ? `<div class="met" style="padding:10px 12px"><div class="met-label">MRR</div><div class="met-val" style="font-size:16px">${ltv ? fmt(ltv) + ' ₽' : '—'}</div><div class="met-sub">в месяц</div></div>
       <div class="met" style="padding:10px 12px"><div class="met-label">LTV факт.</div><div class="met-val" style="font-size:16px">${actualLTV ? fmt(actualLTV) + ' ₽' : '—'}</div><div class="met-sub">итого оплат</div></div>` : ''}
       <div class="met" style="padding:10px 12px"><div class="met-label">Абонемент</div><div class="met-val" style="font-size:14px;padding-top:4px">${subBadge}</div></div>
     </div>
