@@ -69,7 +69,7 @@ function _renderDevSwitcher(activeRole) {
     const isActive = activeRole.id === r.id || (activeRole.isOwner && r.id === 'owner');
     const rt = ROLE_TYPES[r.role_type];
     const label = r.isOwner ? 'Владелец' : (rt?.label || r.name);
-    return `<button onclick="devSwitchRole('${r.id}')" style="
+    return `<button data-action="devSwitchRole" data-id="${r.id}" style="
       font-size:11px;padding:3px 10px;border-radius:10px;border:1px solid;cursor:pointer;
       font-family:inherit;transition:all .15s;
       background:${isActive ? 'rgba(59,130,246,.18)' : 'rgba(226,232,240,.04)'};

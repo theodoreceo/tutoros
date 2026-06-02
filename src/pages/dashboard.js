@@ -98,14 +98,14 @@ export async function renderDashboard() {
         const gr = CACHE.groups.find(g => g.id === l.group_id);
         const gc = groupColor(l.group_id);
         const memberCount = gr ? CACHE.students.filter(s => s.group_id === gr.id && s.crm_status === 'active').length : 0;
-        return `<div class="today-lesson" style="border-left-color:${gc}" onclick="navigate('lessons_cal')">
+        return `<div class="today-lesson" style="border-left-color:${gc}" data-action="navigate" data-pg="lessons_cal">
           <div style="font-size:10px;color:var(--accent-mid);font-weight:600;margin-bottom:2px">${fmtLessonDate(l.date)} · ${l.start_time || '?'}</div>
           <div class="today-lesson-name">${gr ? esc(gr.name) : 'Без группы'}</div>
           <div class="today-lesson-meta">${esc(l.topic) || 'Тема не указана'}</div>
           <div style="margin-top:4px;font-size:10px;color:var(--hint)"><i class="ti ti-users" style="font-size:10px"></i> ${memberCount} уч.</div>
         </div>`;
       }).join('')}
-      <div class="today-lesson" style="border-left-color:var(--border);border-style:dashed;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer" onclick="navigate('lessons_cal')">
+      <div class="today-lesson" style="border-left-color:var(--border);border-style:dashed;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer" data-action="navigate" data-pg="lessons_cal">
         <span style="font-size:11px;color:var(--hint)"><i class="ti ti-plus"></i> Добавить</span>
       </div></div>`;
     }
@@ -209,7 +209,7 @@ export async function renderDashboard() {
     funnelEl.innerHTML = steps.map((s, i) => {
       const conv = i === 1 ? `${c1}% из лидов` : i === 3 ? `${c2}% из пробных` : '';
       return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:${i < steps.length - 1 ? '1px solid var(--border)' : 'none'}">
-        <div style="width:130px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer" onclick="navigate('crm_students')">${s.label}</div>
+        <div style="width:130px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer" data-action="navigate" data-pg="crm_students">${s.label}</div>
         <div style="flex:1;background:var(--surface2);border-radius:3px;height:20px;overflow:hidden">
           <div style="height:20px;border-radius:3px;background:${s.color};width:${s.n / maxN * 100}%;display:flex;align-items:center;padding-left:6px;min-width:${s.n ? '24px' : '0'};transition:.3s">
             ${s.n ? `<span style="font-size:11px;font-weight:700;color:#fff;white-space:nowrap">${s.n}</span>` : ''}
