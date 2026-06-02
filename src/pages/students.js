@@ -5,7 +5,7 @@ import { modal, closeModal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { addHistoryEntry } from '../core/history.js';
 import { addEvent, studentEvents } from '../core/events.js';
-import { calcRiskScore, riskBadge, renderSubscriptionBadge, studentSubscriptionStatus, recalcRisk } from '../core/risk.js';
+import { calcRiskScore, riskBadge, recalcRisk } from '../core/risk.js';
 
 const genToken = () => Math.random().toString(36).slice(2, 8);
 
@@ -50,9 +50,7 @@ export async function renderStudents() {
   document.querySelectorAll('.fin-col').forEach(el => { el.style.display = (role.isOwner && !isCurator) ? '' : 'none'; });
   tbody.innerHTML = students.map(s => {
     const st = STATUS_CONFIG[s.crm_status] || STATUS_CONFIG['lead'];
-    const ltv = (s.price_per_hour || 0) * (s.lessons_per_month || 0);
     const contact = s.contact || s.phone || '—';
-    const subBadge = renderSubscriptionBadge(s);
     const { level } = calcRiskScore(s);
     const resetBtn = level !== 'low' ? `<button class="btn btn-sm" style="font-size:10px;padding:2px 6px" data-action="resetStudentRisk" data-id="${esc(s.id)}" onclick="event.stopPropagation()" title="Сбросить риск"><i class="ti ti-refresh"></i></button>` : '';
     return `<tr style="cursor:pointer" data-action="openStudentDetail" data-id="${esc(s.id)}">
@@ -60,12 +58,8 @@ export async function renderStudents() {
       <td><b>${esc(s.name)}</b><br><span style="font-size:11px;color:var(--muted)">${esc(s.source || '')}</span></td>
       <td>${s.grade}</td>
       <td style="max-width:140px;word-break:break-all"><span style="font-size:12px">${contact}</span></td>
-      <td><span class="b ${s.format === 'individual' ? 'b-bl' : 'b-gray'}">${s.format === 'individual' ? 'Инд' : 'Группа'}</span><br><span style="font-size:11px;color:var(--muted)">${groupShort(s.group_id)}</span></td>
-      <td>${subBadge}</td>
-      ${!isCurator ? `<td class="fin-col" style="text-align:right;${role.isOwner ? '' : 'display:none'}">${s.price_per_hour ? fmt(s.price_per_hour) + ' ₽' : '—'}</td>
-      <td class="fin-col" style="text-align:center;${role.isOwner ? '' : 'display:none'}">${s.lessons_per_month ?? '—'}</td>
-      <td class="fin-col" style="text-align:right;font-weight:600;color:var(--green);${role.isOwner ? '' : 'display:none'}">${ltv ? fmt(ltv) + ' ₽/мес' : '—'}</td>` : ''}
-      <td>${s.trial_score || '—'} → <b>${s.target_score || '—'}</b></td>
+      <td>${groupShort(s.group_id)}</td>
+      ${!isCurator ? `<td class="fin-col" style="text-align:right">${s.monthly_price ? fmt(s.monthly_price) + ' ₽' : '—'}</td>` : ''}
       <td style="white-space:nowrap">${riskBadge(s)} ${resetBtn}</td>
       <td style="white-space:nowrap" onclick="event.stopPropagation()">${canEdit ? `<button class="btn btn-sm btn-icon" data-action="editStudent" data-id="${esc(s.id)}"><i class="ti ti-edit"></i></button>
         <button class="btn btn-sm btn-icon" data-action="deleteStudent" data-id="${esc(s.id)}"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
@@ -107,6 +101,52 @@ function renderMarketingDash() {
   </div>`;
 }
 
+let _dragStudentId = null;
+
+function _onDragStart(e, studentId) {
+  _dragStudentId = studentId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.target.style.opacity = '0.5';
+}
+
+function _onDragEnd(e) {
+  e.target.style.opacity = '';
+  document.querySelectorAll('.pipeline-col').forEach(col => {
+    col.classList.remove('drag-over');
+  });
+}
+
+function _onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const col = e.currentTarget;
+  col.classList.add('drag-over');
+}
+
+function _onDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+async function _onDrop(e, newStatus) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (!_dragStudentId || !newStatus) return;
+  const student = (CACHE.students || []).find(s => s.id === _dragStudentId);
+  if (!student || student.crm_status === newStatus) return;
+  _dragStudentId = null;
+
+  try {
+    const patch = { crm_status: newStatus };
+    const history = [...(student.status_history || []), { status: newStatus, date: new Date().toISOString().slice(0, 10) }];
+    patch.status_history = history;
+    await dbUpdate('students', student.id, patch);
+    await renderCRMStudents();
+    toast(`${student.name} → ${newStatus}`);
+  } catch (err) {
+    toast('Ошибка: ' + err.message);
+  }
+}
+
 export async function renderPipeline() {
   await ensureLoaded(['students', 'groups', 'payments', 'student_notes', 'events']);
   const board = document.getElementById('pipeline-board');
@@ -115,6 +155,14 @@ export async function renderPipeline() {
   const search = ((document.getElementById('pipeline-search') || {}).value || '').toLowerCase();
   const now = Date.now();
   const cutoff30 = now - 30 * 86400000;
+
+  // Inject drag-over styles once
+  if (!document.getElementById('pipeline-dnd-style')) {
+    const style = document.createElement('style');
+    style.id = 'pipeline-dnd-style';
+    style.textContent = `.pipeline-col.drag-over { outline: 2px dashed var(--accent-mid); outline-offset: -2px; background: var(--accent-bg); }`;
+    document.head.appendChild(style);
+  }
 
   board.innerHTML = PIPELINE_STAGES.map(stage => {
     const exitStatuses = ['stopped', 'refused', 'left'];
@@ -138,7 +186,7 @@ export async function renderPipeline() {
       return age >= 3;
     }).length > 0 ? `<span style="background:#fffbeb;color:#92400e;border-radius:20px;font-size:10px;padding:1px 6px;font-weight:700">${cards.filter(s => Math.round((now - new Date(s.created_at)) / 86400000) >= 3).length}!</span>` : '';
 
-    return `<div class="pipeline-col">
+    return `<div class="pipeline-col" data-drop-status="${esc(stage.id)}">
       <div class="pipeline-col-head" style="border-color:${stage.color}20;background:${stage.bg}">
         <span style="color:${stage.color}">${stage.label}</span>
         <div style="display:flex;align-items:center;gap:4px">
@@ -156,7 +204,7 @@ export async function renderPipeline() {
             : s.reg_token
               ? `<span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer" data-action="copyRegToken" data-token="${esc(s.reg_token)}" onclick="event.stopPropagation()" title="Скопировать код ${esc(s.reg_token)}"><i class="ti ti-brand-telegram" style="color:var(--muted);font-size:11px"></i><code style="font-size:10px;color:var(--muted)">${esc(s.reg_token)}</code></span>`
               : '';
-          return `<div class="pipeline-card ${riskCls}" data-action="openStudentDetail" data-id="${esc(s.id)}">
+          return `<div class="pipeline-card ${riskCls}" draggable="true" data-action="openStudentDetail" data-id="${esc(s.id)}">
             <div class="pipeline-card-name">${esc(s.name)}</div>
             <div style="font-size:11px;color:var(--muted)">${esc(s.source || '')} · ${s.grade || ''}кл</div>
             <div class="pipeline-card-meta">
@@ -170,14 +218,27 @@ export async function renderPipeline() {
       </div>
     </div>`;
   }).join('');
+
+  // Wire drag events after render
+  document.querySelectorAll('.pipeline-card[draggable]').forEach(card => {
+    const sid = card.dataset.id;
+    card.addEventListener('dragstart', (e) => _onDragStart(e, sid));
+    card.addEventListener('dragend', _onDragEnd);
+  });
+
+  document.querySelectorAll('.pipeline-col').forEach(col => {
+    const status = col.dataset.dropStatus;
+    col.addEventListener('dragover', _onDragOver);
+    col.addEventListener('dragleave', _onDragLeave);
+    col.addEventListener('drop', (e) => _onDrop(e, status));
+  });
 }
 
 export function openStudentModal(id) {
   const s = id ? (CACHE.students || []).find(x => x.id === id) : null;
   const todayStr = today();
-  const v = s || { name: '', contact: '', grade: '11', group_id: '', format: 'group', crm_status: 'lead', price_per_hour: '', lessons_per_month: '', paid: false, trial_score: '', target_score: '', source: 'Авито', notes: '', first_contact_at: todayStr };
+  const v = s || { name: '', contact: '', grade: '11', group_id: '', crm_status: 'lead', monthly_price: '', source: 'Авито', notes: '', first_contact_at: todayStr };
   const gOpts = (CACHE.groups || []).map(gr => `<option value="${gr.id}" ${v.group_id === gr.id ? 'selected' : ''}>${gr.name}</option>`).join('');
-  const ltv = (v.price_per_hour && v.lessons_per_month) ? (+v.price_per_hour * +v.lessons_per_month) : 0;
   modal(`<div class="modal"><div class="modal-title">${s ? 'Редактировать' : 'Добавить ученика'}</div>
     <div class="form-row">
       <div class="fg"><label>Имя</label><input class="fi" id="sf-name" value="${esc(v.name || '')}"></div>
@@ -198,22 +259,9 @@ export function openStudentModal(id) {
       <div class="fg"><label>Класс</label><select class="fi" id="sf-grade">${[7, 8, 9, 10, 11].map(x => `<option ${v.grade == x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
     </div>
     <div class="form-row">
-      <div class="fg"><label>Формат</label><select class="fi" id="sf-format"><option value="group" ${v.format === 'group' ? 'selected' : ''}>Групповой</option><option value="individual" ${v.format === 'individual' ? 'selected' : ''}>Индивидуальный</option></select></div>
       <div class="fg"><label>Группа</label><select class="fi" id="sf-group"><option value="">—</option>${gOpts}</select></div>
       <div class="fg"><label>Источник</label><select class="fi" id="sf-source"><option ${v.source === 'Авито' ? 'selected' : ''}>Авито</option><option ${v.source === 'Сарафан' ? 'selected' : ''}>Сарафан</option><option ${v.source === 'Telegram' ? 'selected' : ''}>Telegram</option><option ${v.source === 'Профи.ру' ? 'selected' : ''}>Профи.ру</option><option ${v.source === 'Другое' ? 'selected' : ''}>Другое</option></select></div>
-    </div>
-    <div style="background:var(--surface2);border-radius:var(--r);padding:12px 14px;margin-bottom:10px">
-      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Финансы</div>
-      <div class="form-row" style="margin-bottom:0">
-        <div class="fg"><label>Цена за час ₽</label><input class="fi" type="number" id="sf-price-hour" value="${v.price_per_hour || ''}" oninput="calcLTV()" placeholder="2000"></div>
-        <div class="fg"><label>Занятий в месяц</label><input class="fi" type="number" id="sf-lessons-month" value="${v.lessons_per_month || ''}" oninput="calcLTV()" placeholder="8"></div>
-        <div class="fg"><label>LTV / месяц ₽</label><input class="fi" id="sf-ltv" value="${ltv ? fmt(ltv) : ''}" readonly style="background:var(--accent-light);font-weight:600;color:var(--green)"></div>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="fg"><label>Оплата</label><select class="fi" id="sf-paid"><option value="1" ${v.paid ? 'selected' : ''}>Оплачен</option><option value="0" ${!v.paid ? 'selected' : ''}>Не оплачен</option></select></div>
-      <div class="fg"><label>Пробный балл</label><input class="fi" type="number" id="sf-trial" value="${v.trial_score || ''}"></div>
-      <div class="fg"><label>Целевой балл</label><input class="fi" type="number" id="sf-target" value="${v.target_score || ''}"></div>
+      <div class="fg"><label>Абонемент в месяц ₽</label><input class="fi" type="number" id="sf-monthly-price" value="${v.monthly_price || ''}" placeholder="8000"></div>
     </div>
     <div class="fg"><label>Заметки</label><textarea class="fi" id="sf-notes">${esc(v.notes || '')}</textarea></div>
     <div class="modal-footer">
@@ -224,10 +272,7 @@ export function openStudentModal(id) {
 }
 
 export function calcLTV() {
-  const h = +(document.getElementById('sf-price-hour') || {}).value || 0;
-  const l = +(document.getElementById('sf-lessons-month') || {}).value || 0;
-  const el = document.getElementById('sf-ltv');
-  if (el) el.value = (h * l) ? fmt(h * l) : '';
+  // stub — removed price_per_hour / lessons_per_month fields
 }
 
 export function editStudent(id) { openStudentModal(id); }
@@ -291,13 +336,8 @@ async function _commitSaveStudent(id, newStatus, history, existing, statusDate) 
     contact: fv('sf-contact', existing?.contact || ''),
     grade: fv('sf-grade', existing?.grade || '11'),
     group_id: fv('sf-group', existing?.group_id || null) || null,
-    format: fv('sf-format', existing?.format || 'group'),
     crm_status: newStatus,
-    price_per_hour: +(fv('sf-price-hour', existing?.price_per_hour || '')) || null,
-    lessons_per_month: +(fv('sf-lessons-month', existing?.lessons_per_month || '')) || null,
-    paid: fv('sf-paid', existing?.paid ? '1' : '0') === '1',
-    trial_score: +(fv('sf-trial', existing?.trial_score || '')) || null,
-    target_score: +(fv('sf-target', existing?.target_score || '')) || null,
+    monthly_price: +(fv('sf-monthly-price', existing?.monthly_price || '')) || null,
     source: fv('sf-source', existing?.source || ''),
     notes: fv('sf-notes', existing?.notes || ''),
     first_contact_at: fv('sf-first-contact', existing?.first_contact_at || todayStr),
@@ -337,10 +377,6 @@ export function openStudentDetail(id) {
   if (!s) return;
   const { score, level, reasons } = calcRiskScore(s);
   const events = studentEvents(id);
-  const ltv = (s.price_per_hour || 0) * (s.lessons_per_month || 0);
-  const actualLTV = (CACHE.payments || []).filter(p => p.student_id === id).reduce((sum, p) => sum + p.amount, 0);
-  const sub = studentSubscriptionStatus(s);
-  const subBadge = sub ? (sub.daysLeft < 0 ? '<span class="b b-r">Просрочен</span>' : (sub.daysLeft <= 7 ? `<span class="b b-a">через ${sub.daysLeft}д</span>` : `<span class="b b-g">до ${fmtDate(sub.sub_end)}</span>`)) : '<span class="b b-gray">—</span>';
   const EVENT_CONFIG = {
     lead_created:    { dot: 'tl-dot-blue',  icon: 'ti-user-plus',      label: ev => `Лид создан · ${ev.payload?.source || ''}` },
     status_changed:  { dot: 'tl-dot-blue',  icon: 'ti-arrow-right',    label: ev => { const cfg = STATUS_CONFIG[ev.payload?.to]; return `Статус → <b>${cfg?.label || ev.payload?.to}</b>`; } },
@@ -393,16 +429,14 @@ export function openStudentDetail(id) {
         <button class="btn" data-action="closeModal"><i class="ti ti-x"></i></button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(${role.isOwner && !isCurator ? 4 : 2},1fr);gap:8px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:repeat(${role.isOwner && !isCurator ? 2 : 1},1fr);gap:8px;margin-bottom:16px">
       <div class="met" style="padding:10px 12px">
         <div class="met-label">Риск</div>
         <div class="met-val" style="font-size:16px;color:${riskColor}">${riskLabel}</div>
         <div class="met-sub" style="font-size:10px">${reasons[0] || 'всё хорошо'}</div>
         ${level !== 'low' ? `<button class="btn btn-sm" style="margin-top:6px;font-size:10px;padding:2px 8px" data-action="resetStudentRisk" data-id="${esc(id)}"><i class="ti ti-refresh"></i> Сбросить риск</button>` : ''}
       </div>
-      ${role.isOwner && !isCurator ? `<div class="met" style="padding:10px 12px"><div class="met-label">MRR</div><div class="met-val" style="font-size:16px">${ltv ? fmt(ltv) + ' ₽' : '—'}</div><div class="met-sub">в месяц</div></div>
-      <div class="met" style="padding:10px 12px"><div class="met-label">LTV факт.</div><div class="met-val" style="font-size:16px">${actualLTV ? fmt(actualLTV) + ' ₽' : '—'}</div><div class="met-sub">итого оплат</div></div>` : ''}
-      <div class="met" style="padding:10px 12px"><div class="met-label">Абонемент</div><div class="met-val" style="font-size:14px;padding-top:4px">${subBadge}</div></div>
+      ${role.isOwner && !isCurator ? `<div class="met" style="padding:10px 12px"><div class="met-label">Абонемент</div><div class="met-val" style="font-size:16px">${s.monthly_price ? fmt(s.monthly_price) + ' ₽/мес' : '—'}</div><div class="met-sub">в месяц</div></div>` : ''}
     </div>
     ${hwBlock}
     <div style="background:var(--surface2,var(--surface));border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">

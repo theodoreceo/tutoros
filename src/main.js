@@ -47,7 +47,7 @@ import {
 } from './pages/homework.js';
 import { renderCuratorDashPage } from './pages/curator-dash.js';
 import { renderManagerDashPage } from './pages/manager-dash.js';
-import { renderMarketerDashPage } from './pages/marketer-dash.js';
+import { renderMarketerDashPage, setMktPeriod } from './pages/marketer-dash.js';
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 
@@ -223,6 +223,7 @@ const ACTION_MAP = {
   // Analytics
   setAnTab: (el) => setAnTab(el.dataset.tab),
   setAnPeriod: (el) => setAnPeriod(parseInt(el.dataset.months)),
+  setMktPeriod: (el) => setMktPeriod(+el.dataset.days),
 
   // Access
   openRoleModal: () => openRoleModal(),
