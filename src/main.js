@@ -1,13 +1,14 @@
 import './styles/index.css';
 
 import { supabase } from './lib/supabase.js';
-import { initSupabase, clearDemoData, seedDemoData, isDemoMode, setDemoMode } from './core/store.js';
+import { initSupabase, clearDemoData, seedDemoData, isDemoMode, setDemoMode, CACHE } from './core/store.js';
 import { state } from './core/state.js';
 import {
   restoreSession, selectRole, devSwitchRole, applyRoleUI, logout, promptSwitchRole, confirmSwitch,
   showLoginForm, showRegisterForm, handleLogin, handleRegister,
 } from './core/auth.js';
 import { navigate, registerRenderer, setupNav } from './core/router.js';
+import { ROLE_TYPES } from './utils/helpers.js';
 import { initSidebar } from './components/sidebar.js';
 import { closeModal } from './components/modal.js';
 import { toast } from './components/toast.js';
@@ -133,6 +134,10 @@ const ACTION_MAP = {
   // Navigation
   navigate: (el) => navigate(el.dataset.pg || el.dataset.arg),
   logout: () => logout(),
+
+  // Owner: preview a role's dashboard
+  viewAsRole: (el) => _viewAsRole(el.dataset.id),
+  exitViewAs: () => _exitViewAs(),
   promptSwitchRole: () => promptSwitchRole(),
   confirmSwitch: (el) => confirmSwitch(el.dataset.id),
   selectRole: (el) => selectRole(el.dataset.id),
@@ -280,6 +285,33 @@ function setupDelegation() {
       handler(e.target, e);
     }
   });
+}
+
+// ─── VIEW-AS (owner previewing a role) ───────────────────────────────────────
+
+function _viewAsRole(roleId) {
+  if (!state.currentRole?.isOwner) return;
+  const role = (CACHE.roles || []).find(r => r.id === roleId);
+  if (!role) return;
+  const rt = ROLE_TYPES[role.role_type];
+  if (!rt?.homePage) { toast('У этой роли нет дашборда'); return; }
+
+  state.viewAsRole = role;
+
+  // Show banner
+  const banner = document.getElementById('view-as-banner');
+  const nameEl = document.getElementById('view-as-name');
+  if (banner) banner.style.display = 'flex';
+  if (nameEl) nameEl.textContent = `${role.name} (${rt.label})`;
+
+  navigate(rt.homePage);
+}
+
+function _exitViewAs() {
+  state.viewAsRole = null;
+  const banner = document.getElementById('view-as-banner');
+  if (banner) banner.style.display = 'none';
+  navigate('dashboard');
 }
 
 // Keep these as window globals for static HTML elements (index.html)

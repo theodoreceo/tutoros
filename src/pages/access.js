@@ -62,6 +62,7 @@ export async function renderAccess() {
               </div>
             </div>
             <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+              ${rt?.homePage ? `<button class="btn btn-sm" data-action="viewAsRole" data-id="${esc(r.id)}" title="Посмотреть от имени этой роли"><i class="ti ti-eye" style="margin-right:4px"></i>Просмотр</button>` : ''}
               ${!isDemoMode() && !linked
                 ? `<button class="btn btn-sm" data-action="openInviteModal" data-id="${esc(r.id)}" title="Пригласить"><i class="ti ti-mail"></i> Пригласить</button>`
                 : ''

@@ -1,6 +1,5 @@
 import { CACHE, ensureLoaded } from '../core/store.js';
 import { state } from '../core/state.js';
-import { db } from '../lib/db.js';
 import { calcRiskScore } from '../core/risk.js';
 import { esc } from '../utils/helpers.js';
 
@@ -218,17 +217,18 @@ function _renderHwBacklog(groups, hwSubmissions, hwAssignments) {
 
 
 export async function renderCuratorDashPage() {
-  await ensureLoaded(['groups', 'students', 'lessons', 'homework_assignments', 'homework_submissions', 'payments']);
+  await ensureLoaded(['groups', 'students', 'lessons', 'homework_assignments', 'homework_submissions', 'payments', 'assistant_groups']);
   const el = document.getElementById('curator-dash-content');
   if (!el) return;
 
-  const role = state.currentRole || {};
-  const assistantId = role.isOwner ? null : role.id;
+  // Use viewAsRole when owner is previewing a specific curator's view
+  const effectiveRole = state.viewAsRole || state.currentRole || {};
+  const assistantId = effectiveRole.isOwner ? null : effectiveRole.id;
 
   let groups = CACHE.groups || [];
-  if (!role.isOwner && assistantId) {
-    const myGroups = await db.assistantGroups.getGroupsByAssistant(assistantId);
-    const groupIds = new Set(myGroups.map(ag => ag.group_id));
+  if (assistantId) {
+    const myAG = (CACHE.assistant_groups || []).filter(ag => ag.assistant_id === assistantId);
+    const groupIds = new Set(myAG.map(ag => ag.group_id));
     groups = groups.filter(g => groupIds.has(g.id));
   }
 

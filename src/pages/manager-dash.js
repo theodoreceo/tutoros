@@ -1,4 +1,5 @@
 import { CACHE, ensureLoaded } from '../core/store.js';
+import { state } from '../core/state.js';
 import { fmt, fmtDate, today } from '../utils/helpers.js';
 
 export async function renderManagerDashPage() {
@@ -6,6 +7,9 @@ export async function renderManagerDashPage() {
 
   const el = document.getElementById('pg-manager_dash');
   if (!el) return;
+
+  // Show who we're previewing as (if owner is using view-as)
+  const viewingAs = state.viewAsRole;
 
   const students = CACHE.students || [];
   const groups = CACHE.groups || [];

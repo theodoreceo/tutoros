@@ -104,6 +104,12 @@
         <div id="dev-role-switcher" style="display:none;align-items:center;gap:5px"></div>
       </div>
     </div>
+    <!-- View-as banner (owner previewing a role) -->
+    <div id="view-as-banner" style="display:none;background:#7c3aed18;border-bottom:1px solid #7c3aed33;padding:8px 20px;display:none;align-items:center;gap:10px;font-size:12px">
+      <i class="ti ti-eye" style="color:#7c3aed;font-size:14px"></i>
+      <span style="color:#a78bfa">Просмотр от имени: <strong id="view-as-name"></strong></span>
+      <button class="btn btn-sm" data-action="exitViewAs" style="margin-left:auto;font-size:11px;border-color:#7c3aed44;color:#a78bfa"><i class="ti ti-x" style="font-size:11px"></i> Выйти из просмотра</button>
+    </div>
     <div class="content" id="content">
 
       <!-- ── DASHBOARD ──────────────────────────────────────────────────────── -->
