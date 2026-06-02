@@ -149,7 +149,7 @@ async function handleText(msg) {
   if (text === '/unlink') {
     if (!student && !curator) return send(chatId, 'ты не зарегистрирован :(');
     return send(chatId, `если ты не <b>${(student || curator).name}</b>?, отвяжи аккаунт`,
-      kbd([[{ text: '✅ Да, отвязать', callback_data: 'unlink:confirm' }, { text: '❌ Отмена', callback_data: 'unlink:cancel' }]]));
+      kbd([[{ text: '✅ да, отвязать', callback_data: 'unlink:confirm' }, { text: '❌ отмена', callback_data: 'unlink:cancel' }]]));
   }
 
   // /help
@@ -179,7 +179,7 @@ async function handleText(msg) {
         if (!files.length) return send(chatId, 'пришли хотя бы один файл с выполненным заданием!');
         return finalizeStudentFiles(chatId, student, subId, files);
       }
-      return send(chatId, 'прикрепи фото или .pdf-файл. когда пришлёшь всё — нажми кнопку «Отправить работу».');
+      return send(chatId, 'прикрепи фото или .pdf-файл. когда пришлёшь всё — нажми кнопку «отправить работу».');
     }
     return send(chatId, 'неизвестная команда.\nиспользуй /dz для заданий или /help.');
   }
@@ -194,7 +194,7 @@ async function handleText(msg) {
       const hwId = sess.step.slice('edit_hw_topic:'.length);
       await sbPatch('homework_assignments', `id=eq.${hwId}`, { topic: text });
       await setSession(tid, { step: 'curator' });
-      return send(chatId, `✅ тема обновлена: <b>${text}</b>`, kbd([[{ text: '← Назад к ДЗ', callback_data: `dz:${hwId}` }]]));
+      return send(chatId, `✅ тема обновлена: <b>${text}</b>`, kbd([[{ text: '← назад к дз', callback_data: `dz:${hwId}` }]]));
     }
     if (typeof sess.step === 'string' && sess.step.startsWith('edit_hw_date:')) {
       const hwId = sess.step.slice('edit_hw_date:'.length);
@@ -205,7 +205,7 @@ async function handleText(msg) {
       const due = raw ? raw.split('.').reverse().join('-') : '';
       await sbPatch('homework_assignments', `id=eq.${hwId}`, { due_date: due });
       await setSession(tid, { step: 'curator' });
-      return send(chatId, `✅ дедлайн обновлён: <b>${due || 'не указан'}</b>`, kbd([[{ text: '← Назад к ДЗ', callback_data: `dz:${hwId}` }]]));
+      return send(chatId, `✅ дедлайн обновлён: <b>${due || 'не указан'}</b>`, kbd([[{ text: '← назад к дз', callback_data: `dz:${hwId}` }]]));
     }
     return handleCuratorStep(chatId, tid, curator, sess, text);
   }
@@ -249,8 +249,8 @@ async function handleMedia(msg) {
       const files = [...(sess.data?.files || []), { type: fileType, file_id: fileId }];
       await setSession(tid, { step: `await_files:${subId}`, data: { ...sess.data, files } });
       return send(chatId, `📎 файл получен (всего: ${files.length})`,
-        kbd([[{ text: '✅ Отправить работу', callback_data: `submit_files:${subId}` }],
-             [{ text: '❌ Отменить',         callback_data: 'cancel_files' }]]));
+        kbd([[{ text: '✅ отправить работу', callback_data: `submit_files:${subId}` }],
+             [{ text: '❌ отменить',         callback_data: 'cancel_files' }]]));
     }
     return send(chatId, 'сначала открой задание через /dz.');
   }
@@ -308,7 +308,7 @@ async function handleStudentListHw(chatId, student) {
   });
 
   if (!lines.length) return send(chatId, 'нет активных заданий!');
-  return send(chatId, `Задания (${lines.length}):\n\n${lines.join('\n')}\n\nВыбери для сдачи:`, kbd(buttons));
+  return send(chatId, `задания (${lines.length}):\n\n${lines.join('\n')}\n\nвыбери для сдачи:`, kbd(buttons));
 }
 
 // ── Student: my results (/mydz) ───────────────────────────────────────────────
@@ -347,11 +347,11 @@ async function showStudentStats(chatId, student) {
     ? (avgPct >= 80 ? '🟢' : avgPct >= 50 ? '🟡' : '🔴') + ` ${avgPct}%`
     : '—';
 
-  const header = `📊 <b>Мои результаты</b> · ${student.name}\n\n` +
-    `⏳ Ждут сдачи: <b>${assigned}</b>\n` +
-    `📤 На проверке: <b>${submitted}</b>\n` +
-    `✅ Проверено: <b>${checked.length}</b>\n` +
-    `⭐ Средний балл: <b>${scoreBar}</b>`;
+  const header = `📊 <b>мои результаты</b> · ${student.name}\n\n` +
+    `⏳ ждут сдачи: <b>${assigned}</b>\n` +
+    `📤 на проверке: <b>${submitted}</b>\n` +
+    `✅ проверено: <b>${checked.length}</b>\n` +
+    `⭐ средний балл: <b>${scoreBar}</b>`;
 
   if (!done.length) return send(chatId, header + '\n\nпока нет сданных работ:(');
 
@@ -366,7 +366,7 @@ async function showStudentStats(chatId, student) {
     return [{ text: `${icon}${scoreStr} ${label}`, callback_data: `my_sub:${sub.id}` }];
   });
 
-  return send(chatId, header + `\n\nПоследние работы (${done.length}):`, kbd(buttons));
+  return send(chatId, header + `\n\nпоследние работы (${done.length}):`, kbd(buttons));
 }
 
 async function showStudentSubDetail(chatId, student, subId) {
@@ -377,21 +377,21 @@ async function showStudentSubDetail(chatId, student, subId) {
     `id=eq.${sub.assignment_id}&select=id,topic,description,due_date,hw_type,task_config`);
 
   const pct = toPercent(sub.score, sub.max_score, assignment?.task_config);
-  const statusLine = sub.status === 'submitted' ? '📤 На проверке'
-    : sub.status === 'checked' && pct !== null ? `✅ Проверено: <b>${pct}%</b>`
-    : sub.status === 'checked' ? '✅ Проверено'
+  const statusLine = sub.status === 'submitted' ? '📤 на проверке'
+    : sub.status === 'checked' && pct !== null ? `✅ проверено: <b>${pct}%</b>`
+    : sub.status === 'checked' ? '✅ проверено'
     : sub.status;
 
   const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : null;
 
   let text = `<b>${assignment?.topic || '—'}</b>\n\n${statusLine}`;
-  if (sub.comment)       text += `\n\n💬 Комментарий:\n${sub.comment}`;
-  if (assignment?.due_date) text += `\n\n📅 Дедлайн: ${assignment.due_date}`;
-  if (sub.submitted_at)  text += `\n📤 Сдано: ${fmtDate(sub.submitted_at)}`;
-  if (sub.checked_at)    text += `\n🔍 Проверено: ${fmtDate(sub.checked_at)}`;
-  if (sub.student_answers?.length) text += `\n\n📝 Твои ответы: <code>${sub.student_answers.join(', ')}</code>`;
+  if (sub.comment)       text += `\n\n💬 комментарий:\n${sub.comment}`;
+  if (assignment?.due_date) text += `\n\n📅 дедлайн: ${assignment.due_date}`;
+  if (sub.submitted_at)  text += `\n📤 сдано: ${fmtDate(sub.submitted_at)}`;
+  if (sub.checked_at)    text += `\n🔍 проверено: ${fmtDate(sub.checked_at)}`;
+  if (sub.student_answers?.length) text += `\n\n📝 твои ответы: <code>${sub.student_answers.join(', ')}</code>`;
 
-  return send(chatId, text, kbd([[{ text: '← Назад к результатам', callback_data: 'my_stats_back' }]]));
+  return send(chatId, text, kbd([[{ text: '← назад к результатам', callback_data: 'my_stats_back' }]]));
 }
 
 // ── Student: answer submission (brief) ───────────────────────────────────────
@@ -435,7 +435,7 @@ async function showBriefReviewPage(chatId, tid, subId, correct, given) {
     data: { subId, correct, given }
   });
 
-  return send(chatId, `проверь свои ответы:\n\n${reviewList}\n\nОтправить работу или исправить?`, kbd([
+  return send(chatId, `проверь свои ответы:\n\n${reviewList}\n\nотправить работу или исправить?`, kbd([
     [{ text: '✏️ исправить ответы', callback_data: `brief_back_to_edit:${subId}` }],
     [{ text: '✅ отправить работу', callback_data: `brief_final_submit:${subId}` }]
   ]));
@@ -475,7 +475,7 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
     const given   = text.split(/[,;]/).map(s => s.trim());
     if (given.length !== correct.length) {
       return send(chatId,
-        `Ожидается <b>${correct.length}</b> ответов через запятую.\nПример: <code>3, 15, да</code>`);
+        `ожидается <b>${correct.length}</b> ответов через запятую.\nпример: <code>3, 15, да</code>`);
     }
     const results    = correct.map((c, i) => given[i]?.toLowerCase() === c.toLowerCase());
     const numCorrect = results.filter(Boolean).length;
@@ -491,7 +491,7 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
     });
     await setSession(student.telegram_id, { step: 'student' });
     return send(chatId,
-      `Результат: <b>${numCorrect}/${correct.length}</b> (${score}%)\n\n${feedback}`);
+      `результат: <b>${numCorrect}/${correct.length}</b> (${score}%)\n\n${feedback}`);
   }
 
   // Single correct_answer (legacy)
@@ -504,8 +504,8 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
     source: 'telegram',
   });
   if (student.telegram_id) await setSession(student.telegram_id, { step: 'student' });
-  return send(chatId, isCorrect ? `✅ Верно! Отлично, <b>${student.name}</b>!`
-    : `❌ Неверно.\nПравильный ответ: <b>${correct || 'не указан'}</b>`);
+  return send(chatId, isCorrect ? `✅ верно! отлично, <b>${student.name}</b>!`
+    : `❌ неверно.\nправильный ответ: <b>${correct || 'не указан'}</b>`);
 }
 
 // ── Student: finalize file submission ─────────────────────────────────────────
@@ -559,7 +559,7 @@ function buildGroupKbd(allGroups, selectedIds) {
     text:          (selectedIds.includes(g.id) ? '✅ ' : '☐ ') + g.name,
     callback_data: `grp_toggle:${g.id}`,
   }]);
-  rows.push([{ text: '✅ Подтвердить выбор', callback_data: 'grp_confirm' }]);
+  rows.push([{ text: '✅ подтвердить выбор', callback_data: 'grp_confirm' }]);
   return rows;
 }
 
@@ -580,10 +580,10 @@ async function handleCuratorStep(chatId, tid, curator, sess, text) {
       await setSession(tid, { step: 'await_hwtype', data: { ...sess.data, due_date: dueFmt } });
       return send(chatId, 'выбери тип задания:',
         kbd([
-          [{ text: '🔢 Краткий ответ',         callback_data: 'hwtype:brief'         }],
-          [{ text: '📝 Подробный — несложное',  callback_data: 'hwtype:detailed_easy' }],
-          [{ text: '📝 Подробный — сложное',    callback_data: 'hwtype:detailed_hard' }],
-          [{ text: '📋 Пробник',                callback_data: 'hwtype:trial'         }],
+          [{ text: '🔢 краткий ответ',         callback_data: 'hwtype:brief'         }],
+          [{ text: '📝 подробный — несложное',  callback_data: 'hwtype:detailed_easy' }],
+          [{ text: '📝 подробный — сложное',    callback_data: 'hwtype:detailed_hard' }],
+          [{ text: '📋 пробник',                callback_data: 'hwtype:trial'         }],
         ]));
     }
 
@@ -601,10 +601,10 @@ async function handleCuratorStep(chatId, tid, curator, sess, text) {
       if (!n || n < 1 || n > 50) return send(chatId, 'введи число от 1 до 50:');
       if (sess.data.hw_type === 'brief') {
         await setSession(tid, { step: 'await_answers', data: { ...sess.data, total: n, collected: [] } });
-        return send(chatId, `Введи ответ на <b>задание 1</b> из ${n}:`);
+        return send(chatId, `введи ответ на <b>задание 1</b> из ${n}:`);
       } else {
         await setSession(tid, { step: 'await_scores', data: { ...sess.data, total: n, scores: [] } });
-        return send(chatId, `Максимальный балл за <b>задание 1</b> из ${n}:`);
+        return send(chatId, `максимальный балл за <b>задание 1</b> из ${n}:`);
       }
     }
 
@@ -613,7 +613,7 @@ async function handleCuratorStep(chatId, tid, curator, sess, text) {
       const total     = sess.data.total;
       if (collected.length < total) {
         await setSession(tid, { step: 'await_answers', data: { ...sess.data, collected } });
-        return send(chatId, `Введи ответ на <b>задание ${collected.length + 1}</b> из ${total}:`);
+        return send(chatId, `введи ответ на <b>задание ${collected.length + 1}</b> из ${total}:`);
       }
       return finishHwCreation(chatId, tid, curator, { ...sess.data, answers: collected });
     }
@@ -625,7 +625,7 @@ async function handleCuratorStep(chatId, tid, curator, sess, text) {
       const total  = sess.data.total;
       if (scores.length < total) {
         await setSession(tid, { step: 'await_scores', data: { ...sess.data, scores } });
-        return send(chatId, `Максимальный балл за <b>задание ${scores.length + 1}</b> из ${total}:`);
+        return send(chatId, `максимальный балл за <b>задание ${scores.length + 1}</b> из ${total}:`);
       }
       return finishHwCreation(chatId, tid, curator, { ...sess.data, task_config: scores });
     }
@@ -669,16 +669,16 @@ async function finishHwCreation(chatId, tid, curator, data) {
       });
     } catch (err) {
       await setSession(tid, { step: 'curator' });
-      return send(chatId, `❌ Ошибка при создании задания:\n<code>${err.message}</code>`);
+      return send(chatId, `❌ ошибка при создании задания:\n<code>${err.message}</code>`);
     }
 
     const students = await sbSelect('students',
       `group_id=eq.${groupId}&crm_status=in.(active,trial)`);
     totalStudents += students.length;
 
-    const typeLabel = hw_type === 'brief' ? 'Краткий ответ'
-      : hw_type === 'trial' ? 'Пробник'
-      : is_advanced ? 'Подробный (сложный)' : 'Подробный';
+    const typeLabel = hw_type === 'brief' ? 'краткий ответ'
+      : hw_type === 'trial' ? 'пробник'
+      : is_advanced ? 'подробный (сложный)' : 'подробный';
     const due = data.due_date ? `\nДедлайн: <b>${data.due_date}</b>` : '';
     const notifyText = `📚 Новое ДЗ: <b>${data.topic}</b>\nТип: ${typeLabel}${due}\n\n/dz — открыть задания`;
 
@@ -697,9 +697,9 @@ async function finishHwCreation(chatId, tid, curator, data) {
 
   await setSession(tid, { step: 'curator' });
 
-  const typeLabel = hw_type === 'brief' ? 'Краткий ответ'
-    : hw_type === 'trial' ? 'Пробник'
-    : is_advanced ? 'Подробный (сложный)' : 'Подробный (несложный)';
+  const typeLabel = hw_type === 'brief' ? 'краткий ответ'
+    : hw_type === 'trial' ? 'пробник'
+    : is_advanced ? 'подробный (сложный)' : 'подробный (несложный)';
 
   const extra = hw_type === 'brief' && data.answers
     ? `\nОтветы: <code>${data.answers.join(', ')}</code>`
@@ -711,10 +711,10 @@ async function finishHwCreation(chatId, tid, curator, data) {
   const warnLine    = subErrors ? `\n⚠️ Ошибок при создании записей: ${subErrors}` : '';
 
   return send(chatId,
-    `✅ ДЗ создано!\n${groupsLine}\nТема: <b>${data.topic}</b>\n` +
-    `Тип: <b>${typeLabel}</b>\nДедлайн: <b>${data.due_date || 'не указан'}</b>\n` +
-    `Учеников: <b>${totalStudents}</b>${extra}${warnLine}\n\n` +
-    `В TutorOS обнови страницу (F5) чтобы увидеть ДЗ.`);
+    `✅ дз создано!\n${groupsLine}\nтема: <b>${data.topic}</b>\n` +
+    `тип: <b>${typeLabel}</b>\nдедлайн: <b>${data.due_date || 'не указан'}</b>\n` +
+    `учеников: <b>${totalStudents}</b>${extra}${warnLine}\n\n` +
+    `в TutorOS обнови страницу (F5) чтобы увидеть ДЗ.`);
 }
 
 // ── Curator: list my DZ ───────────────────────────────────────────────────────
@@ -741,11 +741,11 @@ async function showMyDz(chatId, tid, curator, offset) {
   const buttons = assignments.map(a => [{ text: (a.topic || '—').slice(0, 40), callback_data: `dz:${a.id}` }]);
 
   const nav = [];
-  if (offset > 0) nav.push({ text: '← Назад', callback_data: `dz_pg:${offset - 10}` });
-  if (assignments.length === 10) nav.push({ text: 'Ещё →', callback_data: `dz_pg:${offset + 10}` });
+  if (offset > 0) nav.push({ text: '← назад', callback_data: `dz_pg:${offset - 10}` });
+  if (assignments.length === 10) nav.push({ text: 'ещё →', callback_data: `dz_pg:${offset + 10}` });
   if (nav.length) buttons.push(nav);
 
-  return send(chatId, `Домашние задания:\n\n${lines.join('\n')}\n\nВыбери для управления:`, kbd(buttons));
+  return send(chatId, `домашние задания:\n\n${lines.join('\n')}\n\nвыбери для управления:`, kbd(buttons));
 }
 
 async function showDzDetail(chatId, hwId) {
@@ -756,21 +756,21 @@ async function showDzDetail(chatId, hwId) {
   const groupName = groups[0]?.name || '—';
   const subsCount = await sbSelect('homework_submissions', `assignment_id=eq.${hwId}&select=status`);
   const submitted = subsCount.filter(s => ['submitted', 'checked'].includes(s.status)).length;
-  const typeLabel = a.hw_type === 'brief' ? '🔢 Краткий' : a.hw_type === 'trial' ? '📋 Пробник' : '📝 Подробный';
+  const typeLabel = a.hw_type === 'brief' ? '🔢 краткий' : a.hw_type === 'trial' ? '📋 пробник' : '📝 подробный';
   const advLabel  = a.is_advanced ? ' (сложный)' : '';
 
   const text =
     `<b>${a.topic || '—'}</b>\n` +
-    `Группа: ${groupName}\n` +
-    `Тип: ${typeLabel}${advLabel}\n` +
-    `Дедлайн: ${a.due_date || 'не указан'}\n` +
-    `Сдано: ${submitted}/${subsCount.length}`;
+    `группа: ${groupName}\n` +
+    `тип: ${typeLabel}${advLabel}\n` +
+    `дедлайн: ${a.due_date || 'не указан'}\n` +
+    `сдано: ${submitted}/${subsCount.length}`;
 
   return send(chatId, text, kbd([
-    [{ text: '✏️ Изменить тему',    callback_data: `dz_et:${hwId}` },
-     { text: '📅 Изменить дедлайн', callback_data: `dz_ed:${hwId}` }],
-    [{ text: '🗑️ Удалить ДЗ',      callback_data: `dz_del:${hwId}` }],
-    [{ text: '← К списку',          callback_data: 'dz_pg:0' }],
+    [{ text: '✏️ изменить тему',    callback_data: `dz_et:${hwId}` },
+     { text: '📅 изменить дедлайн', callback_data: `dz_ed:${hwId}` }],
+    [{ text: '🗑️ удалить дз',      callback_data: `dz_del:${hwId}` }],
+    [{ text: '← к списку',          callback_data: 'dz_pg:0' }],
   ]));
 }
 
@@ -809,9 +809,9 @@ async function handleCallback(cq) {
   if (data.startsWith('dz_del:') && curator) {
     const hwId = data.slice(7);
     const a    = await sbOne('homework_assignments', `id=eq.${hwId}&select=topic`);
-    return send(chatId, `Удалить ДЗ «<b>${a?.topic || hwId}</b>» и все записи учеников?`,
-      kbd([[{ text: '✅ Да, удалить', callback_data: `dz_delok:${hwId}` },
-             { text: '❌ Отмена',     callback_data: `dz:${hwId}` }]]));
+    return send(chatId, `удалить дз «<b>${a?.topic || hwId}</b>» и все записи учеников?`,
+      kbd([[{ text: '✅ да, удалить', callback_data: `dz_delok:${hwId}` },
+             { text: '❌ отмена',     callback_data: `dz:${hwId}` }]]));
   }
   if (data.startsWith('dz_delok:') && curator) {
     const hwId = data.slice(9);
@@ -848,7 +848,7 @@ async function handleCallback(cq) {
 
     const selectedNames = allGroups.filter(g => newSelected.includes(g.id)).map(g => g.name);
     const statusText    = newSelected.length
-      ? `Выбрано: ${selectedNames.join(', ')}\n\nДобавь ещё или подтверди:`
+      ? `выбрано: ${selectedNames.join(', ')}\n\nдобавь ещё или подтверди:`
       : 'выбери группы (можно несколько):';
 
     await tg('editMessageText', {
@@ -868,7 +868,7 @@ async function handleCallback(cq) {
     if (!selected.length) return send(chatId, 'выбери хотя бы одну группу.');
     const groupNames = allGroups.filter(g => selected.includes(g.id)).map(g => g.name).join(', ');
     await setSession(tid, { step: 'await_topic', data: { ...sess.data, group_ids: selected, group_names: groupNames } });
-    return send(chatId, `Группы: <b>${groupNames}</b>\n\nВведи тему задания:`);
+    return send(chatId, `группы: <b>${groupNames}</b>\n\nвведи тему задания:`);
   }
 
   // Curator: HW type selection
@@ -908,8 +908,8 @@ async function handleCallback(cq) {
     await setSession(tid, { step: `await_files:${subId}`, data: { files: [] } });
     return send(chatId,
       `<b>${assignment.topic}</b>${desc}\n\nОтправь выполненное задание фото или PDF-файлом.\nМожно несколько файлов — нажми «Отправить работу», когда пришлёшь всё.`,
-      kbd([[{ text: '✅ Отправить работу', callback_data: `submit_files:${subId}` }],
-           [{ text: '❌ Отменить',         callback_data: 'cancel_files' }]]));
+      kbd([[{ text: '✅ отправить работу', callback_data: `submit_files:${subId}` }],
+           [{ text: '❌ отменить',         callback_data: 'cancel_files' }]]));
   }
 
   // Student submits collected files
