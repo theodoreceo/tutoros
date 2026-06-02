@@ -282,10 +282,13 @@ function setupDelegation() {
   });
 }
 
-// Keep these as window globals for static HTML elements (index.html header/sidebar)
+// Keep these as window globals for static HTML elements (index.html)
 window.toggleDemoMode = ACTION_MAP.toggleDemoMode;
 window.toggleSidebar = ACTION_MAP.toggleSidebar;
 window.closeSidebar = ACTION_MAP.closeSidebar;
+// oninput/onchange on static search inputs in index.html
+window.renderStudents = renderStudents;
+window.renderCRMStudents = renderCRMStudents;
 
 // ─── START ────────────────────────────────────────────────────────────────────
 

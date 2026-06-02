@@ -109,8 +109,8 @@
       <!-- ── DASHBOARD ──────────────────────────────────────────────────────── -->
       <div class="pg on" id="pg-dashboard">
         <div style="display:flex;gap:6px;margin-bottom:16px">
-          <button class="btn dash-tab on" onclick="setDashTab('students')"><i class="ti ti-users" style="margin-right:4px"></i>Ученики</button>
-          <button class="btn dash-tab" onclick="setDashTab('funnel')"><i class="ti ti-filter" style="margin-right:4px"></i>Воронка</button>
+          <button class="btn dash-tab on" data-action="setDashTab" data-tab="students"><i class="ti ti-users" style="margin-right:4px"></i>Ученики</button>
+          <button class="btn dash-tab" data-action="setDashTab" data-tab="funnel"><i class="ti ti-filter" style="margin-right:4px"></i>Воронка</button>
         </div>
 
         <!-- ── TAB: Ученики ── -->
@@ -141,7 +141,7 @@
             <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">
               <i class="ti ti-history" style="margin-right:4px"></i>Последние изменения
             </div>
-            <button class="btn btn-sm" onclick="navigate('history')">Все <i class="ti ti-arrow-right" style="font-size:11px"></i></button>
+            <button class="btn btn-sm" data-action="navigate" data-pg="history">Все <i class="ti ti-arrow-right" style="font-size:11px"></i></button>
           </div>
           <div id="dash-history" class="card" style="padding:0"></div>
         </div>
@@ -159,7 +159,7 @@
       <div class="pg" id="pg-students">
         <div class="ph">
           <div class="ph-title">CRM</div>
-          <button class="btn btn-p btn-sm" onclick="openStudentModal()"><i class="ti ti-plus"></i> Добавить</button>
+          <button class="btn btn-p btn-sm" data-action="openStudentModal"><i class="ti ti-plus"></i> Добавить</button>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
           <input class="fi" id="student-search" placeholder="Поиск по имени или контакту..." style="max-width:220px" oninput="renderStudents()">
@@ -196,7 +196,7 @@
       <div class="pg" id="pg-crm_students">
         <div class="ph">
           <div class="ph-title">Воронка</div>
-          <button class="btn btn-p btn-sm" onclick="openStudentModal()"><i class="ti ti-plus"></i> Добавить</button>
+          <button class="btn btn-p btn-sm" data-action="openStudentModal"><i class="ti ti-plus"></i> Добавить</button>
         </div>
         <div id="marketing-dash" style="margin-bottom:16px"></div>
         <div style="margin-bottom:12px">
@@ -211,7 +211,7 @@
         <div id="groups-list-view">
           <div class="ph">
             <div class="ph-title">Группы</div>
-            <button class="btn btn-p btn-sm" onclick="openGroupModal()"><i class="ti ti-plus"></i> Создать группу</button>
+            <button class="btn btn-p btn-sm" data-action="openGroupModal"><i class="ti ti-plus"></i> Создать группу</button>
           </div>
           <div id="curator-dash" style="margin-bottom:16px"></div>
           <div id="groups-list"></div>
@@ -220,7 +220,7 @@
         <div id="group-detail-view" style="display:none">
           <div class="ph">
             <div>
-              <button class="btn btn-sm" onclick="closeGroupDetail()" style="margin-bottom:6px"><i class="ti ti-arrow-left"></i> Назад</button>
+              <button class="btn btn-sm" data-action="closeGroupDetail" style="margin-bottom:6px"><i class="ti ti-arrow-left"></i> Назад</button>
               <div class="ph-title" id="gd-title">Группа</div>
             </div>
             <button class="btn btn-sm btn-icon" id="gd-edit-btn"><i class="ti ti-edit"></i></button>
@@ -237,7 +237,7 @@
       <div class="pg" id="pg-income">
         <div class="ph">
           <div class="ph-title">Доходы</div>
-          <button class="btn btn-p btn-sm" onclick="openPaymentModal()"><i class="ti ti-plus"></i> Добавить платёж</button>
+          <button class="btn btn-p btn-sm" data-action="openPaymentModal"><i class="ti ti-plus"></i> Добавить платёж</button>
         </div>
         <div id="income-metrics" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px"></div>
         <div class="card" style="padding:0;overflow-x:auto">
@@ -255,7 +255,7 @@
       <div class="pg" id="pg-expenses">
         <div class="ph">
           <div class="ph-title">Расходы</div>
-          <button class="btn btn-p btn-sm" onclick="openExpenseModal()"><i class="ti ti-plus"></i> Добавить расход</button>
+          <button class="btn btn-p btn-sm" data-action="openExpenseModal"><i class="ti ti-plus"></i> Добавить расход</button>
         </div>
         <div id="expense-metrics" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px"></div>
         <div class="card" style="padding:0;overflow-x:auto">
@@ -275,15 +275,15 @@
           <div class="ph-title">Занятия</div>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <div class="view-toggle" id="cal-view-toggle">
-              <button class="on" data-view="week" onclick="setCalView('week')"><i class="ti ti-layout-columns" style="font-size:13px"></i> Неделя</button>
-              <button data-view="month" onclick="setCalView('month')"><i class="ti ti-calendar-month" style="font-size:13px"></i> Месяц</button>
+              <button class="on" data-view="week" data-action="setCalView" data-view="week"><i class="ti ti-layout-columns" style="font-size:13px"></i> Неделя</button>
+              <button data-view="month" data-action="setCalView" data-view="month"><i class="ti ti-calendar-month" style="font-size:13px"></i> Месяц</button>
             </div>
-            <button class="btn btn-sm" onclick="calNav(-1)"><i class="ti ti-chevron-left"></i></button>
+            <button class="btn btn-sm" data-action="calNav" data-dir="-1"><i class="ti ti-chevron-left"></i></button>
             <span id="cal-label" style="font-size:13px;font-weight:600;min-width:160px;text-align:center;white-space:nowrap">—</span>
-            <button class="btn btn-sm" onclick="calNav(1)"><i class="ti ti-chevron-right"></i></button>
-            <button class="btn btn-sm" onclick="calToday()">Сегодня</button>
-            <button class="btn btn-p btn-sm" onclick="openLessonFormModal()"><i class="ti ti-plus"></i> Урок</button>
-            <button class="btn btn-sm" onclick="calSubscribe()" title="Синхронизация с Apple Calendar / Скачать .ics"><i class="ti ti-brand-apple"></i></button>
+            <button class="btn btn-sm" data-action="calNav" data-dir="1"><i class="ti ti-chevron-right"></i></button>
+            <button class="btn btn-sm" data-action="calToday">Сегодня</button>
+            <button class="btn btn-p btn-sm" data-action="openLessonFormModal"><i class="ti ti-plus"></i> Урок</button>
+            <button class="btn btn-sm" data-action="calSubscribe" title="Синхронизация с Apple Calendar / Скачать .ics"><i class="ti ti-brand-apple"></i></button>
           </div>
         </div>
         <div id="cal-container"></div>
@@ -309,9 +309,9 @@
           <div class="ph-title">Домашние задания</div>
         </div>
         <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
-          <button class="btn btn-sm hw-tab on" data-tab="queue"   onclick="setHwTab('queue')"><i class="ti ti-list-check"></i> Очередь на проверку</button>
-          <button class="btn btn-sm hw-tab"    data-tab="overdue" onclick="setHwTab('overdue')"><i class="ti ti-clock-exclamation"></i> Несданные</button>
-          <button class="btn btn-sm hw-tab"    data-tab="all"     onclick="setHwTab('all')"><i class="ti ti-table"></i> Все ДЗ</button>
+          <button class="btn btn-sm hw-tab on" data-tab="queue"   data-action="setHwTab" data-tab="queue"><i class="ti ti-list-check"></i> Очередь на проверку</button>
+          <button class="btn btn-sm hw-tab"    data-tab="overdue" data-action="setHwTab" data-tab="overdue"><i class="ti ti-clock-exclamation"></i> Несданные</button>
+          <button class="btn btn-sm hw-tab"    data-tab="all"     data-action="setHwTab" data-tab="all"><i class="ti ti-table"></i> Все ДЗ</button>
         </div>
         <div id="hw-tab-queue"></div>
         <div id="hw-tab-overdue" style="display:none"></div>
@@ -331,18 +331,18 @@
         <div class="ph">
           <div class="ph-title">Аналитика</div>
           <div class="an-period-bar">
-            <button class="on" onclick="setAnPeriod(1)">1м</button>
-            <button onclick="setAnPeriod(3)">3м</button>
-            <button onclick="setAnPeriod(6)">6м</button>
-            <button onclick="setAnPeriod(12)">12м</button>
-            <button onclick="setAnPeriod(0)">Всё время</button>
+            <button class="on" data-action="setAnPeriod" data-months="1">1м</button>
+            <button data-action="setAnPeriod" data-months="3">3м</button>
+            <button data-action="setAnPeriod" data-months="6">6м</button>
+            <button data-action="setAnPeriod" data-months="12">12м</button>
+            <button data-action="setAnPeriod" data-months="0">Всё время</button>
           </div>
         </div>
         <!-- Tab toggle -->
         <div class="view-toggle" id="an-tab-toggle" style="margin-bottom:14px">
-          <button class="on" onclick="setAnTab('overview')">Обзор</button>
-          <button onclick="setAnTab('channels')">Каналы</button>
-          <button onclick="setAnTab('detail')">Детально</button>
+          <button class="on" data-action="setAnTab" data-tab="overview">Обзор</button>
+          <button data-action="setAnTab" data-tab="channels">Каналы</button>
+          <button data-action="setAnTab" data-tab="detail">Детально</button>
         </div>
         <!-- Overview tab -->
         <div id="an-tab-overview">
@@ -402,7 +402,7 @@
       <div class="pg" id="pg-access">
         <div class="ph">
           <div class="ph-title">Доступы и роли</div>
-          <button class="btn btn-p btn-sm" onclick="openRoleModal()"><i class="ti ti-plus"></i> Новая роль</button>
+          <button class="btn btn-p btn-sm" data-action="openRoleModal"><i class="ti ti-plus"></i> Новая роль</button>
         </div>
         <div id="roles-list"></div>
         <div id="assistant-groups-section" style="margin-top:20px"></div>

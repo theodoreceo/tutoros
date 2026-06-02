@@ -149,7 +149,7 @@ export async function showLoginForm() {
   } catch { /* if function missing, assume claimed */ }
 
   container.innerHTML = `
-    <form onsubmit="handleLogin(event)" style="display:flex;flex-direction:column;gap:12px">
+    <form data-action="handleLogin" style="display:flex;flex-direction:column;gap:12px">
       <div class="fg">
         <label>Email</label>
         <input class="fi" type="email" id="login-email" placeholder="email@example.com" autocomplete="email" required>
@@ -163,7 +163,7 @@ export async function showLoginForm() {
       ${!ownerClaimed ? `
       <div style="margin-top:4px;padding-top:12px;border-top:1px solid var(--border);text-align:center">
         <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Первый запуск — аккаунт владельца не создан</div>
-        <button type="button" class="btn" onclick="showRegisterForm(null)" style="width:100%;font-size:12px">
+        <button type="button" class="btn" data-action="showRegisterForm" style="width:100%;font-size:12px">
           <i class="ti ti-crown" style="margin-right:4px"></i>Создать аккаунт владельца
         </button>
       </div>` : ''}
@@ -178,7 +178,7 @@ export function showRegisterForm(inviteToken) {
 
   const isInvite = !!inviteToken;
   container.innerHTML = `
-    <form onsubmit="handleRegister(event)" style="display:flex;flex-direction:column;gap:12px">
+    <form data-action="handleRegister" style="display:flex;flex-direction:column;gap:12px">
       <div class="fg">
         <label>Email${isInvite ? ' (тот, на который пришло приглашение)' : ''}</label>
         <input class="fi" type="email" id="reg-email" placeholder="email@example.com" autocomplete="email" required>
@@ -192,7 +192,7 @@ export function showRegisterForm(inviteToken) {
         ${isInvite ? 'Принять приглашение' : 'Зарегистрироваться как владелец'}
       </button>
       <div id="reg-error" style="color:var(--red);font-size:12px;text-align:center;display:none"></div>
-      <button type="button" class="btn" onclick="showLoginForm()" style="width:100%;font-size:12px;justify-content:center">
+      <button type="button" class="btn" data-action="showLoginForm" style="width:100%;font-size:12px;justify-content:center">
         ← Назад ко входу
       </button>
     </form>
@@ -292,7 +292,7 @@ export function promptSwitchRole() {
       const subtitle = r.isOwner ? 'Все разделы' : (rt?.label || 'Ассистент');
       return `<div class="card" style="cursor:pointer;padding:12px 16px;margin-bottom:0;transition:border-color .12s"
         onmouseover="this.style.borderColor='var(--accent-mid)'" onmouseout="this.style.borderColor=''"
-        onclick="devSwitchRole('${r.id}')">
+        data-action="devSwitchRole" data-id="${r.id}">
         <div style="display:flex;align-items:center;gap:10px">
           <i class="ti ${icon}" style="font-size:18px;color:var(--accent-mid);flex-shrink:0"></i>
           <div>
@@ -317,8 +317,8 @@ export function selectRole(id) {
         <div class="modal-title">PIN для: ${role.name}</div>
         <div class="fg"><label>Введите PIN</label><input class="fi" type="password" id="switch-pin" maxlength="8" autofocus></div>
         <div class="modal-footer">
-          <button class="btn" onclick="promptSwitchRole()">Назад</button>
-          <button class="btn btn-p" onclick="confirmSwitch('${id}')">Войти</button>
+          <button class="btn" data-action="promptSwitchRole">Назад</button>
+          <button class="btn btn-p" data-action="confirmSwitch" data-id="${id}">Войти</button>
         </div>
       </div>`);
       setTimeout(() => document.getElementById('switch-pin')?.focus(), 100);
