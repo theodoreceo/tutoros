@@ -164,6 +164,10 @@ async function handleText(msg) {
     if (text === '/dz')    return handleStudentListHw(chatId, student);
     if (text === '/mydz')  return showStudentStats(chatId, student);
     const sess = await getSession(tid);
+    if (typeof sess.step === 'string' && sess.step.startsWith('brief_answer:')) {
+      const subId = sess.step.slice('brief_answer:'.length);
+      return handleBriefAnswerText(chatId, student, subId, text, sess);
+    }
     if (typeof sess.step === 'string' && sess.step.startsWith('await_answer:')) {
       const subId = sess.step.slice('await_answer:'.length);
       return handleStudentAnswer(chatId, student, subId, text, sess);
@@ -391,6 +395,70 @@ async function showStudentSubDetail(chatId, student, subId) {
 }
 
 // ── Student: answer submission (brief) ───────────────────────────────────────
+
+async function handleBriefAnswerText(chatId, student, subId, text, sess) {
+  const { correct, given, current } = sess.data;
+
+  // Save answer to current question
+  given[current] = text;
+
+  // If this is the last question — show review page
+  if (current === correct.length - 1) {
+    return showBriefReviewPage(chatId, student.telegram_id, subId, correct, given);
+  }
+
+  // Otherwise move to next question
+  const nextCurrent = current + 1;
+  return showBriefAnswerStep(chatId, student.telegram_id, subId, correct, given, nextCurrent);
+}
+
+async function showBriefAnswerStep(chatId, tid, subId, correct, given, current) {
+  await setSession(tid, {
+    step: `brief_answer:${subId}`,
+    data: { subId, correct, given, current }
+  });
+
+  const progressText = current === correct.length - 1
+    ? `\n\n(это последнее задание)`
+    : `\n\n(${current + 1}/${correct.length})`;
+
+  return send(chatId, `<b>задание ${current + 1} из ${correct.length}</b>\n\n${given[current] || '(ответ не введён)'}` + progressText);
+}
+
+async function showBriefReviewPage(chatId, tid, subId, correct, given) {
+  const reviewList = given.map((ans, i) =>
+    `${i + 1}. ${ans || '(ответ не введён)'}`
+  ).join('\n');
+
+  await setSession(tid, {
+    step: `brief_review:${subId}`,
+    data: { subId, correct, given }
+  });
+
+  return send(chatId, `проверь свои ответы:\n\n${reviewList}\n\nОтправить работу или исправить?`, kbd([
+    [{ text: '✏️ исправить ответы', callback_data: `brief_back_to_edit:${subId}` }],
+    [{ text: '✅ отправить работу', callback_data: `brief_final_submit:${subId}` }]
+  ]));
+}
+
+async function submitBriefAnswers(chatId, student, subId, correct, given) {
+  const now = new Date().toISOString();
+  const results    = correct.map((c, i) => given[i]?.toLowerCase().trim() === c.toLowerCase().trim());
+  const numCorrect = results.filter(Boolean).length;
+  const score      = numCorrect;
+  const maxScore   = correct.length;
+
+  await sbPatch('homework_submissions', `id=eq.${subId}`, {
+    status: 'checked', submitted_at: now, checked_at: now,
+    score, max_score: maxScore,
+    comment: `${numCorrect}/${correct.length} верно`,
+    student_answers: given, source: 'telegram',
+  });
+  await setSession(student.telegram_id, { step: 'student' });
+
+  const feedback = results.map((ok, i) => `${i + 1}. ${ok ? '✅' : `❌ (верно: ${correct[i]})`}\n   ты: <code>${given[i] || 'не ответил'}</code>`).join('\n');
+  return send(chatId, `результат: <b>${numCorrect}/${correct.length}</b>\n\n${feedback}`);
+}
 
 async function handleStudentAnswer(chatId, student, subId, text, sess) {
   const sub = await sbOne('homework_submissions', `id=eq.${subId}&student_id=eq.${student.id}`);
@@ -829,10 +897,8 @@ async function handleCallback(cq) {
     if (assignment.hw_type === 'brief') {
       const answers = assignment.answers;
       if (answers && Array.isArray(answers) && answers.length > 0) {
-        await setSession(tid, { step: `await_answer:${subId}` });
-        return send(chatId,
-          `<b>${assignment.topic}</b>${desc}\n\nЗаданий: <b>${answers.length}</b>\n` +
-          `Введи все ответы через запятую:\nПример: <code>3, 15, да</code>`);
+        const given = new Array(answers.length).fill('');
+        return showBriefAnswerStep(chatId, tid, subId, answers, given, 0);
       }
       await setSession(tid, { step: `await_answer:${subId}` });
       return send(chatId, `<b>${assignment.topic}</b>${desc}\n\nВведи ответ:`);
@@ -858,6 +924,20 @@ async function handleCallback(cq) {
   if (data === 'cancel_files' && student) {
     await setSession(tid, { step: 'student' });
     return send(chatId, 'Сдача отменена. /dz — посмотреть задания.');
+  }
+
+  // Brief answer: go back to edit
+  if (data.startsWith('brief_back_to_edit:') && student && sess.step?.startsWith('brief_review:')) {
+    const subId = data.slice('brief_back_to_edit:'.length);
+    const { correct, given } = sess.data;
+    return showBriefAnswerStep(chatId, tid, subId, correct, given, 0);
+  }
+
+  // Brief answer: final submit
+  if (data.startsWith('brief_final_submit:') && student && sess.step?.startsWith('brief_review:')) {
+    const subId = data.slice('brief_final_submit:'.length);
+    const { correct, given } = sess.data;
+    return submitBriefAnswers(chatId, student, subId, correct, given);
   }
 
   // Student: view specific submission detail
