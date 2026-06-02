@@ -407,7 +407,7 @@ function toPercent(score, maxScore, taskConfig) {
   if (maxScore) return Math.round(score / maxScore * 100);
   if (Array.isArray(taskConfig) && taskConfig.length)
     return Math.round(score / taskConfig.reduce((a, b) => a + b, 0) * 100);
-  return score; // brief HW already stores 0-100
+  return score;
 }
 
 async function showStudentStats(chatId, student) {
@@ -537,8 +537,8 @@ async function submitBriefAnswers(chatId, student, subId, correct, given) {
   const now = new Date().toISOString();
   const results    = correct.map((c, i) => given[i]?.toLowerCase().trim() === c.toLowerCase().trim());
   const numCorrect = results.filter(Boolean).length;
-  const score      = Math.round((numCorrect / correct.length) * 100);
-  const maxScore   = 100;
+  const score      = numCorrect;
+  const maxScore   = correct.length;
 
   await sbPatch('homework_submissions', `id=eq.${subId}`, {
     status: 'checked', submitted_at: now, checked_at: now,
