@@ -132,6 +132,7 @@ const MSGS = {
 
   // Ученик: ответы (краткий тип)
   briefAnswerStep:  (num, total, answer) => `<b>задание ${num} из ${total}</b>\n\n${answer || '(ответ не введён)'}`,
+  briefReview:      (reviewList) => `проверь свои ответы:\n\n${reviewList}\n\nОтправить работу или исправить?`,
   briefResults:     (correct, total, feedback) => `результат: <b>${correct}/${total}</b>\n\n${feedback}`,
   answersExpected:  (n)       => `Ожидается <b>${n}</b> ответов через запятую.\nПример: <code>3, 15, да</code>`,
   answerCorrect:    (name)    => `✅ Верно! Отлично, <b>${name}</b>!`,
@@ -495,9 +496,9 @@ async function handleBriefAnswerText(chatId, student, subId, text, sess) {
   // Сохраняем ответ на текущий вопрос
   given[current] = text;
 
-  // Если это последний вопрос - отправляем результаты
+  // Если это последний вопрос - показываем страницу проверки
   if (current === correct.length - 1) {
-    return submitBriefAnswers(chatId, student, subId, correct, given);
+    return showBriefReviewPage(chatId, student.telegram_id, subId, correct, given);
   }
 
   // Иначе переходим на следующее задание
@@ -550,6 +551,22 @@ async function showBriefAnswerStep(chatId, tid, subId, correct, given, current) 
     : `\n\n(${current + 1}/${correct.length})`;
 
   return send(chatId, MSGS.briefAnswerStep(current + 1, correct.length, given[current]) + progressText);
+}
+
+async function showBriefReviewPage(chatId, tid, subId, correct, given) {
+  const reviewList = given.map((ans, i) =>
+    `${i + 1}. ${ans || '(ответ не введён)'}`
+  ).join('\n');
+
+  await setSession(tid, {
+    step: `brief_review:${subId}`,
+    data: { subId, correct, given }
+  });
+
+  return send(chatId, MSGS.briefReview(reviewList), kbd([
+    [{ text: '✏️ исправить ответы', callback_data: `brief_back_to_edit:${subId}` }],
+    [{ text: '✅ отправить работу', callback_data: `brief_final_submit:${subId}` }]
+  ]));
 }
 
 async function submitBriefAnswers(chatId, student, subId, correct, given) {
@@ -979,6 +996,20 @@ async function handleCallback(cq) {
   if (data === 'cancel_files' && student) {
     await setSession(tid, { step: 'student' });
     return send(chatId, MSGS.fileCancelled);
+  }
+
+  // Brief answer: go back to edit
+  if (data.startsWith('brief_back_to_edit:') && student && sess.step?.startsWith('brief_review:')) {
+    const subId = data.slice('brief_back_to_edit:'.length);
+    const { correct, given } = sess.data;
+    return showBriefAnswerStep(chatId, tid, subId, correct, given, 0);
+  }
+
+  // Brief answer: final submit
+  if (data.startsWith('brief_final_submit:') && student && sess.step?.startsWith('brief_review:')) {
+    const subId = data.slice('brief_final_submit:'.length);
+    const { correct, given } = sess.data;
+    return submitBriefAnswers(chatId, student, subId, correct, given);
   }
 
   // Student: view specific submission detail
