@@ -131,6 +131,8 @@ const MSGS = {
   hwNotFound:       `Задание не найдено.`,
 
   // Ученик: ответы (краткий тип)
+  briefAnswerStep:  (num, total, answer) => `<b>задание ${num} из ${total}</b>\n\n${answer || '(ответ не введён)'}`,
+  briefResults:     (correct, total, feedback) => `результат: <b>${correct}/${total}</b>\n\n${feedback}`,
   answersExpected:  (n)       => `Ожидается <b>${n}</b> ответов через запятую.\nПример: <code>3, 15, да</code>`,
   answerCorrect:    (name)    => `✅ Верно! Отлично, <b>${name}</b>!`,
   answerWrong:      (correct) => `❌ Неверно.\nПравильный ответ: <b>${correct || 'не указан'}</b>`,
@@ -490,34 +492,23 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
   const assignment = await sbOne('homework_assignments', `id=eq.${sub.assignment_id}`);
   if (!assignment) return send(chatId, MSGS.hwNotFound);
 
-  const now = new Date().toISOString();
-
-  // Multi-answer brief
+  // Multi-answer brief - step-by-step mode
   if (assignment.answers && Array.isArray(assignment.answers)) {
     const correct = assignment.answers;
-    const given   = text.split(/[,;]/).map(s => s.trim());
-    if (given.length !== correct.length) {
-      return send(chatId, MSGS.answersExpected(correct.length));
-    }
-    const results    = correct.map((c, i) => given[i]?.toLowerCase() === c.toLowerCase());
-    const numCorrect = results.filter(Boolean).length;
-    const score      = Math.round((numCorrect / correct.length) * 100);
-    const maxScore   = 100;
-    const feedback   = results.map((ok, i) => `${i + 1}. ${ok ? '✅' : `❌ (верно: ${correct[i]})`}`).join('\n');
+    const given = sess.data?.given || new Array(correct.length).fill('');
+    const current = sess.data?.current ?? 0;
 
-    await sbPatch('homework_submissions', `id=eq.${subId}`, {
-      status: 'checked', submitted_at: now, checked_at: now,
-      score, max_score: maxScore,
-      comment: `${numCorrect}/${correct.length} верно`,
-      student_answers: given, source: 'telegram',
-    });
-    await setSession(student.telegram_id, { step: 'student' });
-    return send(chatId, `Результат: <b>${numCorrect}/${correct.length}</b> (${score}%)\n\n${feedback}`);
+    // Сохраняем ответ на текущий вопрос
+    given[current] = text;
+
+    // Показываем следующий вопрос с навигацией
+    return showBriefAnswerStep(chatId, student.telegram_id, subId, correct, given, current);
   }
 
   // Single correct_answer (legacy)
   const correct   = (assignment.correct_answer ?? '').trim();
   const isCorrect = correct !== '' && text.trim() === correct;
+  const now = new Date().toISOString();
   await sbPatch('homework_submissions', `id=eq.${subId}`, {
     status: 'checked', submitted_at: now, checked_at: now,
     score: isCorrect ? 100 : 0, max_score: 100,
@@ -526,6 +517,39 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
   });
   if (student.telegram_id) await setSession(student.telegram_id, { step: 'student' });
   return send(chatId, isCorrect ? MSGS.answerCorrect(student.name) : MSGS.answerWrong(correct));
+}
+
+async function showBriefAnswerStep(chatId, tid, subId, correct, given, current) {
+  const buttons = [];
+  if (current > 0) buttons.push({ text: '← назад', callback_data: `brief_prev:${subId}:${current}` });
+  if (current < correct.length - 1) buttons.push({ text: 'вперед →', callback_data: `brief_next:${subId}:${current}` });
+  buttons.push({ text: '✅ отправить', callback_data: `brief_submit:${subId}` });
+
+  await setSession(tid, {
+    step: `brief_answer:${subId}`,
+    data: { subId, correct, given, current }
+  });
+
+  return send(chatId, MSGS.briefAnswerStep(current + 1, correct.length, given[current]), kbd([buttons]));
+}
+
+async function submitBriefAnswers(chatId, student, subId, correct, given) {
+  const now = new Date().toISOString();
+  const results    = correct.map((c, i) => given[i]?.toLowerCase().trim() === c.toLowerCase().trim());
+  const numCorrect = results.filter(Boolean).length;
+  const score      = Math.round((numCorrect / correct.length) * 100);
+  const maxScore   = 100;
+
+  await sbPatch('homework_submissions', `id=eq.${subId}`, {
+    status: 'checked', submitted_at: now, checked_at: now,
+    score, max_score: maxScore,
+    comment: `${numCorrect}/${correct.length} верно`,
+    student_answers: given, source: 'telegram',
+  });
+  await setSession(student.telegram_id, { step: 'student' });
+
+  const feedback = results.map((ok, i) => `${i + 1}. ${ok ? '✅' : `❌ (верно: ${correct[i]})`}\n   ты: <code>${given[i] || 'не ответил'}</code>`).join('\n');
+  return send(chatId, MSGS.briefResults(numCorrect, correct.length, feedback));
 }
 
 // ── Student: finalize file submission ─────────────────────────────────────────
@@ -910,8 +934,8 @@ async function handleCallback(cq) {
     if (assignment.hw_type === 'brief') {
       const answers = assignment.answers;
       if (answers && Array.isArray(answers) && answers.length > 0) {
-        await setSession(tid, { step: `await_answer:${subId}` });
-        return send(chatId, MSGS.hwBriefMulti(assignment.topic, desc, answers.length));
+        const given = new Array(answers.length).fill('');
+        return showBriefAnswerStep(chatId, tid, subId, answers, given, 0);
       }
       await setSession(tid, { step: `await_answer:${subId}` });
       return send(chatId, MSGS.hwBriefSingle(assignment.topic, desc));
@@ -936,6 +960,29 @@ async function handleCallback(cq) {
   if (data === 'cancel_files' && student) {
     await setSession(tid, { step: 'student' });
     return send(chatId, MSGS.fileCancelled);
+  }
+
+  // Brief answers navigation and submission
+  if (data.startsWith('brief_prev:') && student && sess.step && sess.step.startsWith('brief_answer:')) {
+    const parts = data.slice('brief_prev:'.length).split(':');
+    const subId = parts[0];
+    const current = Math.max(0, parseInt(parts[1]) - 1);
+    const { correct, given } = sess.data;
+    return showBriefAnswerStep(chatId, tid, subId, correct, given, current);
+  }
+
+  if (data.startsWith('brief_next:') && student && sess.step && sess.step.startsWith('brief_answer:')) {
+    const parts = data.slice('brief_next:'.length).split(':');
+    const subId = parts[0];
+    const current = Math.min(sess.data.correct.length - 1, parseInt(parts[1]) + 1);
+    const { correct, given } = sess.data;
+    return showBriefAnswerStep(chatId, tid, subId, correct, given, current);
+  }
+
+  if (data.startsWith('brief_submit:') && student && sess.step && sess.step.startsWith('brief_answer:')) {
+    const subId = data.slice('brief_submit:'.length);
+    const { correct, given } = sess.data;
+    return submitBriefAnswers(chatId, student, subId, correct, given);
   }
 
   // Student: view specific submission detail
