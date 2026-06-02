@@ -228,7 +228,7 @@ const ACTION_MAP = {
   editRole: (el) => editRole(el.dataset.id),
   saveRole: () => saveRole(),
   deleteRole: (el) => deleteRole(el.dataset.id),
-  toggleAssistantGroup: (el) => toggleAssistantGroup(el.dataset.roleId, el.dataset.groupId),
+  toggleAssistantGroup: (el) => toggleAssistantGroup(el.dataset.roleId, el.dataset.groupId, el.checked),
   openInviteModal: (el) => openInviteModal(el.dataset.roleId),
   createInvite: () => createInvite(),
 
@@ -267,6 +267,8 @@ function setupDelegation() {
   document.body.addEventListener('click', (e) => {
     const el = e.target.closest('[data-action]');
     if (!el) return;
+    // Checkboxes are handled by the 'change' listener — skip here
+    if (e.target.type === 'checkbox') return;
     const action = el.dataset.action;
     const handler = ACTION_MAP[action];
     if (handler) {
@@ -284,6 +286,15 @@ function setupDelegation() {
       e.preventDefault();
       handler(e.target, e);
     }
+  });
+
+  // Checkbox change delegation (for toggleAssistantGroup etc.)
+  document.body.addEventListener('change', (e) => {
+    if (e.target.type !== 'checkbox') return;
+    const el = e.target.closest('[data-action]') || e.target;
+    if (!el.dataset.action) return;
+    const handler = ACTION_MAP[el.dataset.action];
+    if (handler) handler(el, e);
   });
 }
 
