@@ -320,6 +320,27 @@ export function setCalHwStatus(hwId, btn) {
   _hwBtnStates[hwId] = nextStatus;
 }
 
+// Columns added by migration_lesson_type.sql — fall back gracefully if not yet applied
+const _NEW_LESSON_COLS = ['lesson_type', 'start_time', 'duration', 'lesson_link'];
+
+async function _dbLessonSave(mode, obj, existingId) {
+  try {
+    if (mode === 'update') await dbUpdate('lessons', existingId, obj);
+    else await dbInsert('lessons', obj);
+  } catch (e) {
+    const isSchemaErr = e.message && (
+      e.message.includes('column') || e.message.includes('schema cache')
+    );
+    if (!isSchemaErr) throw e;
+    // Strip new columns and retry — migration not yet applied
+    const stripped = { ...obj };
+    _NEW_LESSON_COLS.forEach(k => delete stripped[k]);
+    if (mode === 'update') await dbUpdate('lessons', existingId, stripped);
+    else await dbInsert('lessons', stripped);
+    console.warn('lesson saved without new columns — run migration_lesson_type.sql in Supabase');
+  }
+}
+
 export async function saveLessonForm(existingId) {
   const topic = g('lf-topic');
   if (!topic) { toast('Укажите тему'); return; }
@@ -357,8 +378,11 @@ export async function saveLessonForm(existingId) {
         notes,
         created_at: existingId ? ((CACHE.lessons || []).find(x => x.id === existingId) || {}).created_at || createdAt : createdAt,
       };
-      if (existingId) await dbUpdate('lessons', existingId, obj);
-      else await dbInsert('lessons', obj);
+      if (existingId) {
+        await _dbLessonSave('update', obj, existingId);
+      } else {
+        await _dbLessonSave('insert', obj);
+      }
       lessonIds.push(lessonId);
 
       if (!existingId) {
