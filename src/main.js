@@ -36,7 +36,7 @@ import {
   openLessonFromCalendar, openLessonFormFromPicker, openLessonFormModal, toggleAttendance,
   setCalHwStatus,
   saveLessonForm, openLessonCard, deleteLesson as calDeleteLesson, exportICS, calSubscribe,
-  openTrialLessonModal, saveTrialLesson,
+  openTrialLessonModal, saveTrialLesson, pickLessonType,
 } from './pages/calendar.js';
 import { renderIncome, openPaymentModal, savePayment, deletePayment } from './pages/income.js';
 import { renderExpenses, openExpenseModal, toggleChannelField, addExpenseCategory, saveExpense, deleteExpense } from './pages/expenses.js';
@@ -215,6 +215,7 @@ const ACTION_MAP = {
   setCalHwStatus: (el) => setCalHwStatus(el.dataset.id, el.dataset.status),
   openTrialLessonModal: (el) => openTrialLessonModal(el.dataset.date, el.dataset.id || undefined),
   saveTrialLesson: (el) => saveTrialLesson(el.dataset.id || undefined),
+  pickLessonType: (el) => pickLessonType(el.dataset.date, el.dataset.type),
 
   // Income
   openPaymentModal: () => openPaymentModal(),

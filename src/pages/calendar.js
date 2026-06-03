@@ -87,6 +87,51 @@ function _assignColumns(lessons) {
   return { colOf, totalOf };
 }
 
+let _dragTime = '', _dragDur = 60;
+
+function _openLessonTypePicker(date, timeStr, dur) {
+  _dragTime = timeStr;
+  _dragDur  = dur;
+  modal(`<div class="modal" style="max-width:320px">
+    <div class="modal-title" style="margin-bottom:16px"><i class="ti ti-calendar-plus"></i> Тип занятия · ${date}</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn" style="justify-content:flex-start;gap:12px;padding:14px 16px;font-size:14px" data-action="pickLessonType" data-date="${esc(date)}" data-type="lesson">
+        <i class="ti ti-book" style="font-size:20px;color:var(--accent-mid)"></i>
+        <div style="text-align:left"><div style="font-weight:600">Занятие</div><div style="font-size:11px;color:var(--muted)">Обычное занятие с группой</div></div>
+      </button>
+      <button class="btn" style="justify-content:flex-start;gap:12px;padding:14px 16px;font-size:14px" data-action="pickLessonType" data-date="${esc(date)}" data-type="consultation">
+        <i class="ti ti-users-group" style="font-size:20px;color:#7c3aed"></i>
+        <div style="text-align:left"><div style="font-weight:600">Консультация</div><div style="font-size:11px;color:var(--muted)">Индивидуальная или групповая</div></div>
+      </button>
+      <button class="btn" style="justify-content:flex-start;gap:12px;padding:14px 16px;font-size:14px" data-action="pickLessonType" data-date="${esc(date)}" data-type="trial">
+        <i class="ti ti-user-check" style="font-size:20px;color:#16a34a"></i>
+        <div style="text-align:left"><div style="font-weight:600">Пробный урок</div><div style="font-size:11px;color:var(--muted)">Запись лидов на пробник</div></div>
+      </button>
+    </div>
+    <div class="modal-footer" style="margin-top:12px">
+      <button class="btn" data-action="closeModal">Отмена</button>
+    </div>
+  </div>`);
+}
+
+export function pickLessonType(date, type) {
+  closeModal();
+  if (type === 'trial') {
+    openTrialLessonModal(date);
+    setTimeout(() => {
+      const ti = document.getElementById('tl-time'); if (ti) ti.value = _dragTime;
+      const du = document.getElementById('tl-dur');  if (du) du.value = _dragDur;
+    }, 50);
+  } else {
+    openLessonFromCalendar(date);
+    setTimeout(() => {
+      const ti = document.getElementById('lf-time'); if (ti) ti.value = _dragTime;
+      const du = document.getElementById('lf-dur');  if (du) du.value = _dragDur;
+      const ty = document.getElementById('lf-type'); if (ty) ty.value = type;
+    }, 300);
+  }
+}
+
 function _setupDragCreate(container, CAL_START, HOUR_PX, role) {
   const body = container.querySelector('.cal-body');
   if (!body) return;
@@ -161,11 +206,7 @@ function _setupDragCreate(container, CAL_START, HOUR_PX, role) {
         const du = document.getElementById('tl-dur');  if (du) du.value = snapDur;
       }, 50);
     } else {
-      openLessonFromCalendar(_colDate);
-      setTimeout(() => {
-        const ti = document.getElementById('lf-time'); if (ti) ti.value = timeStr;
-        const du = document.getElementById('lf-dur');  if (du) du.value = snapDur;
-      }, 300);
+      _openLessonTypePicker(_colDate, timeStr, snapDur);
     }
   };
 
