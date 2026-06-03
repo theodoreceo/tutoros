@@ -99,16 +99,18 @@ function _setupDragCreate(container, CAL_START, HOUR_PX, role) {
     if (e.button !== 0) return;
     const col = e.target.closest('.cal-day-col');
     if (!col) return;
-    if (e.target.closest('[data-action]')) return; // don't intercept lesson card clicks
+    // Allow drag only on the column background — not on lesson cards
+    const actionEl = e.target.closest('[data-action]');
+    if (actionEl && actionEl.dataset.action !== 'openLessonFromCalendar') return;
     _colDate = col.dataset.id || '';
     _col = col;
-    const rect = col.getBoundingClientRect();
     _startY = e.clientY;
-    const y = e.clientY - rect.top + body.scrollTop;
+    // getBoundingClientRect already accounts for scroll, so just use clientY - rect.top
+    const rect = col.getBoundingClientRect();
+    const y = e.clientY - rect.top;
     _startMin = Math.round(y / HOUR_PX * 60 / 15) * 15;
     _pending = true;
     _dragging = false;
-    // no e.preventDefault() here — allow normal click events
   });
 
   body.addEventListener('mousemove', (e) => {
@@ -116,7 +118,6 @@ function _setupDragCreate(container, CAL_START, HOUR_PX, role) {
     const dy = Math.abs(e.clientY - _startY);
     if (!_dragging && dy < DRAG_THRESHOLD) return;
 
-    // Threshold crossed — activate drag
     if (!_dragging) {
       _dragging = true;
       _ghost = document.createElement('div');
@@ -125,11 +126,11 @@ function _setupDragCreate(container, CAL_START, HOUR_PX, role) {
     }
 
     const rect = _col.getBoundingClientRect();
-    const y = e.clientY - rect.top + body.scrollTop;
+    const y = e.clientY - rect.top;
     const endMin = Math.max(_startMin + 15, Math.round(y / HOUR_PX * 60 / 15) * 15);
     _ghost.style.top = `${_startMin / 60 * HOUR_PX}px`;
     _ghost.style.height = `${Math.max(HOUR_PX / 4, (endMin - _startMin) / 60 * HOUR_PX)}px`;
-    e.preventDefault(); // only prevent default during actual drag
+    e.preventDefault();
   });
 
   const _finish = (e) => {
@@ -139,10 +140,10 @@ function _setupDragCreate(container, CAL_START, HOUR_PX, role) {
     _dragging = false;
 
     if (_ghost) { _ghost.remove(); _ghost = null; }
-    if (!wasDragging) return; // it was just a click, let it propagate normally
+    if (!wasDragging) return;
 
     const rect = _col.getBoundingClientRect();
-    const y = e.clientY - rect.top + body.scrollTop;
+    const y = e.clientY - rect.top;
     const endMin = Math.max(_startMin + 15, Math.round(y / HOUR_PX * 60 / 15) * 15);
     const durationMin = endMin - _startMin;
     if (durationMin < 10) return;
