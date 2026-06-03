@@ -21,6 +21,7 @@ import {
   openStudentModal, calcLTV, editStudent, saveStudent, deleteStudent,
   openStudentDetail, openStatusDateModal, confirmStatusChange,
   openTrialFromCalendar, scheduleTrialLesson,
+  openAddLeadToTrialModal, addLeadToTrialLesson,
   openPaymentModalFor, addStudentNote, selectChip, resetStudentRisk,
   copyRegToken, generateStudentToken,
 } from './pages/students.js';
@@ -172,6 +173,8 @@ const ACTION_MAP = {
   confirmStatusChange: () => confirmStatusChange(),
   openTrialFromCalendar: (el) => openTrialFromCalendar(el.dataset.id),
   scheduleTrialLesson: () => scheduleTrialLesson(),
+  openAddLeadToTrialModal: (el) => openAddLeadToTrialModal(el.dataset.id),
+  addLeadToTrialLesson: (el) => addLeadToTrialLesson(el.dataset.lessonId, el.dataset.studentId),
   openPaymentModalFor: (el) => openPaymentModalFor(el.dataset.id),
   addStudentNote: (el) => addStudentNote(el.dataset.id),
   selectChip: (el) => selectChip(el.dataset.field, el.dataset.value, el),

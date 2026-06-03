@@ -91,77 +91,79 @@ function _setupDragCreate(container, CAL_START, HOUR_PX, role) {
   const body = container.querySelector('.cal-body');
   if (!body) return;
 
-  let _active = false, _ghost = null, _startMin = 0, _colDate = '';
+  let _pending = false, _dragging = false, _ghost = null;
+  let _startMin = 0, _startY = 0, _colDate = '', _col = null;
+  const DRAG_THRESHOLD = 8; // px before drag activates
 
   body.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     const col = e.target.closest('.cal-day-col');
     if (!col) return;
-    if (e.target.closest('[data-action]')) return;
+    if (e.target.closest('[data-action]')) return; // don't intercept lesson card clicks
     _colDate = col.dataset.id || '';
+    _col = col;
     const rect = col.getBoundingClientRect();
+    _startY = e.clientY;
     const y = e.clientY - rect.top + body.scrollTop;
     _startMin = Math.round(y / HOUR_PX * 60 / 15) * 15;
-    _active = true;
-
-    _ghost = document.createElement('div');
-    _ghost.style.cssText = `position:absolute;top:${_startMin/60*HOUR_PX}px;height:${HOUR_PX}px;left:2px;right:2px;background:var(--accent-mid);opacity:.25;border-radius:6px;pointer-events:none;z-index:50;border-left:3px solid var(--accent-mid);`;
-    col.style.position = 'relative';
-    col.appendChild(_ghost);
-    e.preventDefault();
+    _pending = true;
+    _dragging = false;
+    // no e.preventDefault() here — allow normal click events
   });
 
   body.addEventListener('mousemove', (e) => {
-    if (!_active || !_ghost) return;
-    const col = _ghost.parentElement;
-    const rect = col.getBoundingClientRect();
+    if (!_pending) return;
+    const dy = Math.abs(e.clientY - _startY);
+    if (!_dragging && dy < DRAG_THRESHOLD) return;
+
+    // Threshold crossed — activate drag
+    if (!_dragging) {
+      _dragging = true;
+      _ghost = document.createElement('div');
+      _ghost.style.cssText = `position:absolute;top:${_startMin/60*HOUR_PX}px;height:${HOUR_PX}px;left:2px;right:2px;background:var(--accent-mid);opacity:.22;border-radius:6px;pointer-events:none;z-index:50;border-left:3px solid var(--accent-mid);`;
+      _col.appendChild(_ghost);
+    }
+
+    const rect = _col.getBoundingClientRect();
     const y = e.clientY - rect.top + body.scrollTop;
     const endMin = Math.max(_startMin + 15, Math.round(y / HOUR_PX * 60 / 15) * 15);
     _ghost.style.top = `${_startMin / 60 * HOUR_PX}px`;
     _ghost.style.height = `${Math.max(HOUR_PX / 4, (endMin - _startMin) / 60 * HOUR_PX)}px`;
+    e.preventDefault(); // only prevent default during actual drag
   });
 
   const _finish = (e) => {
-    if (!_active) return;
-    _active = false;
-    if (!_ghost) return;
-    const col = _ghost.parentElement;
-    const rect = col.getBoundingClientRect();
+    if (!_pending) return;
+    const wasDragging = _dragging;
+    _pending = false;
+    _dragging = false;
+
+    if (_ghost) { _ghost.remove(); _ghost = null; }
+    if (!wasDragging) return; // it was just a click, let it propagate normally
+
+    const rect = _col.getBoundingClientRect();
     const y = e.clientY - rect.top + body.scrollTop;
     const endMin = Math.max(_startMin + 15, Math.round(y / HOUR_PX * 60 / 15) * 15);
     const durationMin = endMin - _startMin;
-    _ghost.remove(); _ghost = null;
-
     if (durationMin < 10) return;
 
     const totalStart = CAL_START * 60 + _startMin;
     const hh = String(Math.floor(totalStart / 60)).padStart(2, '0');
     const mm = String(totalStart % 60).padStart(2, '0');
     const timeStr = `${hh}:${mm}`;
+    const snapDur = [45, 60, 90, 120].reduce((a, b) => Math.abs(b - durationMin) < Math.abs(a - durationMin) ? b : a);
 
     if (role.role_type === 'marketer') {
       openTrialLessonModal(_colDate);
       setTimeout(() => {
-        const ti = document.getElementById('tl-time');
-        const du = document.getElementById('tl-dur');
-        if (ti) ti.value = timeStr;
-        if (du) {
-          const opts = [45, 60, 90, 120];
-          const closest = opts.reduce((a, b) => Math.abs(b - durationMin) < Math.abs(a - durationMin) ? b : a);
-          du.value = closest;
-        }
+        const ti = document.getElementById('tl-time'); if (ti) ti.value = timeStr;
+        const du = document.getElementById('tl-dur');  if (du) du.value = snapDur;
       }, 50);
     } else {
       openLessonFromCalendar(_colDate);
       setTimeout(() => {
-        const ti = document.getElementById('lf-time');
-        const du = document.getElementById('lf-dur');
-        if (ti) ti.value = timeStr;
-        if (du) {
-          const opts = [45, 60, 90, 120];
-          const closest = opts.reduce((a, b) => Math.abs(b - durationMin) < Math.abs(a - durationMin) ? b : a);
-          du.value = closest;
-        }
+        const ti = document.getElementById('lf-time'); if (ti) ti.value = timeStr;
+        const du = document.getElementById('lf-dur');  if (du) du.value = snapDur;
       }, 300);
     }
   };
@@ -240,7 +242,7 @@ export async function renderCalendar() {
         const _tot = totalOf[l.id] || 1;
         const _left = (_col / _tot * 100).toFixed(1);
         const _wid  = (1 / _tot * 100).toFixed(1);
-        return `<div class="cal-event${past ? ' past' : ''}${isConsult ? ' consult' : ''}" style="top:${top}px;height:${h}px;left:${_left}%;width:${_wid}%;background:${evColor}18;color:${evColor};border-left-color:${evColor};border-left-style:${evBorder}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
+        return `<div class="cal-event${past ? ' past' : ''}${isConsult ? ' consult' : ''}" style="top:${top}px;height:${h}px;left:${_left}%;width:${_wid}%;background:${evColor}18;color:${evColor};border-left-color:${evColor};border-left-style:${evBorder}" data-action="openLessonCard" data-id="${esc(l.id)}">
           <div class="cal-event-title">${isTrial ? '<i class="ti ti-user-check" style="font-size:9px"></i> ' : ''}${esc(l.topic) || 'Занятие'}</div>
           <div class="cal-event-time">${timeStr} · ${trialSub}</div>
           ${!isTrial && rName ? `<div style="font-size:9px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px"><i class="ti ti-user-check" style="font-size:8px"></i> ${rName}</div>` : ''}
@@ -312,7 +314,7 @@ export async function renderCalendar() {
         const isConsult = l.lesson_type === 'consultation';
         const isTrial  = l.lesson_type === 'trial';
         const pillColor = isTrial ? '#16a34a' : isConsult ? '#7c3aed' : gc;
-        return `<span class="cal-mpill${past ? ' past' : ''}" style="background:${pillColor}20;color:${past ? 'var(--muted)' : pillColor};border-left:2px ${isConsult ? 'dashed' : 'solid'} ${pillColor}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
+        return `<span class="cal-mpill${past ? ' past' : ''}" style="background:${pillColor}20;color:${past ? 'var(--muted)' : pillColor};border-left:2px ${isConsult ? 'dashed' : 'solid'} ${pillColor}" data-action="openLessonCard" data-id="${esc(l.id)}">
                   ${past ? '✓ ' : ''}${isTrial ? '🎯 ' : ''}<span style="overflow:hidden;text-overflow:ellipsis">${l.start_time || ''} ${esc(l.topic) || 'Занятие'}</span>
                 </span>`;
       }).join('')}

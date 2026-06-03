@@ -204,7 +204,7 @@ export async function renderPipeline() {
               : '';
           const isMarketer = !role.isOwner && role.role_type === 'marketer';
           const trialBtn = (isMarketer || role.isOwner) && stage.id === 'lead'
-            ? `<button class="btn btn-sm btn-p" style="width:100%;margin-top:6px;font-size:11px;justify-content:center" data-action="openTrialFromCalendar" data-id="${esc(s.id)}"><i class="ti ti-calendar-check"></i> Записать на пробный</button>`
+            ? `<button class="btn btn-sm btn-p" style="width:100%;margin-top:6px;font-size:11px;justify-content:center" data-action="openAddLeadToTrialModal" data-id="${esc(s.id)}"><i class="ti ti-calendar-check"></i> Записать на пробный</button>`
             : '';
           return `<div class="pipeline-card ${riskCls}" draggable="${!isMarketer}" data-action="openStudentDetail" data-id="${esc(s.id)}">
             <div class="pipeline-card-name">${esc(s.name)}</div>
@@ -492,6 +492,80 @@ export async function resetStudentRisk(studentId) {
   toast('Риск сброшен');
   closeModal();
   renderStudents();
+}
+
+export async function openAddLeadToTrialModal(studentId) {
+  const s = (CACHE.students || []).find(x => x.id === studentId);
+  if (!s) return;
+
+  await import('../core/store.js').then(m => m.ensureLoaded(['lessons']));
+
+  const todayStr = today();
+  const trialLessons = (CACHE.lessons || [])
+    .filter(l => l.lesson_type === 'trial' && l.date >= todayStr)
+    .sort((a, b) => (a.date + (a.start_time || '')).localeCompare(b.date + (b.start_time || '')));
+
+  if (!trialLessons.length) {
+    modal(`<div class="modal" style="max-width:380px">
+      <div class="modal-title"><i class="ti ti-calendar-check" style="color:#16a34a"></i> Записать на пробный</div>
+      <div style="font-size:13px;color:var(--muted);padding:12px 0 20px">
+        Нет запланированных пробных уроков.<br>
+        Сначала создайте пробный урок в <b>Календаре</b>.
+      </div>
+      <div class="modal-footer">
+        <button class="btn" data-action="closeModal">Закрыть</button>
+        <button class="btn btn-p" data-action="navigate" data-pg="lessons_cal" data-close-modal="true"><i class="ti ti-calendar-event"></i> Открыть календарь</button>
+      </div>
+    </div>`);
+    return;
+  }
+
+  const rows = trialLessons.map(l => {
+    const attendees = l.student_attendance || [];
+    const alreadyAdded = attendees.some(a => a.student_id === studentId);
+    const count = attendees.length;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600">${esc(l.topic || 'Пробный урок')}</div>
+        <div style="font-size:11px;color:var(--muted)">${l.date}${l.start_time ? ' · ' + l.start_time : ''} · ${count} записан${count === 1 ? '' : count < 5 ? 'о' : 'о'}</div>
+      </div>
+      ${alreadyAdded
+        ? `<span class="b b-g" style="font-size:11px">Уже записан</span>`
+        : `<button class="btn btn-sm btn-p" data-action="addLeadToTrialLesson" data-lesson-id="${esc(l.id)}" data-student-id="${esc(studentId)}"><i class="ti ti-check"></i> Записать</button>`
+      }
+    </div>`;
+  }).join('');
+
+  modal(`<div class="modal" style="max-width:460px">
+    <div class="modal-title"><i class="ti ti-calendar-check" style="color:#16a34a;margin-right:6px"></i> Записать на пробный · ${esc(s.name)}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Выберите пробный урок из календаря</div>
+    <div style="max-height:320px;overflow-y:auto">${rows}</div>
+    <div class="modal-footer">
+      <button class="btn" data-action="closeModal">Закрыть</button>
+    </div>
+  </div>`);
+}
+
+export async function addLeadToTrialLesson(lessonId, studentId) {
+  await ensureLoaded(['lessons', 'students']);
+  const lesson = (CACHE.lessons || []).find(x => x.id === lessonId);
+  const s = (CACHE.students || []).find(x => x.id === studentId);
+  if (!lesson || !s) return;
+
+  const attendance = [...(lesson.student_attendance || [])];
+  if (!attendance.some(a => a.student_id === studentId)) {
+    attendance.push({ student_id: studentId, name: s.name, present: true });
+  }
+  await dbUpdate('lessons', lessonId, { student_attendance: attendance });
+
+  if (s.crm_status === 'lead') {
+    const history = [...(s.status_history || []), { status: 'trial_scheduled', date: lesson.date }];
+    await dbUpdate('students', studentId, { crm_status: 'trial_scheduled', status_history: history });
+  }
+
+  closeModal();
+  renderPipeline();
+  toast(`${s.name} записан на пробный урок ${lesson.date}`);
 }
 
 export function openTrialFromCalendar(studentId) {
