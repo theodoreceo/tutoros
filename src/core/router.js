@@ -16,6 +16,7 @@ const TITLES = {
   access:       'Управление доступами',
   curator_dash: 'Дашборд куратора',
   manager_dash: 'Дашборд менеджера',
+  kpi_overview: 'KPI команды',
 };
 
 const renderers = {};

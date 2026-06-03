@@ -70,6 +70,21 @@ function calcGroupMetrics(groupId, assistantId) {
   // Risk count (score >= 2)
   const riskCount = students.filter(s => calcRiskScore(s).level === 'high').length;
 
+  // Retention %
+  const retention = (students.length + leftCount) > 0
+    ? Math.round(students.length / (students.length + leftCount) * 100) : 100;
+
+  // Avg check time (hours): checked_at - submitted_at
+  const checkedSubs = subs.filter(s => s.status === 'checked' && s.checked_at && s.submitted_at);
+  let avgCheckHours = null;
+  if (checkedSubs.length) {
+    const totalMs = checkedSubs.reduce((acc, s) => {
+      const diff = new Date(s.checked_at) - new Date(s.submitted_at);
+      return acc + (diff > 0 ? diff : 0);
+    }, 0);
+    avgCheckHours = Math.round(totalMs / checkedSubs.length / 3600000);
+  }
+
   // Payment status per student
   const d30ago = new Date(); d30ago.setDate(d30ago.getDate() - 30);
   const d30Str = d30ago.toISOString().slice(0, 10);
@@ -82,7 +97,9 @@ function calcGroupMetrics(groupId, assistantId) {
     students: students.length,
     leftCount,
     totalEver: allStudents.length,
+    retention,
     unchecked,
+    avgCheckHours,
     completionPct,
     advancedPct,
     advancedSubs: advancedSubs.length,
@@ -105,30 +122,30 @@ function statCard(icon, label, value, sub, accent) {
 }
 
 function groupCard(group, m) {
-  const retentionLabel = m.totalEver
-    ? `${m.students} активных / ${m.totalEver} всего (ушло: ${m.leftCount})`
-    : '—';
   const trialLabel = m.avgTrialScore !== null
     ? `${m.avgTrialScore} / 100${m.trialGrowth !== null ? ` <span style="color:${m.trialGrowth >= 0 ? 'var(--green)' : 'var(--red)'}">` +
       (m.trialGrowth >= 0 ? '▲' : '▼') + ` ${Math.abs(m.trialGrowth)}%</span>` : ''}`
     : '—';
 
   const completionColor = m.completionPct >= 80 ? 'var(--green)' : m.completionPct >= 50 ? 'var(--amber)' : 'var(--red)';
+  const retentionColor  = m.retention >= 90 ? 'var(--green)' : m.retention >= 70 ? 'var(--amber)' : 'var(--red)';
+  const checkColor      = m.avgCheckHours === null ? 'var(--muted)' : m.avgCheckHours <= 24 ? 'var(--green)' : m.avgCheckHours <= 48 ? 'var(--amber)' : 'var(--red)';
 
   return `<div class="card" style="padding:0;margin-bottom:12px;overflow:hidden">
     <div style="padding:12px 16px;background:var(--surface2);display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)">
       <div style="font-size:14px;font-weight:700">${group.name}</div>
       ${m.riskCount > 0 ? `<span class="b b-r"><i class="ti ti-alert-triangle"></i> ${m.riskCount} требуют внимания</span>` : `<span class="b b-g">Всё в порядке</span>`}
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0;padding:0">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:0;padding:0">
       <div style="padding:12px 16px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)">
-        <div style="font-size:11px;color:var(--muted)">Учеников</div>
-        <div style="font-size:18px;font-weight:700">${m.students}</div>
-        <div style="font-size:11px;color:var(--hint)">${retentionLabel}</div>
+        <div style="font-size:11px;color:var(--muted)">Retention</div>
+        <div style="font-size:18px;font-weight:700;color:${retentionColor}">${m.retention}%</div>
+        <div style="font-size:11px;color:var(--hint)">${m.students} акт. / ${m.totalEver} всего</div>
       </div>
       <div style="padding:12px 16px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)">
         <div style="font-size:11px;color:var(--muted)">Непроверенных ДЗ</div>
         <div style="font-size:18px;font-weight:700;color:${m.unchecked > 0 ? 'var(--amber)' : 'var(--green)'}">${m.unchecked}</div>
+        <div style="font-size:11px;color:${checkColor}">${m.avgCheckHours !== null ? 'Ср. проверка: ' + m.avgCheckHours + ' ч' : 'Нет данных'}</div>
       </div>
       <div style="padding:12px 16px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)">
         <div style="font-size:11px;color:var(--muted)">Выполнение ДЗ</div>
@@ -245,8 +262,13 @@ export async function renderCuratorDashPage() {
     unchecked: metrics.reduce((acc, x) => acc + x.m.unchecked, 0),
     riskCount: metrics.reduce((acc, x) => acc + x.m.riskCount, 0),
   };
-  const allRegularSubs = metrics.reduce((acc, x) => acc + x.m.completionPct, 0);
-  const avgCompletion = metrics.length ? Math.round(allRegularSubs / metrics.length) : 0;
+  const avgCompletion = metrics.length
+    ? Math.round(metrics.reduce((acc, x) => acc + x.m.completionPct, 0) / metrics.length) : 0;
+  const avgRetention = metrics.length
+    ? Math.round(metrics.reduce((acc, x) => acc + x.m.retention, 0) / metrics.length) : 100;
+  const checkMetrics = metrics.filter(x => x.m.avgCheckHours !== null);
+  const avgCheckHours = checkMetrics.length
+    ? Math.round(checkMetrics.reduce((acc, x) => acc + x.m.avgCheckHours, 0) / checkMetrics.length) : null;
   const avgAdvanced = metrics.filter(x => x.m.advancedSubs > 0).length
     ? Math.round(metrics.filter(x => x.m.advancedSubs > 0).reduce((acc, x) => acc + x.m.advancedPct, 0) / metrics.filter(x => x.m.advancedSubs > 0).length)
     : null;
@@ -273,7 +295,9 @@ export async function renderCuratorDashPage() {
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Общая статистика</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
         ${statCard('ti-users', 'Учеников', total.students, `${groups.length} групп`, 'var(--accent-mid)')}
+        ${statCard('ti-heart-rate-monitor', 'Retention', avgRetention + '%', 'Среднее по группам', avgRetention >= 90 ? 'var(--green)' : avgRetention >= 70 ? 'var(--amber)' : 'var(--red)')}
         ${statCard('ti-list-check', 'Непроверенных ДЗ', total.unchecked, 'Требуют проверки', total.unchecked > 0 ? 'var(--amber)' : 'var(--green)')}
+        ${statCard('ti-clock', 'Время проверки ДЗ', avgCheckHours !== null ? avgCheckHours + ' ч' : '—', 'Среднее, цель ≤ 24 ч', avgCheckHours === null ? 'var(--muted)' : avgCheckHours <= 24 ? 'var(--green)' : avgCheckHours <= 48 ? 'var(--amber)' : 'var(--red)')}
         ${statCard('ti-percentage', 'Выполнение ДЗ', avgCompletion + '%', 'Среднее по группам', avgCompletion >= 80 ? 'var(--green)' : avgCompletion >= 50 ? 'var(--amber)' : 'var(--red)')}
         ${statCard('ti-star', 'Сложные ДЗ', avgAdvanced !== null ? avgAdvanced + '%' : '—', 'Среднее по группам', 'var(--accent-mid)')}
         ${statCard('ti-school', 'Средний балл (пробники)', overallTrial !== null ? overallTrial + ' / 100' : '—', overallGrowth !== null ? `Динамика: ${growthStr}` : 'Нет данных для сравнения', 'var(--accent-mid)')}

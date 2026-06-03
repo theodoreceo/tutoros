@@ -136,6 +136,26 @@ function _render() {
   });
   const funnelTotal = funnelStudents.length || 1;
 
+  // Avg days lead → active
+  const convDays = becameActive
+    .map(s => {
+      const activeEvt = (s.status_history || []).find(h => h.status === 'active');
+      const created = s.first_contact_at || s.created_at;
+      if (!activeEvt || !created) return null;
+      const d = (new Date(activeEvt.date) - new Date(created)) / 86400000;
+      return d >= 0 ? d : null;
+    })
+    .filter(d => d !== null);
+  const avgConvDays = convDays.length
+    ? Math.round(convDays.reduce((a, b) => a + b, 0) / convDays.length) : null;
+
+  // Stale leads: status=lead, first_contact > 7 days ago
+  const d7ago = new Date(); d7ago.setDate(d7ago.getDate() - 7);
+  const d7str = d7ago.toISOString().slice(0, 10);
+  const staleLeads = students.filter(s =>
+    s.crm_status === 'lead' && (s.first_contact_at || s.created_at) <= d7str
+  );
+
   // Active trials
   const activeTrials = students.filter(s =>
     ['trial_scheduled', 'trial_done'].includes(s.crm_status)
@@ -154,11 +174,31 @@ function _render() {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:16px">
       ${_kpi('Новых лидов',           newLeads.length,                                    delta(newLeads.length, prevLeads.length),           'ti-user-plus',   '#2563eb')}
       ${_kpi('Новых учеников',        becameActive.length,                               delta(becameActive.length, prevBecameActive.length),  'ti-users',       '#16a34a')}
-      ${_kpi('Общая конверсия',       conversionRate + '%',                              '',                                                   'ti-trending-up', conversionRate > 20 ? '#16a34a' : '#d97706')}
+      ${_kpi('Общая конверсия',       conversionRate + '%',                              '',                                                   'ti-trending-up', conversionRate >= 30 ? '#16a34a' : conversionRate >= 15 ? '#d97706' : '#ef4444')}
+      ${_kpi('Срок конверсии',        avgConvDays !== null ? avgConvDays + ' дн.' : '—', '',                                                   'ti-hourglass',   avgConvDays === null ? '#64748b' : avgConvDays <= 14 ? '#16a34a' : avgConvDays <= 21 ? '#d97706' : '#ef4444')}
+      ${_kpi('Зависших лидов',        staleLeads.length,                                 '',                                                   'ti-clock-pause', staleLeads.length === 0 ? '#16a34a' : staleLeads.length <= 3 ? '#d97706' : '#ef4444')}
       ${_kpi('Расходы на рекламу',    totalMktSpend ? fmt(totalMktSpend) + ' ₽' : '—',  delta(totalMktSpend, prevMktSpend),                   'ti-speakerphone','#7c3aed')}
       ${_kpi('Стоимость привлечения', cpa ? fmt(cpa) + ' ₽' : '—',                      delta(cpa, prevCpa),                                  'ti-coin',        '#0891b2')}
-      ${_kpi('ROMI',                  romi !== null ? romi + '%' : '—',                  '',                                                   'ti-chart-line',  romi !== null && romi >= 0 ? '#16a34a' : '#ef4444')}
+      ${_kpi('ROMI',                  romi !== null ? romi + '%' : '—',                  '',                                                   'ti-chart-line',  romi !== null && romi >= 100 ? '#16a34a' : romi !== null && romi >= 0 ? '#d97706' : '#ef4444')}
     </div>
+
+    <!-- Stale leads list -->
+    ${staleLeads.length ? `
+    <div class="card" style="margin-bottom:16px;padding:14px 16px;border-left:3px solid #d97706">
+      <div style="font-size:12px;font-weight:700;color:#ca8a04;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+        <i class="ti ti-clock-pause"></i> Лиды без движения более 7 дней (${staleLeads.length})
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${staleLeads.map(s => {
+          const created = s.first_contact_at || s.created_at;
+          const days = created ? Math.floor((Date.now() - new Date(created)) / 86400000) : null;
+          return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer" data-action="openStudentDetail" data-id="${esc(s.id)}">
+            <div style="font-weight:600">${esc(s.name)}</div>
+            <div style="color:var(--muted);font-size:11px">${esc(s.source || '—')} · ${days !== null ? days + ' дн.' : '—'}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
 
     <!-- Step-by-step conversions -->
     <div class="card" style="margin-bottom:16px;padding:16px 20px">

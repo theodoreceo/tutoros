@@ -48,6 +48,7 @@ import {
 import { renderCuratorDashPage } from './pages/curator-dash.js';
 import { renderManagerDashPage } from './pages/manager-dash.js';
 import { renderMarketerDashPage, setMktPeriod } from './pages/marketer-dash.js';
+import { renderKpiOverviewPage } from './pages/kpi-overview.js';
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ async function init() {
   registerRenderer('curator_dash', renderCuratorDashPage);
   registerRenderer('manager_dash', renderManagerDashPage);
   registerRenderer('marketer_dash', renderMarketerDashPage);
+  registerRenderer('kpi_overview', renderKpiOverviewPage);
 
   const showSetup = (formFn) => {
     if (loadingEl) loadingEl.style.display = 'none';

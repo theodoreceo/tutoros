@@ -28,6 +28,7 @@ export const ALL_PAGES = [
   { id: 'curator_dash', label: 'Дашборд' },
   { id: 'manager_dash', label: 'Дашборд' },
   { id: 'marketer_dash', label: 'Дашборд' },
+  { id: 'kpi_overview',  label: 'KPI команды' },
 ];
 
 export const STATUS_CONFIG = {
