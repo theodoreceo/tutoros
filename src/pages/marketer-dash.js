@@ -1,6 +1,6 @@
 import { CACHE, ensureLoaded } from '../core/store.js';
 import { state } from '../core/state.js';
-import { fmt, fmtDate, esc, today } from '../utils/helpers.js';
+import { fmt, fmtDate, esc, today, dateStr } from '../utils/helpers.js';
 
 let _period = 30; // days
 
@@ -13,7 +13,7 @@ export function setMktPeriod(days) {
 }
 
 export async function renderMarketerDashPage() {
-  await ensureLoaded(['students', 'payments', 'expenses']);
+  await ensureLoaded(['students', 'payments', 'expenses', 'lessons']);
   const el = document.getElementById('pg-marketer_dash');
   if (!el) return;
 
@@ -259,53 +259,51 @@ function _render() {
       </div>
     </div>
 
-    <!-- Active trials -->
-    <div class="card">
-      <div style="font-size:13px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:6px">
-        <i class="ti ti-calendar-stats" style="color:var(--accent-mid)"></i>
-        Пробные уроки (${activeTrials.length})
-        <button class="btn btn-p btn-sm" style="margin-left:auto" data-action="openMktTrialPicker">
-          <i class="ti ti-plus"></i> Записать лида
+    <!-- Trial lessons widget -->
+    <div class="card" style="margin-bottom:0">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <i class="ti ti-calendar-check" style="color:#16a34a;font-size:16px"></i>
+        <div style="font-size:13px;font-weight:700">Пробные уроки</div>
+        <button class="btn btn-p btn-sm" style="margin-left:auto" data-action="navigate" data-pg="lessons_cal">
+          <i class="ti ti-calendar-event"></i> Открыть календарь
         </button>
       </div>
-      ${activeTrials.length ? `
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${activeTrials.map(s => {
-          const trialLesson = (CACHE.lessons || [])
-            .filter(l => (l.student_attendance || []).some(a => a.student_id === s.id))
-            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
-          const dateStr = trialLesson ? fmtDate(trialLesson.date) + (trialLesson.time ? ' · ' + trialLesson.time : '') : '—';
-          const isDone = s.crm_status === 'trial_done' || s.crm_status === 'trial';
-          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
-            <div style="flex:1;min-width:0">
-              <div style="font-size:13px;font-weight:600">${esc(s.name)}</div>
-              <div style="font-size:11px;color:var(--muted)">${esc(s.source || '—')} · ${dateStr}</div>
-            </div>
-            <span class="b ${isDone ? 'b-a' : 'b-bl'}" style="font-size:10px;white-space:nowrap">${isDone ? 'Проведён' : 'Назначен'}</span>
-            ${!isDone ? `<button class="btn btn-sm" data-action="openTrialFromCalendar" data-id="${esc(s.id)}" title="Изменить дату"><i class="ti ti-calendar-edit"></i></button>` : ''}
-            ${!isDone ? `<button class="btn btn-sm btn-p" data-action="openStatusDateModal" data-id="${esc(s.id)}" data-status="trial_done" title="Пробник проведён"><i class="ti ti-check"></i></button>` : ''}
-            <button class="btn btn-sm" data-action="openStudentDetail" data-id="${esc(s.id)}" title="Карточка"><i class="ti ti-user"></i></button>
-          </div>`;
-        }).join('')}
-      </div>` : '<div style="color:var(--muted);font-size:13px">Нет активных пробников</div>'}
+      ${(() => {
+        const trialLessons = (CACHE.lessons || [])
+          .filter(l => l.lesson_type === 'trial')
+          .sort((a, b) => (a.date + (a.start_time || '')).localeCompare(b.date + (b.start_time || '')));
+        const upcoming = trialLessons.filter(l => l.date >= today());
+        const past     = trialLessons.filter(l => l.date < today()).slice(-3).reverse();
 
-      <!-- Lead picker for scheduling trial -->
-      <div id="mkt-trial-picker" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px">Выберите лида для записи на пробный</div>
-        <div style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto">
-          ${(CACHE.students || []).filter(s => s.crm_status === 'lead').length
-            ? (CACHE.students || []).filter(s => s.crm_status === 'lead').map(s => `
-              <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
-                <div style="flex:1;font-size:13px;font-weight:500">${esc(s.name)}</div>
-                <div style="font-size:11px;color:var(--muted)">${esc(s.source || '—')}</div>
-                <button class="btn btn-sm btn-p" data-action="openTrialFromCalendar" data-id="${esc(s.id)}">
-                  <i class="ti ti-calendar-check"></i> Записать
-                </button>
-              </div>`).join('')
-            : '<div style="color:var(--muted);font-size:13px">Нет лидов в воронке</div>'
-          }
-        </div>
-      </div>
+        if (!trialLessons.length) return `
+          <div style="text-align:center;padding:20px 0;color:var(--muted)">
+            <i class="ti ti-calendar-plus" style="font-size:28px;opacity:.4"></i>
+            <div style="font-size:13px;margin-top:8px">Пробных уроков пока нет</div>
+            <div style="font-size:11px;margin-top:4px">Откройте календарь и нажмите на день</div>
+          </div>`;
+
+        const row = l => {
+          const leads = l.student_attendance || [];
+          const isPast = l.date < today();
+          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="min-width:70px;font-size:11px;font-weight:600;color:${isPast ? 'var(--muted)' : '#16a34a'}">${fmtDate(l.date)}${l.start_time ? ' · ' + l.start_time : ''}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(l.topic || 'Пробный урок')}</div>
+              <div style="font-size:11px;color:var(--muted)">${leads.length ? leads.map(a => esc(a.name)).join(', ') : 'Без лидов'}</div>
+            </div>
+            <span class="b" style="background:${isPast ? 'var(--surface2)' : '#dcfce7'};color:${isPast ? 'var(--muted)' : '#16a34a'};font-size:10px">${leads.length} лид.</span>
+          </div>`;
+        };
+
+        return `
+          ${upcoming.length ? `
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Предстоящие</div>
+            ${upcoming.map(row).join('')}` : ''}
+          ${past.length ? `
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:10px;margin-bottom:4px">Прошедшие</div>
+            ${past.map(row).join('')}` : ''}
+        `;
+      })()}
     </div>
   `;
 }

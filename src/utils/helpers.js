@@ -56,6 +56,6 @@ export const GROUP_COLORS = ['#2563eb','#16a34a','#d97706','#7c3aed','#db2777','
 
 export const ROLE_TYPES = {
   curator:  { label: 'Куратор',    icon: 'ti-school',       pages: ['curator_dash', 'groups', 'lessons_cal', 'homework', 'hw_students'], homePage: 'curator_dash' },
-  marketer: { label: 'Маркетолог', icon: 'ti-speakerphone', pages: ['marketer_dash', 'students', 'crm_students'], homePage: 'marketer_dash', canEdit: true },
+  marketer: { label: 'Маркетолог', icon: 'ti-speakerphone', pages: ['marketer_dash', 'students', 'crm_students', 'lessons_cal'], homePage: 'marketer_dash', canEdit: true },
   manager:  { label: 'Менеджер',   icon: 'ti-briefcase',    pages: ['manager_dash', 'students', 'crm_students', 'groups', 'lessons_cal', 'income', 'expenses', 'analytics', 'homework'], homePage: 'manager_dash' },
 };

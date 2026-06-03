@@ -35,6 +35,7 @@ import {
   openLessonFromCalendar, openLessonFormFromPicker, openLessonFormModal, toggleAttendance,
   setCalHwStatus,
   saveLessonForm, openLessonCard, deleteLesson as calDeleteLesson, exportICS, calSubscribe,
+  openTrialLessonModal, saveTrialLesson,
 } from './pages/calendar.js';
 import { renderIncome, openPaymentModal, savePayment, deletePayment } from './pages/income.js';
 import { renderExpenses, openExpenseModal, toggleChannelField, addExpenseCategory, saveExpense, deleteExpense } from './pages/expenses.js';
@@ -171,10 +172,6 @@ const ACTION_MAP = {
   confirmStatusChange: () => confirmStatusChange(),
   openTrialFromCalendar: (el) => openTrialFromCalendar(el.dataset.id),
   scheduleTrialLesson: () => scheduleTrialLesson(),
-  openMktTrialPicker: () => {
-    const el = document.getElementById('mkt-trial-picker');
-    if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
-  },
   openPaymentModalFor: (el) => openPaymentModalFor(el.dataset.id),
   addStudentNote: (el) => addStudentNote(el.dataset.id),
   selectChip: (el) => selectChip(el.dataset.field, el.dataset.value, el),
@@ -213,6 +210,8 @@ const ACTION_MAP = {
   exportICS: () => exportICS(),
   calSubscribe: () => calSubscribe(),
   setCalHwStatus: (el) => setCalHwStatus(el.dataset.id, el.dataset.status),
+  openTrialLessonModal: (el) => openTrialLessonModal(el.dataset.date, el.dataset.id || undefined),
+  saveTrialLesson: (el) => saveTrialLesson(el.dataset.id || undefined),
 
   // Income
   openPaymentModal: () => openPaymentModal(),

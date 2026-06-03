@@ -115,10 +115,17 @@ export async function renderCalendar() {
         const timeStr = `${l.start_time || '?'} – ${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
         const rName = roleName(l.led_by);
         const isConsult = l.lesson_type === 'consultation';
-        return `<div class="cal-event${past ? ' past' : ''}${isConsult ? ' consult' : ''}" style="top:${top}px;height:${h}px;background:${isConsult ? '#7c3aed18' : gc+'18'};color:${isConsult ? '#7c3aed' : gc};border-left-color:${isConsult ? '#7c3aed' : gc};border-left-style:${isConsult ? 'dashed' : 'solid'}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
-          <div class="cal-event-title">${esc(l.topic) || 'Занятие'}</div>
-          <div class="cal-event-time">${timeStr} · ${gr ? esc(gr.name).slice(0, 14) : ''}</div>
-          ${rName ? `<div style="font-size:9px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px"><i class="ti ti-user-check" style="font-size:8px"></i> ${rName}</div>` : ''}
+        const isTrial  = l.lesson_type === 'trial';
+        const evColor  = isTrial ? '#16a34a' : isConsult ? '#7c3aed' : gc;
+        const evBorder = isTrial ? 'solid' : isConsult ? 'dashed' : 'solid';
+        const trialLeads = isTrial ? (l.student_attendance || []) : [];
+        const trialSub   = isTrial
+          ? (trialLeads.length ? trialLeads.map(a => esc(a.name || '')).join(', ') : 'Без лидов')
+          : (gr ? esc(gr.name).slice(0, 14) : '');
+        return `<div class="cal-event${past ? ' past' : ''}${isConsult ? ' consult' : ''}" style="top:${top}px;height:${h}px;background:${evColor}18;color:${evColor};border-left-color:${evColor};border-left-style:${evBorder}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
+          <div class="cal-event-title">${isTrial ? '<i class="ti ti-user-check" style="font-size:9px"></i> ' : ''}${esc(l.topic) || 'Занятие'}</div>
+          <div class="cal-event-time">${timeStr} · ${trialSub}</div>
+          ${!isTrial && rName ? `<div style="font-size:9px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px"><i class="ti ti-user-check" style="font-size:8px"></i> ${rName}</div>` : ''}
           ${past ? `<div class="cal-event-past">✓ прошло</div>` : ''}
         </div>`;
       }).join('');
@@ -203,8 +210,10 @@ export async function renderCalendar() {
         const gc = roleColor(l.led_by) || groupColor(l.group_id);
         const past = lessonIsPast(l);
         const isConsult = l.lesson_type === 'consultation';
-        return `<span class="cal-mpill${past ? ' past' : ''}" style="background:${isConsult ? '#7c3aed20' : gc+'20'};color:${past ? 'var(--muted)' : (isConsult ? '#7c3aed' : gc)};border-left:2px ${isConsult ? 'dashed' : 'solid'} ${isConsult ? '#7c3aed' : gc}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
-                  ${past ? '✓ ' : ''}<span style="overflow:hidden;text-overflow:ellipsis">${l.start_time || ''} ${esc(l.topic) || 'Занятие'}</span>
+        const isTrial  = l.lesson_type === 'trial';
+        const pillColor = isTrial ? '#16a34a' : isConsult ? '#7c3aed' : gc;
+        return `<span class="cal-mpill${past ? ' past' : ''}" style="background:${pillColor}20;color:${past ? 'var(--muted)' : pillColor};border-left:2px ${isConsult ? 'dashed' : 'solid'} ${pillColor}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
+                  ${past ? '✓ ' : ''}${isTrial ? '🎯 ' : ''}<span style="overflow:hidden;text-overflow:ellipsis">${l.start_time || ''} ${esc(l.topic) || 'Занятие'}</span>
                 </span>`;
       }).join('')}
               ${dayLessons.length > 3 ? `<span style="font-size:10px;color:var(--hint)">+${dayLessons.length - 3} ещё</span>` : ''}
@@ -219,6 +228,13 @@ export async function renderCalendar() {
 export function openLessonFromCalendar(date) {
   const dateVal = date || dateStr(new Date());
   const role = effectiveRole();
+
+  // Marketer goes straight to trial lesson form
+  if (role.role_type === 'marketer') {
+    openTrialLessonModal(dateVal);
+    return;
+  }
+
   const curatorGroupIds = _getCuratorGroupIds(role);
   const groups = curatorGroupIds
     ? (CACHE.groups || []).filter(g => curatorGroupIds.has(g.id))
@@ -241,6 +257,120 @@ export function openLessonFromCalendar(date) {
       <button class="btn btn-p" data-action="openLessonFormFromPicker" data-date="${esc(dateVal)}">Далее →</button>
     </div>
   </div>`);
+}
+
+export function openTrialLessonModal(date, existingId) {
+  const existing = existingId ? (CACHE.lessons || []).find(x => x.id === existingId) : null;
+  const todayStr = date || dateStr(new Date());
+  const leads = (CACHE.students || []).filter(s => ['lead', 'trial_scheduled', 'trial_done'].includes(s.crm_status));
+  const attachedIds = new Set((existing?.student_attendance || []).map(a => a.student_id));
+
+  const leadCheckboxes = leads.length
+    ? leads.map(s => `
+      <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r);cursor:pointer" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+        <input type="checkbox" name="trial-lead-pick" value="${esc(s.id)}" style="accent-color:#16a34a" ${attachedIds.has(s.id) ? 'checked' : ''}>
+        <span style="flex:1;font-size:13px">${esc(s.name)}</span>
+        <span style="font-size:11px;color:var(--muted)">${esc(s.source || '—')}</span>
+      </label>`).join('')
+    : '<div style="font-size:13px;color:var(--muted);padding:8px 0">Нет лидов в воронке</div>';
+
+  modal(`<div class="modal" style="max-width:480px">
+    <div class="modal-title"><i class="ti ti-calendar-check" style="color:#16a34a;margin-right:6px"></i>${existing ? 'Редактировать пробный урок' : 'Новый пробный урок'}</div>
+    <div class="form-row" style="margin-bottom:10px">
+      <div class="fg"><label>Дата</label><input class="fi" type="date" id="tl-date" value="${existing?.date || todayStr}"></div>
+      <div class="fg"><label>Время</label><input class="fi" type="time" id="tl-time" value="${existing?.start_time || '18:00'}"></div>
+      <div class="fg"><label>Длительность</label>
+        <select class="fi" id="tl-dur">
+          <option value="45" ${existing?.duration == 45 ? 'selected' : ''}>45 мин</option>
+          <option value="60" ${(!existing?.duration || existing?.duration == 60) ? 'selected' : ''}>1 час</option>
+          <option value="90" ${existing?.duration == 90 ? 'selected' : ''}>1.5 ч</option>
+        </select>
+      </div>
+    </div>
+    <div class="fg" style="margin-bottom:12px">
+      <label>Тема / название</label>
+      <input class="fi" id="tl-topic" value="${esc(existing?.topic || 'Пробный урок')}" placeholder="Пробный урок">
+    </div>
+    <div class="fg" style="margin-bottom:12px">
+      <label><i class="ti ti-video" style="font-size:11px"></i> Ссылка на занятие</label>
+      <input class="fi" id="tl-link" value="${esc(existing?.lesson_link || '')}" placeholder="https://...">
+    </div>
+    <div class="fg" style="margin-bottom:4px">
+      <label>Лиды на пробный урок</label>
+      <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r);margin-top:4px">
+        ${leadCheckboxes}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-action="closeModal">Отмена</button>
+      <button class="btn btn-p" data-action="saveTrialLesson" data-id="${esc(existingId || '')}">Сохранить</button>
+    </div>
+  </div>`);
+}
+
+export async function saveTrialLesson(existingId) {
+  const date = (document.getElementById('tl-date') || {}).value;
+  if (!date) { toast('Укажите дату'); return; }
+  const start_time = (document.getElementById('tl-time') || {}).value || '18:00';
+  const duration = +((document.getElementById('tl-dur') || {}).value || 60);
+  const topic = (document.getElementById('tl-topic') || {}).value || 'Пробный урок';
+  const lesson_link = (document.getElementById('tl-link') || {}).value || '';
+  const selectedLeadIds = [...document.querySelectorAll('input[name="trial-lead-pick"]:checked')].map(el => el.value);
+
+  const student_attendance = selectedLeadIds.map(id => {
+    const s = (CACHE.students || []).find(x => x.id === id);
+    return { student_id: id, name: s?.name || '', present: true };
+  });
+
+  const lesson = {
+    id: existingId || uid(),
+    group_id: '',
+    date, start_time, duration, topic,
+    lesson_link, materials_link: '', led_by: '', notes: '',
+    lesson_type: 'trial',
+    student_attendance,
+    task_ids: [],
+    created_at: existingId
+      ? ((CACHE.lessons || []).find(x => x.id === existingId) || {}).created_at || new Date().toISOString()
+      : new Date().toISOString(),
+  };
+
+  try {
+    if (existingId) await dbUpdate('lessons', existingId, lesson);
+    else await dbInsert('lessons', lesson);
+
+    // Update lead statuses: newly attached → trial_scheduled, detached → back to lead
+    const existing = existingId ? (CACHE.lessons || []).find(x => x.id === existingId) : null;
+    const prevIds = new Set((existing?.student_attendance || []).map(a => a.student_id));
+    const newIds = new Set(selectedLeadIds);
+
+    for (const id of newIds) {
+      if (!prevIds.has(id)) {
+        const s = (CACHE.students || []).find(x => x.id === id);
+        if (s && s.crm_status === 'lead') {
+          const history = [...(s.status_history || []), { status: 'trial_scheduled', date }];
+          await dbUpdate('students', id, { crm_status: 'trial_scheduled', status_history: history });
+        }
+      }
+    }
+    for (const id of prevIds) {
+      if (!newIds.has(id)) {
+        const s = (CACHE.students || []).find(x => x.id === id);
+        if (s && s.crm_status === 'trial_scheduled') {
+          const history = [...(s.status_history || []), { status: 'lead', date }];
+          await dbUpdate('students', id, { crm_status: 'lead', status_history: history });
+        }
+      }
+    }
+
+    await addHistoryEntry(existingId ? 'update' : 'insert',
+      `${existingId ? 'Изменён' : 'Добавлен'} пробный урок: ${topic} · ${date} · лидов: ${selectedLeadIds.length}`,
+      'lesson', lesson.id, null);
+
+    closeModal();
+    renderCalendar();
+    toast(existingId ? 'Пробный урок обновлён' : 'Пробный урок добавлен');
+  } catch (e) { toast('Ошибка: ' + e.message); }
 }
 
 export function openLessonFormFromPicker(dateVal) {
@@ -417,18 +547,43 @@ export function openLessonCard(lid) {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
       <div>
         <div style="font-size:15px;font-weight:700">${esc(l.topic) || 'Без темы'}</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:3px">${gr ? esc(gr.name) : ''} · ${l.date} · ${timeStr}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">${l.lesson_type === 'trial' ? 'Пробный урок' : gr ? esc(gr.name) : ''} · ${l.date} · ${timeStr}</div>
         ${l.lesson_type === 'consultation' ? `<span class="b" style="background:#7c3aed18;color:#7c3aed;font-size:10px;margin-top:4px;display:inline-block"><i class="ti ti-users-group" style="font-size:10px"></i> Консультация</span>` : ''}
-        ${isPast ? `<span style="font-size:11px;color:var(--hint);font-style:italic">✓ занятие прошло</span>` : `<span class="b b-g" style="font-size:10px">Предстоящее</span>`}
+        ${l.lesson_type === 'trial' ? `<span class="b" style="background:#dcfce7;color:#16a34a;font-size:10px;margin-top:4px;display:inline-block"><i class="ti ti-user-check" style="font-size:10px"></i> Пробный урок</span>` : ''}
+        ${isPast ? `<span style="font-size:11px;color:var(--hint);font-style:italic;margin-left:4px">✓ прошло</span>` : `<span class="b b-g" style="font-size:10px;margin-left:4px">Предстоящее</span>`}
       </div>
       <div style="display:flex;gap:6px">
-        ${role.isOwner || role.canEdit ? `<button class="btn btn-sm" data-action="openLessonFormModal" data-date="${esc(l.date)}" data-group-id="${esc(l.group_id)}" data-id="${esc(l.id)}"><i class="ti ti-edit"></i></button><button class="btn btn-sm btn-icon" data-action="calDeleteLesson" data-id="${esc(l.id)}"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
+        ${role.isOwner || role.canEdit
+          ? l.lesson_type === 'trial'
+            ? `<button class="btn btn-sm" data-action="openTrialLessonModal" data-date="${esc(l.date)}" data-id="${esc(l.id)}"><i class="ti ti-edit"></i></button>`
+            : `<button class="btn btn-sm" data-action="openLessonFormModal" data-date="${esc(l.date)}" data-group-id="${esc(l.group_id)}" data-id="${esc(l.id)}"><i class="ti ti-edit"></i></button>`
+          : ''}
+        ${role.isOwner || role.canEdit ? `<button class="btn btn-sm btn-icon" data-action="calDeleteLesson" data-id="${esc(l.id)}"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
         <button class="btn" data-action="closeModal"><i class="ti ti-x"></i></button>
       </div>
     </div>
-    ${l.led_by ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px"><i class="ti ti-user-check" style="font-size:11px"></i> Ведёт: <b>${l.led_by === 'owner' ? 'Владелец' : esc(((CACHE.roles || []).find(r => r.id === l.led_by) || {}).name || l.led_by)}</b></div>` : ''}
+    ${l.lesson_type === 'trial' ? (() => {
+      const leads = (l.student_attendance || []);
+      return leads.length
+        ? `<div style="margin-bottom:12px">
+            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Записанные лиды</div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              ${leads.map(a => {
+                const s = (CACHE.students || []).find(x => x.id === a.student_id);
+                return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border-radius:6px;font-size:13px">
+                  <i class="ti ti-user" style="color:#16a34a;font-size:14px"></i>
+                  <span style="font-weight:500">${esc(a.name || s?.name || '—')}</span>
+                  <span style="font-size:11px;color:var(--muted);margin-left:auto">${esc(s?.source || '—')}</span>
+                  <span class="b ${s?.crm_status === 'trial_done' ? 'b-a' : 'b-bl'}" style="font-size:10px">${s?.crm_status === 'trial_done' ? 'Проведён' : 'Назначен'}</span>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`
+        : `<div style="font-size:13px;color:var(--muted);margin-bottom:12px">Нет записанных лидов</div>`;
+    })() : ''}
+    ${l.lesson_type !== 'trial' && l.led_by ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px"><i class="ti ti-user-check" style="font-size:11px"></i> Ведёт: <b>${l.led_by === 'owner' ? 'Владелец' : esc(((CACHE.roles || []).find(r => r.id === l.led_by) || {}).name || l.led_by)}</b></div>` : ''}
     ${(l.lesson_link || l.materials_link) ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-      ${l.lesson_link ? `<a href="${l.lesson_link}" target="_blank" class="btn btn-sm"><i class="ti ti-video"></i> Запись занятия</a>` : ''}
+      ${l.lesson_link ? `<a href="${l.lesson_link}" target="_blank" class="btn btn-sm"><i class="ti ti-video"></i> ${l.lesson_type === 'trial' ? 'Ссылка на урок' : 'Запись занятия'}</a>` : ''}
       ${l.materials_link ? `<a href="${l.materials_link}" target="_blank" class="btn btn-sm"><i class="ti ti-books"></i> Материалы</a>` : ''}
     </div>` : ''}
     ${l.notes ? `<div style="font-size:13px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px"><i class="ti ti-notes"></i> ${esc(l.notes)}</div>` : ''}
