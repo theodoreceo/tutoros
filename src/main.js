@@ -171,6 +171,10 @@ const ACTION_MAP = {
   confirmStatusChange: () => confirmStatusChange(),
   openTrialFromCalendar: (el) => openTrialFromCalendar(el.dataset.id),
   scheduleTrialLesson: () => scheduleTrialLesson(),
+  openMktTrialPicker: () => {
+    const el = document.getElementById('mkt-trial-picker');
+    if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+  },
   openPaymentModalFor: (el) => openPaymentModalFor(el.dataset.id),
   addStudentNote: (el) => addStudentNote(el.dataset.id),
   selectChip: (el) => selectChip(el.dataset.field, el.dataset.value, el),

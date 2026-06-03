@@ -202,7 +202,11 @@ export async function renderPipeline() {
             : s.reg_token
               ? `<span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer" data-action="copyRegToken" data-token="${esc(s.reg_token)}" onclick="event.stopPropagation()" title="Скопировать код ${esc(s.reg_token)}"><i class="ti ti-brand-telegram" style="color:var(--muted);font-size:11px"></i><code style="font-size:10px;color:var(--muted)">${esc(s.reg_token)}</code></span>`
               : '';
-          return `<div class="pipeline-card ${riskCls}" draggable="true" data-action="openStudentDetail" data-id="${esc(s.id)}">
+          const isMarketer = !role.isOwner && role.role_type === 'marketer';
+          const trialBtn = (isMarketer || role.isOwner) && stage.id === 'lead'
+            ? `<button class="btn btn-sm btn-p" style="width:100%;margin-top:6px;font-size:11px;justify-content:center" data-action="openTrialFromCalendar" data-id="${esc(s.id)}" onclick="event.stopPropagation()"><i class="ti ti-calendar-check"></i> Записать на пробный</button>`
+            : '';
+          return `<div class="pipeline-card ${riskCls}" draggable="${!isMarketer}" data-action="openStudentDetail" data-id="${esc(s.id)}">
             <div class="pipeline-card-name">${esc(s.name)}</div>
             <div style="font-size:11px;color:var(--muted)">${esc(s.source || '')} · ${s.grade || ''}кл</div>
             <div class="pipeline-card-meta">
@@ -210,6 +214,7 @@ export async function renderPipeline() {
               ${level !== 'low' ? `<span class="risk-badge ${level}" style="font-size:9px;padding:1px 5px">${reasons[0] || ''}</span>` : ''}
               ${tgIcon}
             </div>
+            ${trialBtn}
           </div>`;
         }).join('') : `<div class="pipeline-empty">Нет</div>`}
         ${role.isOwner && !['stopped','exam_passed','left'].includes(stage.id) ? `<div style="margin-top:4px"><button class="btn btn-sm" style="width:100%;justify-content:center;font-size:11px;color:var(--hint)" data-action="openStudentModal"><i class="ti ti-plus"></i></button></div>` : ''}

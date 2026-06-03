@@ -1,6 +1,6 @@
 import { CACHE, ensureLoaded } from '../core/store.js';
 import { state } from '../core/state.js';
-import { fmt, fmtDate, esc } from '../utils/helpers.js';
+import { fmt, fmtDate, esc, today } from '../utils/helpers.js';
 
 let _period = 30; // days
 
@@ -263,17 +263,49 @@ function _render() {
     <div class="card">
       <div style="font-size:13px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:6px">
         <i class="ti ti-calendar-stats" style="color:var(--accent-mid)"></i>
-        Активные пробники (${activeTrials.length})
+        Пробные уроки (${activeTrials.length})
+        <button class="btn btn-p btn-sm" style="margin-left:auto" data-action="openMktTrialPicker">
+          <i class="ti ti-plus"></i> Записать лида
+        </button>
       </div>
-      ${activeTrials.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${activeTrials.map(s => `
-          <div style="background:var(--surface2,var(--surface));border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px">
-            <div style="font-weight:600">${esc(s.name)}</div>
-            <div style="color:var(--muted);font-size:11px">${esc(s.source || '—')}</div>
-            <span class="b b-bl" style="font-size:10px;margin-top:4px;display:inline-block">${s.crm_status === 'trial_scheduled' ? 'Пробник назначен' : 'Пробник проведён'}</span>
-          </div>
-        `).join('')}
+      ${activeTrials.length ? `
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${activeTrials.map(s => {
+          const trialLesson = (CACHE.lessons || [])
+            .filter(l => (l.student_attendance || []).some(a => a.student_id === s.id))
+            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+          const dateStr = trialLesson ? fmtDate(trialLesson.date) + (trialLesson.time ? ' · ' + trialLesson.time : '') : '—';
+          const isDone = s.crm_status === 'trial_done' || s.crm_status === 'trial';
+          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600">${esc(s.name)}</div>
+              <div style="font-size:11px;color:var(--muted)">${esc(s.source || '—')} · ${dateStr}</div>
+            </div>
+            <span class="b ${isDone ? 'b-a' : 'b-bl'}" style="font-size:10px;white-space:nowrap">${isDone ? 'Проведён' : 'Назначен'}</span>
+            ${!isDone ? `<button class="btn btn-sm" data-action="openTrialFromCalendar" data-id="${esc(s.id)}" title="Изменить дату"><i class="ti ti-calendar-edit"></i></button>` : ''}
+            ${!isDone ? `<button class="btn btn-sm btn-p" data-action="openStatusDateModal" data-id="${esc(s.id)}" data-status="trial_done" title="Пробник проведён"><i class="ti ti-check"></i></button>` : ''}
+            <button class="btn btn-sm" data-action="openStudentDetail" data-id="${esc(s.id)}" title="Карточка"><i class="ti ti-user"></i></button>
+          </div>`;
+        }).join('')}
       </div>` : '<div style="color:var(--muted);font-size:13px">Нет активных пробников</div>'}
+
+      <!-- Lead picker for scheduling trial -->
+      <div id="mkt-trial-picker" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:10px">Выберите лида для записи на пробный</div>
+        <div style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto">
+          ${(CACHE.students || []).filter(s => s.crm_status === 'lead').length
+            ? (CACHE.students || []).filter(s => s.crm_status === 'lead').map(s => `
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px">
+                <div style="flex:1;font-size:13px;font-weight:500">${esc(s.name)}</div>
+                <div style="font-size:11px;color:var(--muted)">${esc(s.source || '—')}</div>
+                <button class="btn btn-sm btn-p" data-action="openTrialFromCalendar" data-id="${esc(s.id)}">
+                  <i class="ti ti-calendar-check"></i> Записать
+                </button>
+              </div>`).join('')
+            : '<div style="color:var(--muted);font-size:13px">Нет лидов в воронке</div>'
+          }
+        </div>
+      </div>
     </div>
   `;
 }

@@ -11,7 +11,7 @@ export function buildRole(role) {
     return { ...role, isOwner: true, canEdit: true, pages: ALL_PAGES.map(p => p.id) };
   }
   const rt = ROLE_TYPES[role?.role_type];
-  return { ...role, isOwner: false, ...(rt ? { pages: rt.pages } : {}) };
+  return { ...role, isOwner: false, ...(rt ? { pages: rt.pages, canEdit: rt.canEdit || role.canEdit || false } : {}) };
 }
 
 // ── UI ────────────────────────────────────────────────────────────────────────
