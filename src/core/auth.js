@@ -45,6 +45,15 @@ export function applyRoleUI(role) {
 
   document.querySelectorAll('.owner-only').forEach(el => el.style.display = role.isOwner ? '' : 'none');
   document.querySelectorAll('.edit-only').forEach(el => el.style.display = (role.canEdit || role.isOwner) ? '' : 'none');
+
+  // Two lessons_cal sidebar items: marketing (marketer only) and studies (everyone else)
+  const mktCal   = document.querySelector('.sb-item[data-pg="lessons_cal"][data-sb-section="marketing"]');
+  const studyCal = document.querySelector('.sb-item[data-pg="lessons_cal"][data-sb-section="studies"]');
+  const isMarketer = role.role_type === 'marketer';
+  if (mktCal)   mktCal.style.display   = isMarketer ? '' : 'none';
+  if (studyCal) studyCal.style.display = isMarketer ? 'none' : (role.isOwner || (role.pages || []).includes('lessons_cal') ? '' : 'none');
+
+  document.querySelectorAll('.non-marketer-only').forEach(el => el.style.display = isMarketer ? 'none' : '');
 }
 
 export function devSwitchRole(id) {

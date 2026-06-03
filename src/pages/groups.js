@@ -43,10 +43,7 @@ export async function renderGroups() {
         </div>
       </div>
       <div style="display:flex;gap:16px;align-items:center;margin-bottom:10px">
-        <div style="flex:1">
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px"><span>Заполненность</span><span>${members.length}/${gr.capacity || '∞'} уч.</span></div>
-          <div class="prog"><div class="prog-f" style="width:${fillPct}%;background:${fillPct > 85 ? 'var(--red)' : 'var(--accent-mid)'}"></div></div>
-        </div>
+        <div style="font-size:12px;color:var(--muted);white-space:nowrap"><i class="ti ti-users" style="font-size:11px"></i> ${members.length} уч.</div>
         <div style="font-size:11px;color:var(--muted);white-space:nowrap"><i class="ti ti-notebook" style="font-size:11px"></i> ${lessons.length} зан.</div>
         ${lastLesson ? `<div style="font-size:11px;color:var(--muted);white-space:nowrap"><i class="ti ti-calendar" style="font-size:11px"></i> ${fmtDate(lastLesson.date)}</div>` : ''}
       </div>
@@ -241,7 +238,7 @@ export function renderLessonJournal(lessons) {
         ${l.hw === 'assigned' ? `<span class="lesson-chip-tag chip-hw"><i class="ti ti-home" style="font-size:10px"></i> ДЗ дано</span>` : ''}
       </div>
       <div class="lesson-meta">
-        ${absentNames.length ? absentNames.map(n => `<span class="absent-chip"><i class="ti ti-user-off"></i> ${n}</span>`).join('') : `<span style="font-size:11px;color:var(--muted)"><i class="ti ti-users"></i> Все присутствовали</span>`}
+        ${absentNames.length ? absentNames.map(n => `<span class="absent-chip"><i class="ti ti-user-off"></i> ${n}</span>`).join('') : ''}
       </div>
       ${l.notes ? `<div style="margin-top:8px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px"><i class="ti ti-notes" style="font-size:11px"></i> ${esc(l.notes)}</div>` : ''}
       ${hwBlock}

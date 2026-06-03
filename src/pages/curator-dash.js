@@ -134,11 +134,11 @@ function groupCard(group, m) {
   return `<div class="card" style="padding:0;margin-bottom:12px;overflow:hidden">
     <div style="padding:12px 16px;background:var(--surface2);display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)">
       <div style="font-size:14px;font-weight:700">${group.name}</div>
-      ${m.riskCount > 0 ? `<span class="b b-r"><i class="ti ti-alert-triangle"></i> ${m.riskCount} требуют внимания</span>` : `<span class="b b-g">Всё в порядке</span>`}
+      ${m.riskCount > 0 ? `<span class="b b-r"><i class="ti ti-alert-triangle"></i> ${m.riskCount} требуют внимания</span>` : ''}
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:0;padding:0">
       <div style="padding:12px 16px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)">
-        <div style="font-size:11px;color:var(--muted)">Retention</div>
+        <div style="font-size:11px;color:var(--muted)">Удержание</div>
         <div style="font-size:18px;font-weight:700;color:${retentionColor}">${m.retention}%</div>
         <div style="font-size:11px;color:var(--hint)">${m.students} акт. / ${m.totalEver} всего</div>
       </div>
@@ -295,7 +295,7 @@ export async function renderCuratorDashPage() {
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Общая статистика</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
         ${statCard('ti-users', 'Учеников', total.students, `${groups.length} групп`, 'var(--accent-mid)')}
-        ${statCard('ti-heart-rate-monitor', 'Retention', avgRetention + '%', 'Среднее по группам', avgRetention >= 90 ? 'var(--green)' : avgRetention >= 70 ? 'var(--amber)' : 'var(--red)')}
+        ${statCard('ti-heart-rate-monitor', 'Удержание', avgRetention + '%', 'Среднее по группам', avgRetention >= 90 ? 'var(--green)' : avgRetention >= 70 ? 'var(--amber)' : 'var(--red)')}
         ${statCard('ti-list-check', 'Непроверенных ДЗ', total.unchecked, 'Требуют проверки', total.unchecked > 0 ? 'var(--amber)' : 'var(--green)')}
         ${statCard('ti-clock', 'Время проверки ДЗ', avgCheckHours !== null ? avgCheckHours + ' ч' : '—', 'Среднее, цель ≤ 24 ч', avgCheckHours === null ? 'var(--muted)' : avgCheckHours <= 24 ? 'var(--green)' : avgCheckHours <= 48 ? 'var(--amber)' : 'var(--red)')}
         ${statCard('ti-percentage', 'Выполнение ДЗ', avgCompletion + '%', 'Среднее по группам', avgCompletion >= 80 ? 'var(--green)' : avgCompletion >= 50 ? 'var(--amber)' : 'var(--red)')}
@@ -308,7 +308,6 @@ export async function renderCuratorDashPage() {
     <div style="font-size:12px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">По группам</div>
     ${metrics.map(({ group, m }) => groupCard(group, m)).join('')}
 
-    ${_renderWeekLessons(groups, CACHE.lessons || [])}
     ${_renderHwBacklog(groups, CACHE.homework_submissions || [], CACHE.homework_assignments || [])}
   `;
 }

@@ -204,7 +204,7 @@ export async function renderPipeline() {
               : '';
           const isMarketer = !role.isOwner && role.role_type === 'marketer';
           const trialBtn = (isMarketer || role.isOwner) && stage.id === 'lead'
-            ? `<button class="btn btn-sm btn-p" style="width:100%;margin-top:6px;font-size:11px;justify-content:center" data-action="openTrialFromCalendar" data-id="${esc(s.id)}" onclick="event.stopPropagation()"><i class="ti ti-calendar-check"></i> Записать на пробный</button>`
+            ? `<button class="btn btn-sm btn-p" style="width:100%;margin-top:6px;font-size:11px;justify-content:center" data-action="openTrialFromCalendar" data-id="${esc(s.id)}"><i class="ti ti-calendar-check"></i> Записать на пробный</button>`
             : '';
           return `<div class="pipeline-card ${riskCls}" draggable="${!isMarketer}" data-action="openStudentDetail" data-id="${esc(s.id)}">
             <div class="pipeline-card-name">${esc(s.name)}</div>

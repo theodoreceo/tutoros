@@ -58,10 +58,123 @@ function getWeekDays(anchor) {
 
 function isSameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
 
+function _timeToMin(t) {
+  if (!t) return 0;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+
+function _assignColumns(lessons) {
+  if (!lessons.length) return { colOf: {}, totalOf: {} };
+  const sorted = [...lessons].sort((a, b) => _timeToMin(a.start_time) - _timeToMin(b.start_time));
+  const colOf = {};
+  const colEnd = [];
+  for (const l of sorted) {
+    const s = _timeToMin(l.start_time);
+    const e = s + (l.duration || 60);
+    let c = colEnd.findIndex(end => end <= s);
+    if (c === -1) c = colEnd.length;
+    colOf[l.id] = c;
+    colEnd[c] = e;
+  }
+  const totalOf = {};
+  for (const l of sorted) {
+    const s = _timeToMin(l.start_time);
+    const e = s + (l.duration || 60);
+    const overlapping = sorted.filter(o => o.id !== l.id && _timeToMin(o.start_time) < e && (_timeToMin(o.start_time) + (o.duration || 60)) > s);
+    totalOf[l.id] = Math.max(colOf[l.id], ...overlapping.map(o => colOf[o.id]), 0) + 1;
+  }
+  return { colOf, totalOf };
+}
+
+function _setupDragCreate(container, CAL_START, HOUR_PX, role) {
+  const body = container.querySelector('.cal-body');
+  if (!body) return;
+
+  let _active = false, _ghost = null, _startMin = 0, _colDate = '';
+
+  body.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    const col = e.target.closest('.cal-day-col');
+    if (!col) return;
+    if (e.target.closest('[data-action]')) return;
+    _colDate = col.dataset.id || '';
+    const rect = col.getBoundingClientRect();
+    const y = e.clientY - rect.top + body.scrollTop;
+    _startMin = Math.round(y / HOUR_PX * 60 / 15) * 15;
+    _active = true;
+
+    _ghost = document.createElement('div');
+    _ghost.style.cssText = `position:absolute;top:${_startMin/60*HOUR_PX}px;height:${HOUR_PX}px;left:2px;right:2px;background:var(--accent-mid);opacity:.25;border-radius:6px;pointer-events:none;z-index:50;border-left:3px solid var(--accent-mid);`;
+    col.style.position = 'relative';
+    col.appendChild(_ghost);
+    e.preventDefault();
+  });
+
+  body.addEventListener('mousemove', (e) => {
+    if (!_active || !_ghost) return;
+    const col = _ghost.parentElement;
+    const rect = col.getBoundingClientRect();
+    const y = e.clientY - rect.top + body.scrollTop;
+    const endMin = Math.max(_startMin + 15, Math.round(y / HOUR_PX * 60 / 15) * 15);
+    _ghost.style.top = `${_startMin / 60 * HOUR_PX}px`;
+    _ghost.style.height = `${Math.max(HOUR_PX / 4, (endMin - _startMin) / 60 * HOUR_PX)}px`;
+  });
+
+  const _finish = (e) => {
+    if (!_active) return;
+    _active = false;
+    if (!_ghost) return;
+    const col = _ghost.parentElement;
+    const rect = col.getBoundingClientRect();
+    const y = e.clientY - rect.top + body.scrollTop;
+    const endMin = Math.max(_startMin + 15, Math.round(y / HOUR_PX * 60 / 15) * 15);
+    const durationMin = endMin - _startMin;
+    _ghost.remove(); _ghost = null;
+
+    if (durationMin < 10) return;
+
+    const totalStart = CAL_START * 60 + _startMin;
+    const hh = String(Math.floor(totalStart / 60)).padStart(2, '0');
+    const mm = String(totalStart % 60).padStart(2, '0');
+    const timeStr = `${hh}:${mm}`;
+
+    if (role.role_type === 'marketer') {
+      openTrialLessonModal(_colDate);
+      setTimeout(() => {
+        const ti = document.getElementById('tl-time');
+        const du = document.getElementById('tl-dur');
+        if (ti) ti.value = timeStr;
+        if (du) {
+          const opts = [45, 60, 90, 120];
+          const closest = opts.reduce((a, b) => Math.abs(b - durationMin) < Math.abs(a - durationMin) ? b : a);
+          du.value = closest;
+        }
+      }, 50);
+    } else {
+      openLessonFromCalendar(_colDate);
+      setTimeout(() => {
+        const ti = document.getElementById('lf-time');
+        const du = document.getElementById('lf-dur');
+        if (ti) ti.value = timeStr;
+        if (du) {
+          const opts = [45, 60, 90, 120];
+          const closest = opts.reduce((a, b) => Math.abs(b - durationMin) < Math.abs(a - durationMin) ? b : a);
+          du.value = closest;
+        }
+      }, 300);
+    }
+  };
+
+  body.addEventListener('mouseup', _finish);
+  document.addEventListener('mouseup', _finish);
+}
+
 export async function renderCalendar() {
   await ensureLoaded(['lessons', 'groups', 'students']);
   const role = effectiveRole();
   const myGroupIds = _getCuratorGroupIds(role);
+  const isMarketer = role.role_type === 'marketer';
   const el = document.getElementById('cal-container');
   if (!el) return;
   const now = new Date();
@@ -91,7 +204,8 @@ export async function renderCalendar() {
 
     const dayCols = days.map(day => {
       const ds = dateStr(day);
-      const dayLessons = (CACHE.lessons || []).filter(l => l.date === ds && (!myGroupIds || myGroupIds.has(l.group_id)));
+      const dayLessons = (CACHE.lessons || []).filter(l => l.date === ds && (!myGroupIds || myGroupIds.has(l.group_id)) && (!isMarketer || l.lesson_type === 'trial'));
+      const { colOf, totalOf } = _assignColumns(dayLessons);
       const isToday = isSameDay(day, now);
       let nowLine = '';
       if (isToday) {
@@ -122,7 +236,11 @@ export async function renderCalendar() {
         const trialSub   = isTrial
           ? (trialLeads.length ? trialLeads.map(a => esc(a.name || '')).join(', ') : 'Без лидов')
           : (gr ? esc(gr.name).slice(0, 14) : '');
-        return `<div class="cal-event${past ? ' past' : ''}${isConsult ? ' consult' : ''}" style="top:${top}px;height:${h}px;background:${evColor}18;color:${evColor};border-left-color:${evColor};border-left-style:${evBorder}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
+        const _col = colOf[l.id] || 0;
+        const _tot = totalOf[l.id] || 1;
+        const _left = (_col / _tot * 100).toFixed(1);
+        const _wid  = (1 / _tot * 100).toFixed(1);
+        return `<div class="cal-event${past ? ' past' : ''}${isConsult ? ' consult' : ''}" style="top:${top}px;height:${h}px;left:${_left}%;width:${_wid}%;background:${evColor}18;color:${evColor};border-left-color:${evColor};border-left-style:${evBorder}" data-action="openLessonCard" data-id="${esc(l.id)}" onclick="event.stopPropagation()">
           <div class="cal-event-title">${isTrial ? '<i class="ti ti-user-check" style="font-size:9px"></i> ' : ''}${esc(l.topic) || 'Занятие'}</div>
           <div class="cal-event-time">${timeStr} · ${trialSub}</div>
           ${!isTrial && rName ? `<div style="font-size:9px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px"><i class="ti ti-user-check" style="font-size:8px"></i> ${rName}</div>` : ''}
@@ -156,6 +274,7 @@ export async function renderCalendar() {
     setTimeout(() => {
       const body = el.querySelector('.cal-body');
       if (body) { const scroll = isSameDay(_calDate, now) ? Math.max(0, (now.getHours() - CAL_START - 1) * HOUR_PX) : 0; body.scrollTop = scroll; }
+      _setupDragCreate(el, CAL_START, HOUR_PX, role);
     }, 50);
 
   } else {
@@ -174,34 +293,15 @@ export async function renderCalendar() {
 
     const monthLessons = (CACHE.lessons || []).filter(l => {
       const d = new Date(l.date + 'T00:00:00');
-      return d.getFullYear() === y && d.getMonth() === m && (!myGroupIds || myGroupIds.has(l.group_id));
+      return d.getFullYear() === y && d.getMonth() === m && (!myGroupIds || myGroupIds.has(l.group_id)) && (!isMarketer || l.lesson_type === 'trial');
     }).sort((a, b) => a.date !== b.date ? (a.date > b.date ? 1 : -1) : (a.start_time || '').localeCompare(b.start_time || ''));
 
-    const leftPanel = `<div style="width:240px;flex-shrink:0;border-right:1px solid var(--border);overflow-y:auto;max-height:calc(100vh-230px);padding:10px 12px">
-      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Занятия месяца · ${monthLessons.length}</div>
-      ${monthLessons.length ? monthLessons.map(l => {
-      const gr = (CACHE.groups || []).find(g => g.id === l.group_id);
-      const gc = roleColor(l.led_by) || groupColor(l.group_id);
-      const past = lessonIsPast(l);
-      const d = new Date(l.date + 'T00:00:00');
-      const dayStr = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-      const rn = roleName(l.led_by);
-      return `<div style="padding:8px 10px;margin-bottom:6px;border-radius:var(--r);border:1px solid var(--border);border-left:3px solid ${gc};cursor:pointer;opacity:${past ? .5 : 1}" data-action="openLessonCard" data-id="${esc(l.id)}">
-          <div style="font-size:10px;color:var(--muted);font-weight:600">${dayStr} · ${l.start_time || '?'}</div>
-          <div style="font-size:12px;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(l.topic) || 'Занятие'}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">${gr ? esc(gr.name).slice(0, 20) : '—'}${rn ? `&nbsp;· <b style="color:${gc}">${esc(rn)}</b>` : ''}</div>
-        </div>`;
-    }).join('') : '<div style="font-size:12px;color:var(--hint)">Занятий нет</div>'}
-    </div>`;
-
-    el.innerHTML = `<div class="cal-shell"><div style="display:flex">
-      ${leftPanel}
-      <div style="flex:1;overflow:hidden">
-        <div class="cal-month-grid" style="width:100%">
+    el.innerHTML = `<div class="cal-shell"><div>
+      <div class="cal-month-grid" style="width:100%">
           ${RU_DAYS.map((d, i) => `<div class="cal-month-head-cell" style="${i >= 5 ? 'color:var(--red)' : ''}">${d}</div>`).join('')}
           ${cells.map(({ d, other }) => {
       const ds = dateStr(d);
-      const dayLessons = (CACHE.lessons || []).filter(l => l.date === ds && (!myGroupIds || myGroupIds.has(l.group_id))).sort((a, b) => (a.start_time || '') > (b.start_time || '') ? 1 : -1);
+      const dayLessons = (CACHE.lessons || []).filter(l => l.date === ds && (!myGroupIds || myGroupIds.has(l.group_id)) && (!isMarketer || l.lesson_type === 'trial')).sort((a, b) => (a.start_time || '') > (b.start_time || '') ? 1 : -1);
       const isToday = isSameDay(d, now);
       const isWeekend = d.getDay() === 0 || d.getDay() === 6;
       return `<div class="cal-mcell${other ? ' other' : ''}${isToday ? ' today' : ''}" style="${isWeekend && !other ? 'background:#fef9f0' : ''}" data-action="openLessonFromCalendar" data-id="${esc(ds)}">
