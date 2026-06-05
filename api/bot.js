@@ -128,7 +128,7 @@ async function handleText(msg) {
   if (text === '❓ помощь') {
     if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт (не жми просто так!)\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', rkbd(STUDENT_KBD));
     if (curator) return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ\n/unlink — отвязать аккаунт\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', rkbd(CURATOR_KBD));
-    return send(chatId, 'введи код, который тебе скинул куратор.\nесли куратор еще не скинул тебе код, попроси его в лс.\nпо всем вопросам с ботом пиши @teddymgmt');
+    return send(chatId, 'введи код, который тебе скинул менеджер.\nесли он еще не скинул тебе код, попроси его в лс @teddymgmt');
   }
 
   // /start
@@ -142,7 +142,7 @@ async function handleText(msg) {
       return send(chatId, `привет, <b>${curator.name}</b>! \n\nиспользуй кнопки ниже или команды:\n/newdz — создать ДЗ · /mydz — мои ДЗ`, rkbd(CURATOR_KBD));
     }
     await setSession(tid, {});
-    return send(chatId, `добро пожаловать в бот для твоих домашек!☺️\n\nвведи код, который тебе скинул куратор.\nесли куратор еще не отправил тебе код, напиши ему в лс.\n\nпо всем вопросам с ботом пиши в лс @teddymgmt или в чат курса`);
+    return send(chatId, `добро пожаловать в бот для твоих домашек!☺️\nвведи код, который тебе скинули! если кода нет, напиши @teddymgmt\nпо всем вопросам с ботом и проверок домашек пиши также менеджеру или в чат курса!`);
   }
 
   // /unlink
@@ -156,7 +156,7 @@ async function handleText(msg) {
   if (text === '/help') {
     if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт (не жми просто так!)\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', rkbd(STUDENT_KBD));
     if (curator) return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ\n/unlink — отвязать аккаунт\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', rkbd(CURATOR_KBD));
-    return send(chatId, 'введи код, который тебе скинул куратор.\nесли куратор еще не скинул тебе код, попроси его в лс.\nпо всем вопросам с ботом пиши @teddymgmt');
+    return send(chatId, 'введи код, который тебе скинул менеджер.\nесли он еще не скинул тебе код, попроси его в лс @teddymgmt');
   }
 
   // Student commands
@@ -270,18 +270,18 @@ async function handleRegistration(chatId, tid, token) {
   ]);
 
   if (sm) {
-    if (sm.telegram_id) return send(chatId, 'этот код уже использован.\nотправь скриншот этого сообщения куратору!');
+    if (sm.telegram_id) return send(chatId, 'этот код уже использован.\nотправь скриншот этого сообщения @teddymgmt');
     await sbPatch('students', `id=eq.${sm.id}`, { telegram_id: tid });
     await setSession(tid, { step: 'student' });
-    return send(chatId, `ты успешно подключен как <b>${sm.name}</b>!\n\nесли это не ты, напиши своему куратору!\nчтобы пользоваться ботом, используй кнопки ниже 👇`, rkbd(STUDENT_KBD));
+    return send(chatId, `ты успешно подключен как <b>${sm.name}</b>\nесли это не ты, напиши @teddymgmt\n\nчтобы воспользоваться ботом, используй кнопки ниже👇`, rkbd(STUDENT_KBD));
   }
   if (rm) {
-    if (rm.telegram_id) return send(chatId, 'этот код уже использован.\nотправь скриншот этого сообщения куратору!');
+    if (rm.telegram_id) return send(chatId, 'этот код уже использован.\nотправь скриншот этого сообщения @teddymgmt');
     await sbPatch('roles', `id=eq.${rm.id}`, { telegram_id: tid });
     await setSession(tid, { step: 'curator' });
     return send(chatId, `ты успешно подключен как <b>${rm.name}</b>!\n\nесли это не ты, напиши @teddymgmt!\nчтобы пользоваться ботом, используй кнопки ниже 👇`, rkbd(CURATOR_KBD));
   }
-  return send(chatId, 'код не найден. проверь, правильно ли ты ввел свой код.\nесли код правильный, скинь скриншот этого сообщения куратору');
+  return send(chatId, 'код не найден. проверь, правильно ли ты ввел свой код.\nесли код правильный, скинь скриншот этого сообщения @teddymgmt');
 }
 
 // ── Student: list HW ──────────────────────────────────────────────────────────
@@ -711,7 +711,7 @@ async function finishHwCreation(chatId, tid, curator, data) {
     `✅ дз создано!\n${groupsLine}\nтема: <b>${data.topic}</b>\n` +
     `тип: <b>${typeLabel}</b>\nдедлайн: <b>${data.due_date || 'не указан'}</b>\n` +
     `учеников: <b>${totalStudents}</b>${extra}${warnLine}\n\n` +
-    `в TutorOS обнови страницу (F5) чтобы увидеть ДЗ.`);
+    `на платформе обнови страницу (F5) чтобы увидеть ДЗ.`);
 }
 
 // ── Curator: list my DZ ───────────────────────────────────────────────────────
@@ -828,7 +828,7 @@ async function handleCallback(cq) {
     if (student) await sbPatch('students', `id=eq.${student.id}`, { telegram_id: null });
     if (curator) await sbPatch('roles',    `id=eq.${curator.id}`, { telegram_id: null });
     await setSession(tid, {});
-    return send(chatId, 'аккаунт отвязан. введи новый код, который тебе скинет куратор.');
+    return send(chatId, 'аккаунт отвязан. введи новый код, который тебе скинет @teddymgmt');
   }
   if (data === 'unlink:cancel') return send(chatId, 'отмена.');
 
@@ -961,7 +961,7 @@ async function notifyCuratorsWithFiles(assignment, student, files) {
   for (const c of curators) {
     if (!c.telegram_id) continue;
     await send(c.telegram_id,
-      `📤 Ученик <b>${student.name}</b> сдал «${assignment.topic}» (${files.length} файл(ов)). Проверь в TutorOS.`
+      `📤 ученик <b>${student.name}</b> сдал «${assignment.topic}» (${files.length} файл(ов)). проверь на платформе.`
     ).catch(() => {});
     for (const f of files) {
       if (f.type === 'photo') {
