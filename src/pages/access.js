@@ -163,8 +163,18 @@ export async function saveRole(id) {
 }
 
 export async function deleteRole(id) {
-  if (!confirm('Удалить роль?')) return;
+  if (!confirm('Удалить роль? Аккаунт ассистента также будет удалён.')) return;
   try {
+    // Delete Supabase Auth user (server-side, needs service role key)
+    try {
+      await fetch('/api/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role_id: id }),
+      });
+    } catch (_) {
+      // Non-critical: auth deletion failed, still remove the role record
+    }
     await dbDelete('roles', id);
     renderAccess(); toast('Удалено');
   } catch (e) { toast('Ошибка: ' + e.message); }
