@@ -127,9 +127,18 @@ export function dbFind(table, id) {
 
 // ── Lazy loading ─────────────────────────────────────────────────────────────
 
+function _withTimeout(promise, ms = 10000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`network timeout after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 async function _loadTable(table) {
   if (_loaded.has(table)) return;
-  const { data, error } = await supabase.from(table).select('*');
+  const { data, error } = await _withTimeout(supabase.from(table).select('*'));
   if (error) { console.warn(`Load ${table}:`, error.message); return; }
   CACHE[table] = data || [];
   _loaded.add(table);

@@ -68,8 +68,26 @@ function _updateModeUI() {
   }
 }
 
+function _withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), ms)
+    ),
+  ]);
+}
+
 async function init() {
   const loadingEl = document.getElementById('loading-screen');
+
+  // Global safety net: if still loading after 12s, show login form
+  const globalFallback = setTimeout(() => {
+    if (loadingEl && loadingEl.style.display !== 'none') {
+      loadingEl.style.display = 'none';
+      document.getElementById('setup-screen')?.classList.add('show');
+      showLoginForm();
+    }
+  }, 12000);
 
   initSidebar();
   setupDelegation();
@@ -91,6 +109,7 @@ async function init() {
   registerRenderer('kpi_overview', renderKpiOverviewPage);
 
   const showSetup = (formFn) => {
+    clearTimeout(globalFallback);
     if (loadingEl) loadingEl.style.display = 'none';
     document.getElementById('setup-screen')?.classList.add('show');
     formFn();
@@ -99,9 +118,11 @@ async function init() {
   if (isDemoMode()) {
     try { await initSupabase(); } catch (err) {
       if (loadingEl) loadingEl.innerHTML = `<div style="color:#ef4444;font-size:14px"><b>Ошибка загрузки данных</b><br><span style="font-size:12px;opacity:.7">${err.message}</span></div>`;
+      clearTimeout(globalFallback);
       return;
     }
     if (loadingEl) loadingEl.style.display = 'none';
+    clearTimeout(globalFallback);
     _updateModeUI();
     updateHwBadge();
     const restored = await restoreSession();
@@ -112,15 +133,24 @@ async function init() {
   // Production: check for invite token in URL first
   const inviteToken = new URLSearchParams(window.location.search).get('invite');
 
-  // Check existing Supabase session
-  const { data: { session } } = await supabase.auth.getSession();
+  // Check existing Supabase session — with timeout for iOS Safari
+  let session = null;
+  try {
+    const result = await _withTimeout(supabase.auth.getSession(), 8000);
+    session = result?.data?.session ?? null;
+  } catch (err) {
+    console.warn('getSession timed out or failed:', err.message);
+    // Fall through to show login form
+  }
 
   if (session) {
-    try { await initSupabase(); } catch (err) {
+    try { await _withTimeout(initSupabase(), 10000); } catch (err) {
       if (loadingEl) loadingEl.innerHTML = `<div style="color:#ef4444;font-size:14px"><b>Ошибка подключения к базе данных</b><br><span style="font-size:12px;opacity:.7">${err.message}</span></div>`;
+      clearTimeout(globalFallback);
       return;
     }
     if (loadingEl) loadingEl.style.display = 'none';
+    clearTimeout(globalFallback);
     _updateModeUI();
     updateHwBadge();
     const restored = await restoreSession();
