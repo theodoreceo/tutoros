@@ -240,8 +240,8 @@ const ACTION_MAP = {
   saveRole: () => saveRole(),
   deleteRole: (el) => deleteRole(el.dataset.id),
   toggleAssistantGroup: (el) => toggleAssistantGroup(el.dataset.roleId, el.dataset.groupId, el.checked),
-  openInviteModal: (el) => openInviteModal(el.dataset.roleId),
-  createInvite: () => createInvite(),
+  openInviteModal: (el) => openInviteModal(el.dataset.id),
+  createInvite: (el) => createInvite(el.dataset.id),
 
   // Homework
   setHwTab: (el) => setHwTab(el.dataset.tab),
