@@ -35,7 +35,7 @@ export async function renderGroups() {
           <div style="font-size:14px;font-weight:600">${esc(gr.name)}</div>
           <div style="font-size:12px;color:var(--muted);margin-top:3px"><i class="ti ti-clock" style="font-size:11px"></i> ${gr.schedule || '—'}</div>
         </div>
-        <div style="display:flex;gap:6px;align-items:center" onclick="event.stopPropagation()">
+        <div style="display:flex;gap:6px;align-items:center">
           ${unpaid ? `<span class="b b-r"><i class="ti ti-cash-off" style="font-size:10px"></i> ${unpaid} не оплат.</span>` : ''}
           ${role.isOwner ? `<span class="b b-g">${fmt(mrr)} ₽/мес</span>` : ''}
           ${role.isOwner ? `<button class="btn btn-sm btn-icon" data-action="editGroup" data-id="${esc(gr.id)}"><i class="ti ti-edit"></i></button>

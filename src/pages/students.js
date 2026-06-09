@@ -59,7 +59,7 @@ export async function renderStudents() {
       <td style="max-width:140px;word-break:break-all"><span style="font-size:12px">${contact}</span></td>
       <td>${groupShort(s.group_id)}</td>
       ${!isCurator ? `<td class="fin-col" style="text-align:right">${s.monthly_price ? fmt(s.monthly_price) + ' ₽' : '—'}</td>` : ''}
-      <td style="white-space:nowrap" onclick="event.stopPropagation()">${canEdit ? `<button class="btn btn-sm btn-icon" data-action="editStudent" data-id="${esc(s.id)}"><i class="ti ti-edit"></i></button>
+      <td style="white-space:nowrap">${canEdit ? `<button class="btn btn-sm btn-icon" data-action="editStudent" data-id="${esc(s.id)}"><i class="ti ti-edit"></i></button>
         <button class="btn btn-sm btn-icon" data-action="deleteStudent" data-id="${esc(s.id)}"><i class="ti ti-trash" style="color:var(--red)"></i></button>` : ''}
       </td>
     </tr>`;
@@ -200,7 +200,7 @@ export async function renderPipeline() {
           const tgIcon = s.telegram_id
             ? `<i class="ti ti-brand-telegram" style="color:#2aabee;font-size:11px" title="Telegram привязан"></i>`
             : s.reg_token
-              ? `<span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer" data-action="copyRegToken" data-token="${esc(s.reg_token)}" onclick="event.stopPropagation()" title="Скопировать код ${esc(s.reg_token)}"><i class="ti ti-brand-telegram" style="color:var(--muted);font-size:11px"></i><code style="font-size:10px;color:var(--muted)">${esc(s.reg_token)}</code></span>`
+              ? `<span style="display:inline-flex;align-items:center;gap:3px;cursor:pointer" data-action="copyRegToken" data-token="${esc(s.reg_token)}" title="Скопировать код ${esc(s.reg_token)}"><i class="ti ti-brand-telegram" style="color:var(--muted);font-size:11px"></i><code style="font-size:10px;color:var(--muted)">${esc(s.reg_token)}</code></span>`
               : '';
           const isMarketer = !role.isOwner && role.role_type === 'marketer';
           const trialBtn = (isMarketer || role.isOwner) && stage.id === 'lead'
