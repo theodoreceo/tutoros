@@ -15,6 +15,16 @@ const SB_HEADERS = {
 const cleanText = (value, maxLength = 500) =>
   value === null || value === undefined ? null : String(value).trim().slice(0, maxLength);
 
+const duplicateValue = (items, keyFor) => {
+  const seen = new Set();
+  for (const item of items) {
+    const key = keyFor(item);
+    if (seen.has(key)) return key;
+    seen.add(key);
+  }
+  return null;
+};
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!SYNC_SECRET || req.headers['x-tutoros-sync-secret'] !== SYNC_SECRET) {
@@ -64,6 +74,20 @@ export default async function handler(req, res) {
     !lesson.topic || !templateIds.has(lesson.template_id)
   )) {
     return res.status(400).json({ error: 'Every lesson must belong to an imported template' });
+  }
+
+  const duplicateTemplateId = duplicateValue(templates, template => template.id);
+  const duplicateSheetKey = duplicateValue(templates, template => template.sheet_key);
+  const duplicateLessonId = duplicateValue(lessons, lesson => lesson.id);
+  const duplicateLessonKey = duplicateValue(
+    lessons,
+    lesson => `${lesson.template_id}:${lesson.sheet_lesson_key}`
+  );
+  if (duplicateTemplateId || duplicateSheetKey || duplicateLessonId || duplicateLessonKey) {
+    return res.status(400).json({
+      error: 'Course catalog contains duplicate identifiers',
+      duplicate: duplicateTemplateId || duplicateSheetKey || duplicateLessonId || duplicateLessonKey,
+    });
   }
 
   const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/sync_course_catalog`, {
