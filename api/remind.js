@@ -1,16 +1,17 @@
 // api/remind.js — Vercel Cron Function (runs at 09:05 UTC daily)
-// Env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, TELEGRAM_BOT_TOKEN, CRON_SECRET
+// Env vars: SUPABASE_URL, SUPABASE_SECRET_KEY, TELEGRAM_BOT_TOKEN, CRON_SECRET
 // Vercel automatically injects "Authorization: Bearer {CRON_SECRET}" for cron invocations.
 // No pg_cron needed — this function queries deadlines directly.
 
-const SUPABASE_URL     = process.env.SUPABASE_URL;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const BOT_TOKEN        = process.env.TELEGRAM_BOT_TOKEN;
+const SUPABASE_URL        = process.env.SUPABASE_URL;
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY
+  || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const BOT_TOKEN           = process.env.TELEGRAM_BOT_TOKEN;
 
 const SB_HEADERS = {
   'Content-Type':  'application/json',
-  'apikey':        SERVICE_ROLE_KEY,
-  'Authorization': `Bearer ${SERVICE_ROLE_KEY}`,
+  'apikey':        SUPABASE_SECRET_KEY,
+  'Authorization': `Bearer ${SUPABASE_SECRET_KEY}`,
 };
 
 async function sbSelect(table, qs = '') {
