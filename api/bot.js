@@ -50,6 +50,13 @@ async function sbPatch(table, qs, body) {
   if (!r.ok) throw new Error(`sbPatch ${table}: ${await r.text()}`);
 }
 
+async function sbDelete(table, qs) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${qs}`, {
+    method: 'DELETE', headers: SB,
+  });
+  if (!r.ok) throw new Error(`sbDelete ${table}: ${await r.text()}`);
+}
+
 async function sbUpsert(table, body) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: 'POST',
@@ -115,7 +122,8 @@ const STUDENT_KBD = [
   [{ text: '❓ помощь' }],
 ];
 const OWNER_KBD = [
-  [{ text: '👥 группы' }, { text: '➕ добавить ученика' }],
+  [{ text: '👥 группы' }, { text: '➕ создать группу' }],
+  [{ text: '➕ добавить ученика' }],
   [{ text: '➕ создать дз' }, { text: '📋 домашние задания' }],
   [{ text: '❓ помощь' }],
 ];
@@ -158,6 +166,7 @@ async function handleText(msg) {
   if (text === '📚 мои задания'    && student)  return handleStudentListHw(chatId, student);
   if (text === '📊 мои результаты' && student)  return showStudentStats(chatId, student);
   if (text === '👥 группы'            && owner) return showOwnerGroups(chatId);
+  if (text === '➕ создать группу'     && owner) return startGroupCreation(chatId, tid);
   if (text === '➕ добавить ученика'  && owner) return startStudentCreation(chatId, tid);
   if (text === '➕ создать дз'         && owner) return startHwCreation(chatId, tid);
   if (text === '📋 домашние задания'  && owner) return showOwnerAssignments(chatId, 0);
@@ -223,12 +232,16 @@ async function handleText(msg) {
   // Owner commands
   if (owner) {
     if (text === '/groups')     return showOwnerGroups(chatId);
+    if (text === '/newgroup')   return startGroupCreation(chatId, tid);
     if (text === '/newstudent') return startStudentCreation(chatId, tid);
     if (text === '/newdz')      return startHwCreation(chatId, tid);
     if (text === '/mydz')       return showOwnerAssignments(chatId, 0);
     const sess = await getSession(tid);
     if (sess.step === 'await_student_name') {
       return finishStudentCreation(chatId, tid, text, sess);
+    }
+    if (sess.step === 'await_group_name') {
+      return finishGroupCreation(chatId, tid, text, sess);
     }
     if (typeof sess.step === 'string' && sess.step.startsWith('edit_hw_topic:')) {
       const hwId = sess.step.slice('edit_hw_topic:'.length);
@@ -268,7 +281,7 @@ async function sendOwnerHome(chatId, tid) {
 
 function sendOwnerHelp(chatId) {
   return send(chatId,
-    'команды:\n/groups — группы и ученики\n/newstudent — добавить ученика\n/newdz — создать ДЗ\n/mydz — домашние задания',
+    'команды:\n/groups — группы и ученики\n/newgroup — создать группу\n/newstudent — добавить ученика\n/newdz — создать ДЗ\n/mydz — домашние задания',
     rkbd(OWNER_KBD));
 }
 
@@ -336,15 +349,18 @@ async function handleRegistration(chatId, tid, token) {
 // ── Owner: groups and students ───────────────────────────────────────────────
 
 async function showOwnerGroups(chatId) {
-  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&template_id=not.is.null&order=name.asc');
   if (!groups.length) {
-    return send(chatId, 'групп пока нет. они появятся здесь после синхронизации с Google Sheets.');
+    return send(chatId, 'групп пока нет.', kbd([
+      [{ text: '➕ создать первую группу', callback_data: 'new_group' }],
+    ]));
   }
 
   const buttons = groups.map(group => [{
     text: group.name || 'Без названия',
     callback_data: `owner_group:${group.id}`,
   }]);
+  buttons.push([{ text: '➕ создать группу', callback_data: 'new_group' }]);
   return send(chatId, 'выбери группу:', kbd(buttons));
 }
 
@@ -360,19 +376,112 @@ async function showOwnerGroup(chatId, groupId) {
       `${index + 1}. ${student.telegram_id ? '✅' : '⏳'} ${html(student.name)}`
     ).join('\n')
     : 'учеников пока нет';
+  const targetScore = group.target_score || (group.program === 'advanced' ? 23 : 18);
 
   return send(chatId,
-    `<b>${html(group.name)}</b>\n\n${studentLines}\n\n✅ подключён к боту · ⏳ ещё не открыл ссылку`,
+    `<b>${html(group.name)}</b>\nцель: <b>${targetScore}+ баллов</b>\n\n${studentLines}\n\n✅ подключён к боту · ⏳ ещё не открыл ссылку`,
     kbd([
       [{ text: '➕ добавить ученика', callback_data: `student_group:${group.id}` }],
       [{ text: '← ко всем группам', callback_data: 'owner_groups' }],
     ]));
 }
 
+async function startGroupCreation(chatId, tid) {
+  const templates = await sbSelect('course_templates', 'active=eq.true&order=name.asc');
+  if (!templates.length) {
+    return send(chatId,
+      'методики ещё не загружены. в таблице с методикой выбери TutorOS → Синхронизировать методики.');
+  }
+
+  await setSession(tid, { step: 'choose_group_template' });
+  return send(chatId, 'по какой методике будет заниматься группа?', kbd(
+    templates.map(template => [{
+      text: template.name,
+      callback_data: `ngt:${template.id}`,
+    }])
+  ));
+}
+
+async function finishGroupCreation(chatId, tid, rawName, sess) {
+  const name = rawName.trim();
+  if (name.length < 2 || name.length > 80) {
+    return send(chatId, 'введи название группы длиной от 2 до 80 символов:');
+  }
+
+  const templateId = sess.data?.template_id;
+  const template = templateId
+    ? await sbOne('course_templates', `id=eq.${encodeURIComponent(templateId)}&active=eq.true`)
+    : null;
+  if (!template) {
+    await setSession(tid, { step: 'owner' });
+    return send(chatId, 'методика не найдена. начни создание группы заново.');
+  }
+
+  const sameName = await sbOne('groups',
+    `name=eq.${encodeURIComponent(name)}&active=eq.true`);
+  if (sameName) {
+    return send(chatId, 'активная группа с таким названием уже существует. введи другое название:');
+  }
+
+  const templateLessons = await sbSelect('course_lessons',
+    `template_id=eq.${encodeURIComponent(template.id)}&active=eq.true&order=sequence.asc`);
+  if (!templateLessons.length) {
+    await setSession(tid, { step: 'owner' });
+    return send(chatId, 'в этой методике пока нет уроков. сначала обнови её из Google Sheets.');
+  }
+
+  const groupId = botId();
+  const targetScore = template.program === 'advanced' ? 23 : 18;
+  try {
+    await sbInsert('groups', {
+      id: groupId,
+      name,
+      program: template.program,
+      template_id: template.id,
+      target_score: targetScore,
+      sheet_key: null,
+      active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    const lessons = templateLessons.map(templateLesson => ({
+      id: botId(),
+      group_id: groupId,
+      template_lesson_id: templateLesson.id,
+      sheet_lesson_key: templateLesson.sheet_lesson_key,
+      course_month: templateLesson.course_month,
+      course_week: templateLesson.course_week,
+      lesson_number: templateLesson.lesson_number,
+      sequence: templateLesson.sequence,
+      topic: templateLesson.topic,
+      block: templateLesson.block,
+      event_type: templateLesson.event_type,
+      scheduled_date: null,
+      active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+    await sbInsert('lessons', lessons);
+  } catch (error) {
+    await sbDelete('groups', `id=eq.${encodeURIComponent(groupId)}`).catch(() => {});
+    await setSession(tid, { step: 'owner' });
+    return send(chatId, `❌ не удалось создать группу:\n<code>${html(error.message)}</code>`);
+  }
+
+  await setSession(tid, { step: 'owner' });
+  return send(chatId,
+    `✅ группа <b>${html(name)}</b> создана.\n\nметодика: <b>${html(template.name)}</b>\nцель: <b>${targetScore}+ баллов</b>\nуроков загружено: <b>${templateLessons.length}</b>`,
+    kbd([
+      [{ text: '➕ добавить ученика', callback_data: `student_group:${groupId}` }],
+      [{ text: '← ко всем группам', callback_data: 'owner_groups' }],
+    ]));
+}
+
 async function startStudentCreation(chatId, tid) {
-  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&template_id=not.is.null&order=name.asc');
   if (!groups.length) {
-    return send(chatId, 'сначала добавь группу в Google Sheets и синхронизируй её с ботом.');
+    return send(chatId, 'сначала создай группу в боте.');
   }
 
   await setSession(tid, { step: 'choose_student_group' });
@@ -403,6 +512,7 @@ async function finishStudentCreation(chatId, tid, rawName, sess) {
     id: botId(),
     name,
     group_id: groupId,
+    target_score: group.target_score || (group.program === 'advanced' ? 23 : 18),
     status: 'active',
     created_at: new Date().toISOString(),
   });
@@ -742,7 +852,7 @@ async function finalizeStudentFiles(chatId, student, subId, files) {
 // ── Owner: start HW creation for a concrete lesson ────────────────────────────
 
 async function startHwCreation(chatId, tid) {
-  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&template_id=not.is.null&order=name.asc');
 
   if (!groups.length) return send(chatId, 'группы не найдены.');
 
@@ -1050,6 +1160,21 @@ async function handleCallback(cq) {
   // Owner: groups and adding students
   if (data === 'owner_groups' && owner) {
     return showOwnerGroups(chatId);
+  }
+  if (data === 'new_group' && owner) {
+    return startGroupCreation(chatId, tid);
+  }
+  if (data.startsWith('ngt:') && owner) {
+    const templateId = data.slice(4);
+    const template = await sbOne('course_templates',
+      `id=eq.${encodeURIComponent(templateId)}&active=eq.true`);
+    if (!template) return send(chatId, 'методика не найдена. обнови список.');
+    await setSession(tid, {
+      step: 'await_group_name',
+      data: { template_id: template.id },
+    });
+    return send(chatId,
+      `методика: <b>${html(template.name)}</b>\n\nвведи название группы, например «Базовая А1»: `);
   }
   if (data.startsWith('owner_group:') && owner) {
     return showOwnerGroup(chatId, data.slice('owner_group:'.length));

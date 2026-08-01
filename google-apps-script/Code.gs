@@ -3,6 +3,12 @@ const TUTOROS_GROUPS = [
   { sheetName: 'Группа Б', methodSheetName: 'Продвинутая', program: 'advanced' },
 ];
 
+// Method sheets are reusable course templates. Actual groups are created in Telegram.
+const TUTOROS_METHODS = [
+  { sheetName: 'Базовая', program: 'base' },
+  { sheetName: 'Продвинутая', program: 'advanced' },
+];
+
 const TUTOROS_LAYOUT = {
   statisticsRow: 3,
   studentIdRow: 8,
@@ -27,7 +33,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('TutorOS')
     .addItem('Подготовить таблицу', 'prepareTutorOS')
-    .addItem('Синхронизировать группы и уроки', 'syncTutorOS')
+    .addItem('Синхронизировать методики', 'syncTutorOS')
     .addItem('Обновить статистику', 'refreshTutorOSStats')
     .addToUi();
 }
@@ -59,30 +65,30 @@ function syncTutorOS() {
     throw new Error('Сначала выберите TutorOS → Подготовить таблицу.');
   }
 
-  const groups = [];
+  const templates = [];
   const lessons = [];
-  TUTOROS_GROUPS.forEach(config => {
-    const groupSheet = spreadsheet.getSheetByName(config.sheetName);
-    const methodSheet = spreadsheet.getSheetByName(config.methodSheetName);
-    if (!groupSheet || !methodSheet) return;
+  TUTOROS_METHODS.forEach(config => {
+    const methodSheet = spreadsheet.getSheetByName(config.sheetName);
+    if (!methodSheet) {
+      throw new Error(`Не найден лист методики «${config.sheetName}».`);
+    }
 
-    const groupId = tutorOSGroupId_(spreadsheet, groupSheet);
-    groups.push({
-      id: groupId,
+    const templateId = tutorOSShortId_('m', spreadsheet.getId(), methodSheet.getSheetId());
+    templates.push({
+      id: templateId,
       name: config.sheetName,
       program: config.program,
       sheet_key: config.sheetName,
       active: true,
     });
 
-    const methodTopics = readMethodTopics_(methodSheet);
     const seenEventCodes = {};
-    const lastRow = groupSheet.getLastRow();
-    if (lastRow < TUTOROS_LAYOUT.lessonStartRow) return;
+    const lastRow = methodSheet.getLastRow();
+    if (lastRow < 6) return;
 
-    const rowCount = lastRow - TUTOROS_LAYOUT.lessonStartRow + 1;
-    const rows = groupSheet
-      .getRange(TUTOROS_LAYOUT.lessonStartRow, TUTOROS_LAYOUT.monthColumn, rowCount, 4)
+    const rowCount = lastRow - 5;
+    const rows = methodSheet
+      .getRange(6, 1, rowCount, 5)
       .getDisplayValues();
 
     rows.forEach((row, index) => {
@@ -90,21 +96,23 @@ function syncTutorOS() {
       const week = String(row[1] || '').trim();
       const eventCode = String(row[2] || '').trim();
       const block = String(row[3] || '').trim();
+      const topic = String(row[4] || '').trim();
       if (!eventCode) return;
 
       if (seenEventCodes[eventCode]) {
         throw new Error(
           `В листе «${config.sheetName}» код «${eventCode}» встречается в строках ` +
-          `${seenEventCodes[eventCode]} и ${TUTOROS_LAYOUT.lessonStartRow + index}.`
+          `${seenEventCodes[eventCode]} и ${6 + index}.`
         );
       }
-      seenEventCodes[eventCode] = TUTOROS_LAYOUT.lessonStartRow + index;
+      if (!topic) {
+        throw new Error(`В листе «${config.sheetName}» у кода «${eventCode}» не указана тема.`);
+      }
+      seenEventCodes[eventCode] = 6 + index;
 
-      const topic = methodTopics[eventCode] || block || eventCode;
-      const lessonId = stableTutorOSId_('lesson', groupId, eventCode);
       lessons.push({
-        id: lessonId,
-        group_id: groupId,
+        id: tutorOSShortId_('e', templateId, eventCode),
+        template_id: templateId,
         sheet_lesson_key: eventCode,
         course_month: month,
         course_week: week,
@@ -119,18 +127,20 @@ function syncTutorOS() {
     });
   });
 
-  const response = UrlFetchApp.fetch(apiUrl.replace(/\/$/, '') + '/api/sync-lessons', {
+  const response = UrlFetchApp.fetch(apiUrl.replace(/\/$/, '') + '/api/sync-course', {
     method: 'post',
     contentType: 'application/json',
     headers: { 'x-tutoros-sync-secret': secret },
-    payload: JSON.stringify({ groups: groups, lessons: lessons }),
+    payload: JSON.stringify({ templates: templates, lessons: lessons }),
     muteHttpExceptions: true,
   });
 
   if (response.getResponseCode() !== 200) {
     throw new Error('TutorOS sync failed: ' + response.getContentText());
   }
-  SpreadsheetApp.getUi().alert(`TutorOS: синхронизировано групп — ${groups.length}, событий — ${lessons.length}.`);
+  SpreadsheetApp.getUi().alert(
+    `TutorOS: синхронизировано методик — ${templates.length}, событий — ${lessons.length}.`
+  );
 }
 
 function doPost(event) {
@@ -178,6 +188,14 @@ function tutorOSEventType_(eventCode) {
 function stableTutorOSId_(prefix) {
   const parts = Array.prototype.slice.call(arguments, 1);
   return [prefix].concat(parts.map(part => String(part).trim())).join('__');
+}
+
+function tutorOSShortId_(prefix) {
+  const parts = Array.prototype.slice.call(arguments, 1);
+  const source = parts.map(part => String(part).trim()).join('|');
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, source);
+  const hex = digest.map(byte => ('0' + ((byte + 256) % 256).toString(16)).slice(-2)).join('');
+  return prefix + hex.slice(0, 20);
 }
 
 function tutorOSGroupId_(spreadsheet, sheet) {

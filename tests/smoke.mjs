@@ -8,6 +8,7 @@ process.env.OWNER_TELEGRAM_ID = '123';
 process.env.GOOGLE_SHEETS_WEBHOOK_SECRET = 'sheet-secret';
 
 const telegramCalls = [];
+const courseSyncBodies = [];
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url);
   if (target.includes('/rest/v1/bot_sessions?')) {
@@ -19,6 +20,13 @@ globalThis.fetch = async (url, options = {}) => {
   if (target.includes('api.telegram.org')) {
     telegramCalls.push(JSON.parse(options.body || '{}'));
     return new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  if (target.includes('/rest/v1/rpc/sync_course_catalog')) {
+    courseSyncBodies.push(JSON.parse(options.body || '{}'));
+    return new Response('{"templates":2,"lessons":95}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
   throw new Error(`Unexpected request: ${target}`);
 };
@@ -80,6 +88,45 @@ await syncHandler({
 }, unauthorizedSyncResponse);
 
 assert.equal(unauthorizedSyncResponse.statusCode, 401);
+
+const { default: courseSyncHandler } = await import('../api/sync-course.js');
+const courseSyncResponse = responseRecorder();
+await courseSyncHandler({
+  method: 'POST',
+  headers: { 'x-tutoros-sync-secret': 'sheet-secret' },
+  body: {
+    templates: [{
+      id: 'm1234567890abcdef1234',
+      name: 'Базовая',
+      program: 'base',
+      sheet_key: 'Базовая',
+      active: true,
+    }],
+    lessons: [{
+      id: 'e1234567890abcdef1234',
+      template_id: 'm1234567890abcdef1234',
+      sheet_lesson_key: '1',
+      lesson_number: '1',
+      sequence: 1,
+      topic: 'Числа и вычисления',
+      event_type: 'lesson',
+      active: true,
+    }],
+  },
+}, courseSyncResponse);
+
+assert.equal(courseSyncResponse.statusCode, 200);
+assert.deepEqual(courseSyncResponse.body, { ok: true, templates: 2, lessons: 95 });
+assert.equal(courseSyncBodies.length, 1);
+assert.equal(courseSyncBodies[0].p_templates[0].name, 'Базовая');
+
+const emptyCourseSyncResponse = responseRecorder();
+await courseSyncHandler({
+  method: 'POST',
+  headers: { 'x-tutoros-sync-secret': 'sheet-secret' },
+  body: { templates: [], lessons: [] },
+}, emptyCourseSyncResponse);
+assert.equal(emptyCourseSyncResponse.statusCode, 400);
 
 const { default: setupWebhookHandler } = await import('../api/setup-webhook.js');
 const setupWebhookResponse = responseRecorder();

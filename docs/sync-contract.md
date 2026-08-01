@@ -2,29 +2,29 @@
 
 Each data type has one editing source:
 
-- Google Sheets owns groups and lessons.
-- Telegram owns students, homework assignments, submissions and reviews.
+- Google Sheets owns reusable course templates.
+- Telegram owns actual groups, students, homework assignments, submissions and reviews.
 - Supabase is the private operational database between them.
 
 ## Google Sheets to TutorOS
 
-`POST /api/sync-lessons` with header `x-tutoros-sync-secret`.
+`POST /api/sync-course` with header `x-tutoros-sync-secret`.
 
 ```json
 {
-  "groups": [
+  "templates": [
     {
-      "id": "group-b",
-      "name": "Группа Б",
+      "id": "m1234567890abcdef1234",
+      "name": "Продвинутая",
       "program": "advanced",
-      "sheet_key": "Группа Б",
+      "sheet_key": "Продвинутая",
       "active": true
     }
   ],
   "lessons": [
     {
-      "id": "group-b-lesson-01",
-      "group_id": "group-b",
+      "id": "e1234567890abcdef1234",
+      "template_id": "m1234567890abcdef1234",
       "sheet_lesson_key": "lesson-01",
       "course_month": "Сентябрь",
       "course_week": "1",
@@ -33,15 +33,16 @@ Each data type has one editing source:
       "topic": "Числа и вычисления",
       "block": "Арифметика",
       "event_type": "lesson",
-      "scheduled_date": "2026-09-03",
       "active": true
     }
   ]
 }
 ```
 
-IDs are technical. Group and lesson IDs are derived from stable Sheet
-properties; student IDs remain in hidden row 8.
+Template IDs are short stable hashes so Telegram buttons stay below the
+64-byte callback limit. When the owner creates a group, TutorOS makes its own
+snapshot of the template lessons. Later template changes therefore cannot
+silently rewrite already conducted lessons or issued homework.
 
 ## TutorOS to Google Sheets
 
