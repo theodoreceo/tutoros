@@ -61,8 +61,6 @@ function syncTutorOS() {
 
   const groups = [];
   const lessons = [];
-  const seenLessonIds = {};
-
   TUTOROS_GROUPS.forEach(config => {
     const groupSheet = spreadsheet.getSheetByName(config.sheetName);
     const methodSheet = spreadsheet.getSheetByName(config.methodSheetName);
@@ -78,6 +76,7 @@ function syncTutorOS() {
     });
 
     const methodTopics = readMethodTopics_(methodSheet);
+    const seenEventCodes = {};
     const lastRow = groupSheet.getLastRow();
     if (lastRow < TUTOROS_LAYOUT.lessonStartRow) return;
 
@@ -93,12 +92,16 @@ function syncTutorOS() {
       const block = String(row[3] || '').trim();
       if (!eventCode) return;
 
+      if (seenEventCodes[eventCode]) {
+        throw new Error(
+          `В листе «${config.sheetName}» код «${eventCode}» встречается в строках ` +
+          `${seenEventCodes[eventCode]} и ${TUTOROS_LAYOUT.lessonStartRow + index}.`
+        );
+      }
+      seenEventCodes[eventCode] = TUTOROS_LAYOUT.lessonStartRow + index;
+
       const topic = methodTopics[eventCode] || block || eventCode;
       const lessonId = stableTutorOSId_('lesson', groupId, eventCode);
-      if (seenLessonIds[lessonId]) {
-        throw new Error(`В листе «${config.sheetName}» код «${eventCode}» встречается больше одного раза.`);
-      }
-      seenLessonIds[lessonId] = true;
       lessons.push({
         id: lessonId,
         group_id: groupId,
@@ -174,13 +177,7 @@ function tutorOSEventType_(eventCode) {
 
 function stableTutorOSId_(prefix) {
   const parts = Array.prototype.slice.call(arguments, 1);
-  const source = [prefix].concat(parts).join('|');
-  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, source);
-  const hex = bytes.slice(0, 12).map(byte => {
-    const unsigned = byte < 0 ? byte + 256 : byte;
-    return ('0' + unsigned.toString(16)).slice(-2);
-  }).join('');
-  return prefix + '_' + hex;
+  return [prefix].concat(parts.map(part => String(part).trim())).join('__');
 }
 
 function tutorOSGroupId_(spreadsheet, sheet) {
