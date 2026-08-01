@@ -10,11 +10,16 @@ alter table groups
   add column if not exists active boolean not null default true,
   add column if not exists updated_at timestamptz not null default now();
 
+-- Legacy CRM groups have no sheet_key. Keep their data, but do not show them
+-- in the simplified bot. The first Sheet sync creates/activates current groups.
+update groups set active = false where sheet_key is null;
+
 alter table lessons
   add column if not exists sheet_lesson_key text,
   add column if not exists course_month text,
   add column if not exists course_week text,
   add column if not exists lesson_number text,
+  add column if not exists sequence integer,
   add column if not exists block text,
   add column if not exists event_type text not null default 'lesson',
   add column if not exists scheduled_date date,

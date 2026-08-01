@@ -56,4 +56,26 @@ await syncHandler({
 assert.equal(syncResponse.statusCode, 200);
 assert.deepEqual(syncResponse.body, { ok: true, groups: 0, lessons: 0 });
 
+const badSyncResponse = responseRecorder();
+await syncHandler({
+  method: 'POST',
+  headers: { 'x-tutoros-sync-secret': 'sheet-secret' },
+  body: {
+    groups: [{ id: '', name: '' }],
+    lessons: [],
+  },
+}, badSyncResponse);
+
+assert.equal(badSyncResponse.statusCode, 400);
+assert.match(badSyncResponse.body.error, /group/i);
+
+const unauthorizedSyncResponse = responseRecorder();
+await syncHandler({
+  method: 'POST',
+  headers: { 'x-tutoros-sync-secret': 'wrong-secret' },
+  body: { groups: [], lessons: [] },
+}, unauthorizedSyncResponse);
+
+assert.equal(unauthorizedSyncResponse.statusCode, 401);
+
 console.log('Smoke tests passed');

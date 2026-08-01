@@ -20,6 +20,7 @@ create table lessons (
   course_month text,
   course_week text,
   lesson_number text,
+  sequence integer not null,
   topic text not null,
   block text,
   event_type text not null default 'lesson'
@@ -96,7 +97,7 @@ create table sent_reminders (
   primary key (student_id, assignment_id, sent_date)
 );
 
-create index lessons_group_order_idx on lessons(group_id, lesson_number);
+create index lessons_group_order_idx on lessons(group_id, sequence);
 create index students_group_status_idx on students(group_id, status);
 create index assignments_group_lesson_idx on homework_assignments(group_id, lesson_id);
 create index submissions_student_status_idx on homework_submissions(student_id, status);

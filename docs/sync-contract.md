@@ -29,6 +29,7 @@ Each data type has one editing source:
       "course_month": "Сентябрь",
       "course_week": "1",
       "lesson_number": "1",
+      "sequence": 1,
       "topic": "Числа и вычисления",
       "block": "Арифметика",
       "event_type": "lesson",
@@ -39,14 +40,18 @@ Each data type has one editing source:
 }
 ```
 
-IDs are technical and remain in hidden sheet columns.
+IDs are technical. Group and lesson IDs are derived from stable Sheet
+properties; student IDs remain in hidden row 8.
 
 ## TutorOS to Google Sheets
 
-TutorOS calls `GOOGLE_SHEETS_WEBHOOK_URL` with the same secret header. Events use this envelope:
+TutorOS calls `GOOGLE_SHEETS_WEBHOOK_URL` with the same secret in the request
+header and JSON body. Apps Script validates the body value because its Web App
+handler does not expose arbitrary request headers. Events use this envelope:
 
 ```json
 {
+  "secret": "same-secret-as-vercel",
   "type": "student.created",
   "occurred_at": "2026-07-30T12:00:00.000Z",
   "payload": {}
@@ -55,3 +60,7 @@ TutorOS calls `GOOGLE_SHEETS_WEBHOOK_URL` with the same secret header. Events us
 
 The first event types are `student.created`, `homework.created`,
 `submission.submitted` and `submission.checked`.
+
+`homework.created` includes the IDs of students who received the assignment.
+This lets Sheets calculate an honest completion rate without counting work
+that was created before a student joined the group.

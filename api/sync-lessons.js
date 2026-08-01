@@ -53,6 +53,7 @@ export default async function handler(req, res) {
     course_month: cleanText(lesson.course_month, 40),
     course_week: cleanText(lesson.course_week, 40),
     lesson_number: cleanText(lesson.lesson_number, 40),
+    sequence: Number.isInteger(Number(lesson.sequence)) ? Number(lesson.sequence) : 0,
     topic: cleanText(lesson.topic, 500),
     block: cleanText(lesson.block, 200),
     event_type: ['lesson', 'webinar', 'test', 'half_mock', 'mock'].includes(lesson.event_type)

@@ -336,7 +336,7 @@ async function handleRegistration(chatId, tid, token) {
 // ── Owner: groups and students ───────────────────────────────────────────────
 
 async function showOwnerGroups(chatId) {
-  const groups = await sbSelect('groups', 'order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
   if (!groups.length) {
     return send(chatId, 'групп пока нет. они появятся здесь после синхронизации с Google Sheets.');
   }
@@ -370,7 +370,7 @@ async function showOwnerGroup(chatId, groupId) {
 }
 
 async function startStudentCreation(chatId, tid) {
-  const groups = await sbSelect('groups', 'order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
   if (!groups.length) {
     return send(chatId, 'сначала добавь группу в Google Sheets и синхронизируй её с ботом.');
   }
@@ -613,6 +613,8 @@ async function submitBriefAnswers(chatId, student, subId, correct, given) {
   await emitSheetEvent('submission.checked', {
     submission_id: subId,
     assignment_id: sub?.assignment_id,
+    group_id: assignment?.group_id,
+    lesson_id: assignment?.lesson_id,
     student_id: student.id,
     submitted_at: now,
     on_time: isSubmittedOnTime(assignment, now),
@@ -660,6 +662,8 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
     await emitSheetEvent('submission.checked', {
       submission_id: subId,
       assignment_id: sub.assignment_id,
+      group_id: assignment.group_id,
+      lesson_id: assignment.lesson_id,
       student_id: student.id,
       submitted_at: now,
       on_time: isSubmittedOnTime(assignment, now),
@@ -686,6 +690,8 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
   await emitSheetEvent('submission.checked', {
     submission_id: subId,
     assignment_id: sub.assignment_id,
+    group_id: assignment.group_id,
+    lesson_id: assignment.lesson_id,
     student_id: student.id,
     submitted_at: now,
     on_time: isSubmittedOnTime(assignment, now),
@@ -719,6 +725,8 @@ async function finalizeStudentFiles(chatId, student, subId, files) {
   await emitSheetEvent('submission.submitted', {
     submission_id: subId,
     assignment_id: sub.assignment_id,
+    group_id: assignment?.group_id,
+    lesson_id: assignment?.lesson_id,
     student_id: student.id,
     submitted_at: submittedAt,
     on_time: isSubmittedOnTime(assignment, submittedAt),
@@ -734,7 +742,7 @@ async function finalizeStudentFiles(chatId, student, subId, files) {
 // ── Owner: start HW creation for a concrete lesson ────────────────────────────
 
 async function startHwCreation(chatId, tid) {
-  const groups = await sbSelect('groups', 'order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
 
   if (!groups.length) return send(chatId, 'группы не найдены.');
 
@@ -752,7 +760,7 @@ async function showLessonsForHomework(chatId, groupId, offset = 0) {
   const [group, lessons] = await Promise.all([
     sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`),
     sbSelect('lessons',
-      `group_id=eq.${encodeURIComponent(groupId)}&active=eq.true&order=scheduled_date.asc.nullslast,lesson_number.asc&limit=${pageSize}&offset=${offset}`),
+      `group_id=eq.${encodeURIComponent(groupId)}&active=eq.true&order=sequence.asc&limit=${pageSize}&offset=${offset}`),
   ]);
   if (!group) return send(chatId, 'группа не найдена.');
   if (!lessons.length && offset === 0) {
@@ -953,6 +961,7 @@ async function finishHwCreation(chatId, tid, data) {
     hw_type,
     is_advanced,
     students_count: students.length,
+    student_ids: students.map(student => student.id),
   });
 
   await setSession(tid, { step: 'owner' });
@@ -1273,6 +1282,8 @@ async function saveOwnerReview(chatId, tid, subId, comment, review) {
   await emitSheetEvent('submission.checked', {
     submission_id: subId,
     assignment_id: sub.assignment_id,
+    group_id: assignment.group_id,
+    lesson_id: assignment.lesson_id,
     student_id: sub.student_id,
     submitted_at: sub.submitted_at,
     checked_at: checkedAt,
