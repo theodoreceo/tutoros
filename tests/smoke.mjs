@@ -27,8 +27,11 @@ function responseRecorder() {
   return {
     statusCode: null,
     body: null,
+    headers: {},
     status(code) { this.statusCode = code; return this; },
     json(body) { this.body = body; return this; },
+    send(body) { this.body = body; return this; },
+    setHeader(name, value) { this.headers[name] = value; },
   };
 }
 
@@ -77,5 +80,31 @@ await syncHandler({
 }, unauthorizedSyncResponse);
 
 assert.equal(unauthorizedSyncResponse.statusCode, 401);
+
+const { default: setupWebhookHandler } = await import('../api/setup-webhook.js');
+const setupWebhookResponse = responseRecorder();
+await setupWebhookHandler({
+  method: 'POST',
+  headers: { host: 'preview.example.vercel.app' },
+  body: { secret: 'webhook-secret' },
+}, setupWebhookResponse);
+
+assert.equal(setupWebhookResponse.statusCode, 200);
+assert.match(setupWebhookResponse.body, /бот подключён/i);
+assert.deepEqual(telegramCalls.at(-1), {
+  url: 'https://preview.example.vercel.app/api/bot',
+  secret_token: 'webhook-secret',
+  allowed_updates: ['message', 'callback_query'],
+  drop_pending_updates: false,
+});
+
+const badWebhookResponse = responseRecorder();
+await setupWebhookHandler({
+  method: 'POST',
+  headers: { host: 'preview.example.vercel.app' },
+  body: { secret: 'wrong-secret' },
+}, badWebhookResponse);
+
+assert.equal(badWebhookResponse.statusCode, 401);
 
 console.log('Smoke tests passed');
