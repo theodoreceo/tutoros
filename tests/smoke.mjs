@@ -8,14 +8,22 @@ process.env.OWNER_TELEGRAM_ID = '123';
 process.env.GOOGLE_SHEETS_WEBHOOK_SECRET = 'sheet-secret';
 
 const telegramCalls = [];
-const courseSyncBodies = [];
+const insertedGroups = [];
+const insertedLessons = [];
+let sessionState = {};
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url);
   if (target.includes('/rest/v1/groups?')) {
+    if (target.includes('name=eq.')) return Response.json([]);
     return Response.json([{
       id: 'g1', name: 'Базовая А1', program: 'base', target_score: 18,
-      active: true, created_at: '2026-08-02T08:00:00.000Z', template_id: 'm1',
+      active: true, created_at: '2026-08-02T08:00:00.000Z',
     }]);
+  }
+  if (target.endsWith('/rest/v1/groups') && options.method === 'POST') {
+    const group = JSON.parse(options.body);
+    insertedGroups.push(group);
+    return Response.json([group]);
   }
   if (target.includes('/rest/v1/students?')) {
     return Response.json([{
@@ -24,9 +32,15 @@ globalThis.fetch = async (url, options = {}) => {
     }]);
   }
   if (target.includes('/rest/v1/lessons?')) {
+    if (target.includes('sheet_lesson_key=like.manual:*')) return Response.json([]);
     return Response.json([{
       id: 'l1', group_id: 'g1', lesson_number: '1', topic: 'Числа', event_type: 'lesson',
     }]);
+  }
+  if (target.endsWith('/rest/v1/lessons') && options.method === 'POST') {
+    const lesson = JSON.parse(options.body);
+    insertedLessons.push(lesson);
+    return Response.json([lesson]);
   }
   if (target.includes('/rest/v1/homework_assignments?')) {
     return Response.json([{
@@ -43,21 +57,16 @@ globalThis.fetch = async (url, options = {}) => {
     }]);
   }
   if (target.includes('/rest/v1/bot_sessions?')) {
-    return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return Response.json([{ state: sessionState }]);
   }
-  if (target.includes('/rest/v1/bot_sessions')) {
-    return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  if (target.endsWith('/rest/v1/bot_sessions') && options.method === 'POST') {
+    const session = JSON.parse(options.body);
+    sessionState = session.state;
+    return Response.json([session]);
   }
   if (target.includes('api.telegram.org')) {
     telegramCalls.push(JSON.parse(options.body || '{}'));
     return new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } });
-  }
-  if (target.includes('/rest/v1/rpc/sync_course_catalog')) {
-    courseSyncBodies.push(JSON.parse(options.body || '{}'));
-    return new Response('{"templates":2,"lessons":95}', {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
   }
   throw new Error(`Unexpected request: ${target}`);
 };
@@ -87,90 +96,79 @@ assert.equal(botResponse.body.ok, true);
 assert.equal(telegramCalls.length, 1);
 assert.match(telegramCalls[0].text, /панель преподавателя/);
 
-const { default: syncHandler } = await import('../api/sync-lessons.js');
-const syncResponse = responseRecorder();
-await syncHandler({
+const newGroupResponse = responseRecorder();
+await botHandler({
   method: 'POST',
-  headers: { 'x-tutoros-sync-secret': 'sheet-secret' },
-  body: { groups: [], lessons: [] },
-}, syncResponse);
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: { message: { chat: { id: 123 }, from: { id: 123 }, text: '/newgroup' } },
+}, newGroupResponse);
+assert.equal(newGroupResponse.statusCode, 200);
+assert.match(telegramCalls.at(-1).text, /какая программа/i);
+const programKeyboard = JSON.parse(telegramCalls.at(-1).reply_markup).inline_keyboard;
+assert.deepEqual(programKeyboard.map(row => row[0].callback_data), ['ngp:base', 'ngp:advanced']);
 
-assert.equal(syncResponse.statusCode, 200);
-assert.deepEqual(syncResponse.body, { ok: true, groups: 0, lessons: 0 });
-
-const badSyncResponse = responseRecorder();
-await syncHandler({
+const programResponse = responseRecorder();
+await botHandler({
   method: 'POST',
-  headers: { 'x-tutoros-sync-secret': 'sheet-secret' },
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
   body: {
-    groups: [{ id: '', name: '' }],
-    lessons: [],
+    callback_query: {
+      id: 'cb-program', data: 'ngp:base',
+      message: { chat: { id: 123 } }, from: { id: 123 },
+    },
   },
-}, badSyncResponse);
+}, programResponse);
+assert.equal(sessionState.step, 'await_group_name');
+assert.equal(sessionState.data.program, 'base');
 
-assert.equal(badSyncResponse.statusCode, 400);
-assert.match(badSyncResponse.body.error, /group/i);
-
-const unauthorizedSyncResponse = responseRecorder();
-await syncHandler({
+const groupNameResponse = responseRecorder();
+await botHandler({
   method: 'POST',
-  headers: { 'x-tutoros-sync-secret': 'wrong-secret' },
-  body: { groups: [], lessons: [] },
-}, unauthorizedSyncResponse);
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: { message: { chat: { id: 123 }, from: { id: 123 }, text: 'Базовая А2' } },
+}, groupNameResponse);
+assert.equal(insertedGroups.length, 1);
+assert.equal(insertedGroups[0].program, 'base');
+assert.equal(insertedGroups[0].target_score, 18);
+assert.equal('template_id' in insertedGroups[0], false);
 
-assert.equal(unauthorizedSyncResponse.statusCode, 401);
-
-const { default: courseSyncHandler } = await import('../api/sync-course.js');
-const courseSyncResponse = responseRecorder();
-await courseSyncHandler({
+const lessonChoiceResponse = responseRecorder();
+await botHandler({
   method: 'POST',
-  headers: { 'x-tutoros-sync-secret': 'sheet-secret' },
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
   body: {
-    templates: [{
-      id: 'm1234567890abcdef1234',
-      name: 'Базовая',
-      program: 'base',
-      sheet_key: 'Базовая',
-      active: true,
-    }],
-    lessons: [{
-      id: 'e1234567890abcdef1234',
-      template_id: 'm1234567890abcdef1234',
-      sheet_lesson_key: '1',
-      lesson_number: '1',
-      sequence: 1,
-      topic: 'Числа и вычисления',
-      event_type: 'lesson',
-      active: true,
-    }, {
-      // A broken client ID must not collide with another course lesson.
-      id: 'e1234567890abcdef1234',
-      template_id: 'm1234567890abcdef1234',
-      sheet_lesson_key: '2',
-      lesson_number: '2',
-      sequence: 2,
-      topic: 'Дроби и проценты',
-      event_type: 'lesson',
-      active: true,
-    }],
+    callback_query: {
+      id: 'cb-hw-group', data: 'hw_group:g1',
+      message: { chat: { id: 123 } }, from: { id: 123 },
+    },
   },
-}, courseSyncResponse);
+}, lessonChoiceResponse);
+const lessonKeyboard = JSON.parse(telegramCalls.at(-1).reply_markup).inline_keyboard;
+assert.equal(lessonKeyboard[0][0].callback_data, 'hw_new_lesson:g1');
 
-assert.equal(courseSyncResponse.statusCode, 200);
-assert.deepEqual(courseSyncResponse.body, { ok: true, templates: 2, lessons: 95 });
-assert.equal(courseSyncBodies.length, 1);
-assert.equal(courseSyncBodies[0].p_templates[0].name, 'Базовая');
-assert.equal(courseSyncBodies[0].p_lessons.length, 2);
-assert.notEqual(courseSyncBodies[0].p_lessons[0].id, 'e1234567890abcdef1234');
-assert.notEqual(courseSyncBodies[0].p_lessons[0].id, courseSyncBodies[0].p_lessons[1].id);
-
-const emptyCourseSyncResponse = responseRecorder();
-await courseSyncHandler({
+const newLessonResponse = responseRecorder();
+await botHandler({
   method: 'POST',
-  headers: { 'x-tutoros-sync-secret': 'sheet-secret' },
-  body: { templates: [], lessons: [] },
-}, emptyCourseSyncResponse);
-assert.equal(emptyCourseSyncResponse.statusCode, 400);
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: {
+    callback_query: {
+      id: 'cb-new-lesson', data: 'hw_new_lesson:g1',
+      message: { chat: { id: 123 } }, from: { id: 123 },
+    },
+  },
+}, newLessonResponse);
+assert.equal(sessionState.step, 'await_lesson_topic');
+
+const lessonTopicResponse = responseRecorder();
+await botHandler({
+  method: 'POST',
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: { message: { chat: { id: 123 }, from: { id: 123 }, text: 'Линейные уравнения' } },
+}, lessonTopicResponse);
+assert.equal(insertedLessons.length, 1);
+assert.equal(insertedLessons[0].topic, 'Линейные уравнения');
+assert.match(insertedLessons[0].sheet_lesson_key, /^manual:/);
+assert.equal(sessionState.step, 'await_date');
 
 const { default: statsExportHandler } = await import('../api/stats-export.js');
 const statsExportResponse = responseRecorder();

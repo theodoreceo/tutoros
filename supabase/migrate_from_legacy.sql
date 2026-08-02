@@ -10,9 +10,7 @@ alter table groups
   add column if not exists active boolean not null default true,
   add column if not exists updated_at timestamptz not null default now();
 
--- Legacy CRM groups have no sheet_key. Keep their data, but do not show them
--- in the simplified bot. The first Sheet sync creates/activates current groups.
-update groups set active = false where sheet_key is null;
+-- Groups are managed directly in Telegram. A missing sheet_key is normal.
 
 alter table lessons
   add column if not exists sheet_lesson_key text,

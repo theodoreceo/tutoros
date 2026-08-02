@@ -71,15 +71,15 @@ export default async function handler(req, res) {
 
   try {
     const [rawGroups, rawStudents, rawLessons, rawAssignments, rawSubmissions] = await Promise.all([
-      sbAll('groups', 'select=id,name,program,target_score,active,created_at,template_id&template_id=not.is.null'),
+      sbAll('groups', 'select=id,name,program,target_score,active,created_at'),
       sbAll('students', 'select=id,name,group_id,status,target_score,created_at'),
       sbAll('lessons', 'select=id,group_id,lesson_number,topic,event_type'),
       sbAll('homework_assignments', 'select=id,group_id,lesson_id,topic,due_date,hw_type,is_advanced,assigned_at'),
       sbAll('homework_submissions', 'select=id,assignment_id,student_id,status,submitted_at,checked_at,score,max_score,on_time,comment'),
     ]);
 
-    const groupMap = new Map(rawGroups.map(group => [group.id, group]));
-    const groups = rawGroups.filter(group => group.template_id);
+    const groups = rawGroups;
+    const groupMap = new Map(groups.map(group => [group.id, group]));
     const students = rawStudents.filter(student => groupMap.has(student.group_id));
     const studentMap = new Map(students.map(student => [student.id, student]));
     const lessonMap = new Map(
@@ -200,4 +200,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Statistics export failed' });
   }
 }
-
