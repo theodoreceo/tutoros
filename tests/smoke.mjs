@@ -60,6 +60,7 @@ globalThis.fetch = async (url, options = {}) => {
       id: 'sub1', assignment_id: 'a1', student_id: 's1', status: 'checked',
       submitted_at: '2026-08-03T08:00:00.000Z', checked_at: '2026-08-03T08:05:00.000Z',
       score: 8, max_score: 10, on_time: true, comment: 'Хорошо',
+      submitted_files: [{ type: 'photo', file_id: 'photo-1' }],
     }]);
   }
   if (target.includes('/rest/v1/bot_sessions?')) {
@@ -210,6 +211,23 @@ assert.match(telegramCalls.at(-1).text, /Непроверенные работы
 assert.match(telegramCalls.at(-1).text, /Иван Иванов/);
 const uncheckedKeyboard = JSON.parse(telegramCalls.at(-1).reply_markup).inline_keyboard;
 assert.equal(uncheckedKeyboard[0][0].callback_data, 'review:sub1');
+
+const photosBeforeReview = telegramCalls.filter(call => call.photo === 'photo-1').length;
+assert.equal(photosBeforeReview, 0);
+const reviewOpenResponse = responseRecorder();
+await botHandler({
+  method: 'POST',
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: {
+    callback_query: {
+      id: 'cb-review-open', data: 'review:sub1',
+      message: { chat: { id: 123 } }, from: { id: 123 },
+    },
+  },
+}, reviewOpenResponse);
+const photosAfterReview = telegramCalls.filter(call => call.photo === 'photo-1').length;
+assert.equal(photosAfterReview, photosBeforeReview + 1);
+assert.match(telegramCalls.at(-1).text, /введи итоговый результат/);
 
 const { default: statsExportHandler } = await import('../api/stats-export.js');
 const statsExportResponse = responseRecorder();

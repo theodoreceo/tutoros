@@ -1408,6 +1408,8 @@ async function startOwnerReview(chatId, tid, subId) {
   ]);
   if (!assignment || !student) return send(chatId, 'не удалось загрузить данные работы.');
 
+  await sendSubmissionFiles(chatId, sub.submitted_files);
+
   const taskConfig = Array.isArray(assignment.task_config)
     ? assignment.task_config.map(Number).filter(Number.isFinite)
     : [];
@@ -1505,11 +1507,15 @@ async function notifyOwnerWithFiles(subId, assignment, student, files, submitted
     filesCount: files.length,
     needsReview: true,
   });
-  for (const f of files) {
-    if (f.type === 'photo') {
-      await tg('sendPhoto', { chat_id: OWNER_TELEGRAM_ID, photo: f.file_id }).catch(() => {});
+}
+
+async function sendSubmissionFiles(chatId, files) {
+  for (const file of Array.isArray(files) ? files : []) {
+    if (!file?.file_id) continue;
+    if (file.type === 'photo') {
+      await tg('sendPhoto', { chat_id: chatId, photo: file.file_id }).catch(() => {});
     } else {
-      await tg('sendDocument', { chat_id: OWNER_TELEGRAM_ID, document: f.file_id }).catch(() => {});
+      await tg('sendDocument', { chat_id: chatId, document: file.file_id }).catch(() => {});
     }
   }
 }
