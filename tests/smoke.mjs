@@ -170,6 +170,29 @@ assert.equal(insertedLessons[0].topic, 'Линейные уравнения');
 assert.match(insertedLessons[0].sheet_lesson_key, /^manual:/);
 assert.equal(sessionState.step, 'await_date');
 
+sessionState = {
+  step: 'brief_review:sub1',
+  data: { correct: ['4', '9'], given: ['4', '8'] },
+};
+const briefSubmissionResponse = responseRecorder();
+await botHandler({
+  method: 'POST',
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: {
+    callback_query: {
+      id: 'cb-brief-submit', data: 'brief_final_submit:sub1',
+      message: { chat: { id: 456 } }, from: { id: 456 },
+    },
+  },
+}, briefSubmissionResponse);
+const ownerSubmissionNotice = telegramCalls.find(call =>
+  String(call.chat_id) === '123' && /Сдано ДЗ/.test(call.text || '')
+);
+assert.ok(ownerSubmissionNotice);
+assert.match(ownerSubmissionNotice.text, /Иван Иванов/);
+assert.match(ownerSubmissionNotice.text, /Базовая А1/);
+assert.match(ownerSubmissionNotice.text, /1\/2/);
+
 const { default: statsExportHandler } = await import('../api/stats-export.js');
 const statsExportResponse = responseRecorder();
 await statsExportHandler({

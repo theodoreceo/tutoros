@@ -676,6 +676,13 @@ async function submitBriefAnswers(chatId, student, subId, correct, given) {
     on_time: isSubmittedOnTime(assignment, now),
   });
   await setSession(student.telegram_id, { step: 'student' });
+  if (assignment) {
+    await notifyOwnerSubmission(subId, assignment, student, {
+      score,
+      maxScore,
+      submittedAt: now,
+    });
+  }
 
   const feedback = results.map((ok, i) => `${i + 1}. ${ok ? '✅' : `❌ (верно: ${correct[i]})`}\n   ты: <code>${given[i] || 'не ответил'}</code>`).join('\n');
   return send(chatId, `результат: <b>${numCorrect}/${correct.length}</b>\n\n${feedback}`);
@@ -712,6 +719,11 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
       on_time: isSubmittedOnTime(assignment, now),
     });
     await setSession(student.telegram_id, { step: 'student' });
+    await notifyOwnerSubmission(subId, assignment, student, {
+      score,
+      maxScore,
+      submittedAt: now,
+    });
     return send(chatId,
       `результат: <b>${numCorrect}/${correct.length}</b> (${score}%)\n\n${feedback}`);
   }
@@ -727,6 +739,11 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
     on_time: isSubmittedOnTime(assignment, now),
   });
   if (student.telegram_id) await setSession(student.telegram_id, { step: 'student' });
+  await notifyOwnerSubmission(subId, assignment, student, {
+    score: isCorrect ? 100 : 0,
+    maxScore: 100,
+    submittedAt: now,
+  });
   return send(chatId, isCorrect ? `✅ верно! молодец, <b>${student.name}</b>!`
     : `❌ неверно:(\nправильный ответ: <b>${correct || 'не указан'}</b>`);
 }
@@ -749,7 +766,7 @@ async function finalizeStudentFiles(chatId, student, subId, files) {
   });
   await setSession(student.telegram_id, { step: 'student' });
 
-  if (assignment) await notifyOwnerWithFiles(subId, assignment, student, files);
+  if (assignment) await notifyOwnerWithFiles(subId, assignment, student, files, submittedAt);
 
   return send(chatId,
     `✅ работа отправлена (${files.length} файл(ов))!\nкогда преподаватель проверит её, ты получишь уведомление.`);
@@ -1378,15 +1395,44 @@ async function saveOwnerReview(chatId, tid, subId, comment, review) {
     rkbd(OWNER_KBD));
 }
 
-// ── Notify owner on detailed/trial submission (with files) ────────────────────
+// ── Notify owner about every submitted homework ───────────────────────────────
 
-async function notifyOwnerWithFiles(subId, assignment, student, files) {
+async function notifyOwnerSubmission(subId, assignment, student, options = {}) {
   if (!OWNER_TELEGRAM_ID) return;
 
+  const group = assignment.group_id
+    ? await sbOne('groups', `id=eq.${encodeURIComponent(assignment.group_id)}&select=name`)
+      .catch(() => null)
+    : null;
+  const submittedAt = options.submittedAt || new Date().toISOString();
+  const onTime = isSubmittedOnTime(assignment, submittedAt);
+  const timing = onTime === null ? '' : onTime ? '\nсрок: ✅ вовремя' : '\nсрок: ⚠️ после дедлайна';
+  const hasResult = Number.isFinite(Number(options.score))
+    && Number.isFinite(Number(options.maxScore));
+  const result = hasResult
+    ? `\nрезультат автопроверки: <b>${options.score}/${options.maxScore}</b>`
+    : '';
+  const filesCount = Number(options.filesCount) || 0;
+  const filesLine = filesCount ? `\nфайлов: <b>${filesCount}</b>` : '';
+  const extra = options.needsReview
+    ? kbd([[{ text: '✅ проверить работу', callback_data: `review:${subId}` }]])
+    : {};
+
   await send(OWNER_TELEGRAM_ID,
-    `📤 <b>${html(student.name)}</b> сдал «${html(assignment.topic)}» (${files.length} файл(ов)).`,
-    kbd([[{ text: '✅ проверить работу', callback_data: `review:${subId}` }]])
+    `📥 <b>Сдано ДЗ</b>\nученик: <b>${html(student.name)}</b>` +
+    `\nгруппа: <b>${html(group?.name || '—')}</b>` +
+    `\nтема: <b>${html(assignment.topic)}</b>${result}${filesLine}${timing}`,
+    extra
   ).catch(() => {});
+}
+
+async function notifyOwnerWithFiles(subId, assignment, student, files, submittedAt) {
+  if (!OWNER_TELEGRAM_ID) return;
+  await notifyOwnerSubmission(subId, assignment, student, {
+    submittedAt,
+    filesCount: files.length,
+    needsReview: true,
+  });
   for (const f of files) {
     if (f.type === 'photo') {
       await tg('sendPhoto', { chat_id: OWNER_TELEGRAM_ID, photo: f.file_id }).catch(() => {});
