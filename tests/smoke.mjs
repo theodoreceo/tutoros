@@ -50,6 +50,12 @@ globalThis.fetch = async (url, options = {}) => {
     }]);
   }
   if (target.includes('/rest/v1/homework_submissions?')) {
+    if (target.includes('status=eq.submitted')) {
+      return Response.json([{
+        id: 'sub1', assignment_id: 'a1', student_id: 's1', status: 'submitted',
+        submitted_at: '2026-08-03T08:00:00.000Z', on_time: true,
+      }]);
+    }
     return Response.json([{
       id: 'sub1', assignment_id: 'a1', student_id: 's1', status: 'checked',
       submitted_at: '2026-08-03T08:00:00.000Z', checked_at: '2026-08-03T08:05:00.000Z',
@@ -192,6 +198,18 @@ assert.ok(ownerSubmissionNotice);
 assert.match(ownerSubmissionNotice.text, /Иван Иванов/);
 assert.match(ownerSubmissionNotice.text, /Базовая А1/);
 assert.match(ownerSubmissionNotice.text, /1\/2/);
+
+const uncheckedResponse = responseRecorder();
+await botHandler({
+  method: 'POST',
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: { message: { chat: { id: 123 }, from: { id: 123 }, text: '/unchecked' } },
+}, uncheckedResponse);
+assert.equal(uncheckedResponse.statusCode, 200);
+assert.match(telegramCalls.at(-1).text, /Непроверенные работы: 1/);
+assert.match(telegramCalls.at(-1).text, /Иван Иванов/);
+const uncheckedKeyboard = JSON.parse(telegramCalls.at(-1).reply_markup).inline_keyboard;
+assert.equal(uncheckedKeyboard[0][0].callback_data, 'review:sub1');
 
 const { default: statsExportHandler } = await import('../api/stats-export.js');
 const statsExportResponse = responseRecorder();

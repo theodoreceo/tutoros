@@ -102,6 +102,12 @@ const moscowDate = (isoDate) => {
   const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
 };
+const moscowDateTime = (isoDate) => isoDate
+  ? new Intl.DateTimeFormat('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    }).format(new Date(isoDate))
+  : '—';
 const isSubmittedOnTime = (assignment, submittedAt) =>
   assignment?.due_date ? moscowDate(submittedAt) <= assignment.due_date : null;
 
@@ -122,7 +128,8 @@ const STUDENT_KBD = [
 const OWNER_KBD = [
   [{ text: '👥 группы' }, { text: '➕ создать группу' }],
   [{ text: '➕ добавить ученика' }],
-  [{ text: '➕ создать дз' }, { text: '📋 домашние задания' }],
+  [{ text: '➕ создать дз' }, { text: '🕒 непроверено' }],
+  [{ text: '📋 домашние задания' }],
   [{ text: '❓ помощь' }],
 ];
 
@@ -167,6 +174,7 @@ async function handleText(msg) {
   if (text === '➕ создать группу'     && owner) return startGroupCreation(chatId, tid);
   if (text === '➕ добавить ученика'  && owner) return startStudentCreation(chatId, tid);
   if (text === '➕ создать дз'         && owner) return startHwCreation(chatId, tid);
+  if (text === '🕒 непроверено'        && owner) return showUncheckedSubmissions(chatId, 0);
   if (text === '📋 домашние задания'  && owner) return showOwnerAssignments(chatId, 0);
   if (text === '❓ помощь') {
     if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт\n\nесли возникла проблема, напиши преподавателю.', rkbd(STUDENT_KBD));
@@ -233,6 +241,7 @@ async function handleText(msg) {
     if (text === '/newgroup')   return startGroupCreation(chatId, tid);
     if (text === '/newstudent') return startStudentCreation(chatId, tid);
     if (text === '/newdz')      return startHwCreation(chatId, tid);
+    if (text === '/unchecked')  return showUncheckedSubmissions(chatId, 0);
     if (text === '/mydz')       return showOwnerAssignments(chatId, 0);
     const sess = await getSession(tid);
     if (sess.step === 'await_student_name') {
@@ -282,7 +291,7 @@ async function sendOwnerHome(chatId, tid) {
 
 function sendOwnerHelp(chatId) {
   return send(chatId,
-    'команды:\n/groups — группы и ученики\n/newgroup — создать группу\n/newstudent — добавить ученика\n/newdz — создать ДЗ\n/mydz — домашние задания',
+    'команды:\n/groups — группы и ученики\n/newgroup — создать группу\n/newstudent — добавить ученика\n/newdz — создать ДЗ\n/unchecked — непроверенные работы\n/mydz — все домашние задания',
     rkbd(OWNER_KBD));
 }
 
@@ -1083,6 +1092,66 @@ async function showOwnerAssignments(chatId, offset) {
   return send(chatId, `домашние задания:\n\n${lines.join('\n')}\n\nвыбери для управления:`, kbd(buttons));
 }
 
+async function showUncheckedSubmissions(chatId, offset = 0) {
+  const pageSize = 8;
+  const allSubmissions = await sbSelect('homework_submissions',
+    'status=eq.submitted&order=submitted_at.asc&select=id,assignment_id,student_id,submitted_at,on_time');
+
+  if (!allSubmissions.length) {
+    return send(chatId, '✅ непроверенных работ нет.', rkbd(OWNER_KBD));
+  }
+
+  const safeOffset = Math.max(0, Math.min(offset, Math.floor((allSubmissions.length - 1) / pageSize) * pageSize));
+  const submissions = allSubmissions.slice(safeOffset, safeOffset + pageSize);
+  const assignmentIds = [...new Set(submissions.map(row => row.assignment_id).filter(Boolean))];
+  const studentIds = [...new Set(submissions.map(row => row.student_id).filter(Boolean))];
+  const [assignments, students] = await Promise.all([
+    assignmentIds.length
+      ? sbSelect('homework_assignments', `id=in.(${assignmentIds.join(',')})&select=id,group_id,topic,hw_type`)
+      : [],
+    studentIds.length
+      ? sbSelect('students', `id=in.(${studentIds.join(',')})&select=id,name`)
+      : [],
+  ]);
+  const groupIds = [...new Set(assignments.map(row => row.group_id).filter(Boolean))];
+  const groups = groupIds.length
+    ? await sbSelect('groups', `id=in.(${groupIds.join(',')})&select=id,name`)
+    : [];
+  const assignmentMap = new Map(assignments.map(row => [row.id, row]));
+  const studentMap = new Map(students.map(row => [row.id, row]));
+  const groupMap = new Map(groups.map(row => [row.id, row]));
+
+  const lines = submissions.map((submission, index) => {
+    const assignment = assignmentMap.get(submission.assignment_id);
+    const student = studentMap.get(submission.student_id);
+    const group = groupMap.get(assignment?.group_id);
+    const number = safeOffset + index + 1;
+    return `${number}. <b>${html(student?.name || 'Неизвестный ученик')}</b> · ${html(group?.name || '—')}\n` +
+      `   ${html(assignment?.topic || 'Без темы')} · ${moscowDateTime(submission.submitted_at)}`;
+  });
+  const buttons = submissions.map((submission, index) => {
+    const assignment = assignmentMap.get(submission.assignment_id);
+    const student = studentMap.get(submission.student_id);
+    const number = safeOffset + index + 1;
+    return [{
+      text: `${number}. ${(student?.name || 'Ученик').slice(0, 18)} · ${(assignment?.topic || 'Без темы').slice(0, 24)}`,
+      callback_data: `review:${submission.id}`,
+    }];
+  });
+  const nav = [];
+  if (safeOffset > 0) nav.push({
+    text: '← назад', callback_data: `unchecked_pg:${Math.max(0, safeOffset - pageSize)}`,
+  });
+  if (safeOffset + pageSize < allSubmissions.length) nav.push({
+    text: 'дальше →', callback_data: `unchecked_pg:${safeOffset + pageSize}`,
+  });
+  if (nav.length) buttons.push(nav);
+
+  return send(chatId,
+    `🕒 <b>Непроверенные работы: ${allSubmissions.length}</b>\n\n${lines.join('\n\n')}\n\nНажми на работу, чтобы проверить:`,
+    kbd(buttons));
+}
+
 async function showDzDetail(chatId, hwId) {
   const a = await sbOne('homework_assignments', `id=eq.${hwId}`);
   if (!a) return send(chatId, 'дз не найдено.');
@@ -1153,6 +1222,9 @@ async function handleCallback(cq) {
   }
   if (data.startsWith('review:') && owner) {
     return startOwnerReview(chatId, tid, data.slice('review:'.length));
+  }
+  if (data.startsWith('unchecked_pg:') && owner) {
+    return showUncheckedSubmissions(chatId, parseInt(data.slice('unchecked_pg:'.length), 10) || 0);
   }
 
   // /mydz navigation and management
@@ -1392,7 +1464,7 @@ async function saveOwnerReview(chatId, tid, subId, comment, review) {
 
   return send(chatId,
     `✅ работа <b>${html(student.name)}</b> проверена: <b>${score}/${maxScore}</b>`,
-    rkbd(OWNER_KBD));
+    kbd([[{ text: '🕒 к непроверенным', callback_data: 'unchecked_pg:0' }]]));
 }
 
 // ── Notify owner about every submitted homework ───────────────────────────────
