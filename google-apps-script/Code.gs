@@ -50,7 +50,7 @@ function prepareTutorOS() {
   });
   getTutorOSEventSheet_();
   refreshTutorOSStats_();
-  SpreadsheetApp.getUi().alert('TutorOS: часовой пояс установлен на Москву, технические данные скрыты.');
+  tutorOSNotify_('TutorOS: часовой пояс установлен на Москву, технические данные скрыты.');
 }
 
 function syncTutorOS() {
@@ -139,14 +139,14 @@ function syncTutorOS() {
   if (response.getResponseCode() !== 200) {
     throw new Error('TutorOS sync failed: ' + response.getContentText());
   }
-  SpreadsheetApp.getUi().alert(
+  tutorOSNotify_(
     `TutorOS: синхронизировано методик — ${templates.length}, событий — ${lessons.length}.`
   );
 }
 
 function refreshTutorOSStatsFile() {
   const result = syncTutorOSStatsFile();
-  SpreadsheetApp.getUi().alert(
+  tutorOSNotify_(
     `TutorOS: статистика обновлена. Групп — ${result.groups}, учеников — ${result.students}.`
   );
 }
@@ -160,7 +160,7 @@ function installTutorOSStatsTrigger() {
     .everyMinutes(10)
     .create();
   const result = syncTutorOSStatsFile();
-  SpreadsheetApp.getUi().alert(
+  tutorOSNotify_(
     `TutorOS: автообновление включено. Групп — ${result.groups}, учеников — ${result.students}.`
   );
 }
@@ -477,7 +477,15 @@ function appendTutorOSEvent_(event) {
 
 function refreshTutorOSStats() {
   refreshTutorOSStats_();
-  SpreadsheetApp.getUi().alert('TutorOS: статистика обновлена.');
+  tutorOSNotify_('TutorOS: статистика обновлена.');
+}
+
+function tutorOSNotify_(message) {
+  try {
+    SpreadsheetApp.getUi().alert(message);
+  } catch (error) {
+    console.log(message);
+  }
 }
 
 function refreshTutorOSStats_() {
