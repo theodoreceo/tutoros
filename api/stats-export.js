@@ -71,7 +71,7 @@ export default async function handler(req, res) {
 
   try {
     const [rawGroups, rawStudents, rawLessons, rawAssignments, rawSubmissions] = await Promise.all([
-      sbAll('groups', 'select=id,name,program,target_score,active,created_at'),
+      sbAll('groups', 'select=id,name,program,target_score,active,created_at&target_score=not.is.null'),
       sbAll('students', 'select=id,name,group_id,status,target_score,created_at'),
       sbAll('lessons', 'select=id,group_id,lesson_number,topic,event_type'),
       sbAll('homework_assignments', 'select=id,group_id,lesson_id,topic,due_date,hw_type,is_advanced,assigned_at'),

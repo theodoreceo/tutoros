@@ -350,7 +350,7 @@ async function handleRegistration(chatId, tid, token) {
 // ── Owner: groups and students ───────────────────────────────────────────────
 
 async function showOwnerGroups(chatId) {
-  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&target_score=not.is.null&order=name.asc');
   if (!groups.length) {
     return send(chatId, 'групп пока нет.', kbd([
       [{ text: '➕ создать первую группу', callback_data: 'new_group' }],
@@ -443,7 +443,7 @@ async function finishGroupCreation(chatId, tid, rawName, sess) {
 }
 
 async function startStudentCreation(chatId, tid) {
-  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&target_score=not.is.null&order=name.asc');
   if (!groups.length) {
     return send(chatId, 'сначала создай группу в боте.');
   }
@@ -758,7 +758,7 @@ async function finalizeStudentFiles(chatId, student, subId, files) {
 // ── Owner: start HW creation for a concrete lesson ────────────────────────────
 
 async function startHwCreation(chatId, tid) {
-  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&target_score=not.is.null&order=name.asc');
 
   if (!groups.length) return send(chatId, 'группы не найдены.');
 
