@@ -111,6 +111,16 @@ await courseSyncHandler({
       topic: 'Числа и вычисления',
       event_type: 'lesson',
       active: true,
+    }, {
+      // A broken client ID must not collide with another course lesson.
+      id: 'e1234567890abcdef1234',
+      template_id: 'm1234567890abcdef1234',
+      sheet_lesson_key: '2',
+      lesson_number: '2',
+      sequence: 2,
+      topic: 'Дроби и проценты',
+      event_type: 'lesson',
+      active: true,
     }],
   },
 }, courseSyncResponse);
@@ -119,6 +129,9 @@ assert.equal(courseSyncResponse.statusCode, 200);
 assert.deepEqual(courseSyncResponse.body, { ok: true, templates: 2, lessons: 95 });
 assert.equal(courseSyncBodies.length, 1);
 assert.equal(courseSyncBodies[0].p_templates[0].name, 'Базовая');
+assert.equal(courseSyncBodies[0].p_lessons.length, 2);
+assert.notEqual(courseSyncBodies[0].p_lessons[0].id, 'e1234567890abcdef1234');
+assert.notEqual(courseSyncBodies[0].p_lessons[0].id, courseSyncBodies[0].p_lessons[1].id);
 
 const emptyCourseSyncResponse = responseRecorder();
 await courseSyncHandler({

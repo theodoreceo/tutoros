@@ -1,6 +1,8 @@
 // Imports reusable course templates from the private Google Sheet.
 // Actual student groups are created by the owner in Telegram.
 
+import { createHash } from 'node:crypto';
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY
   || process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -14,6 +16,9 @@ const SB_HEADERS = {
 
 const cleanText = (value, maxLength = 500) =>
   value === null || value === undefined ? null : String(value).trim().slice(0, maxLength);
+
+const catalogId = (prefix, ...parts) =>
+  prefix + createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 20);
 
 const duplicateValue = (items, keyFor) => {
   const seen = new Set();
@@ -47,21 +52,26 @@ export default async function handler(req, res) {
     sheet_key: cleanText(template.sheet_key, 200),
     active: template.active !== false,
   }));
-  const lessons = rawLessons.map(lesson => ({
-    id: cleanText(lesson.id, 32),
-    template_id: cleanText(lesson.template_id, 32),
-    sheet_lesson_key: cleanText(lesson.sheet_lesson_key, 100),
-    course_month: cleanText(lesson.course_month, 40),
-    course_week: cleanText(lesson.course_week, 40),
-    lesson_number: cleanText(lesson.lesson_number, 40),
-    sequence: Number.isInteger(Number(lesson.sequence)) ? Number(lesson.sequence) : 0,
-    topic: cleanText(lesson.topic, 500),
-    block: cleanText(lesson.block, 200),
-    event_type: ['lesson', 'webinar', 'test', 'half_mock', 'mock'].includes(lesson.event_type)
-      ? lesson.event_type
-      : 'lesson',
-    active: lesson.active !== false,
-  }));
+  const lessons = rawLessons.map(lesson => {
+    const templateId = cleanText(lesson.template_id, 32);
+    const sheetLessonKey = cleanText(lesson.sheet_lesson_key, 100);
+    return {
+      // Server-owned IDs prevent a broken Sheet formula/script from corrupting the catalog.
+      id: catalogId('e', templateId || '', sheetLessonKey || ''),
+      template_id: templateId,
+      sheet_lesson_key: sheetLessonKey,
+      course_month: cleanText(lesson.course_month, 40),
+      course_week: cleanText(lesson.course_week, 40),
+      lesson_number: cleanText(lesson.lesson_number, 40),
+      sequence: Number.isInteger(Number(lesson.sequence)) ? Number(lesson.sequence) : 0,
+      topic: cleanText(lesson.topic, 500),
+      block: cleanText(lesson.block, 200),
+      event_type: ['lesson', 'webinar', 'test', 'half_mock', 'mock'].includes(lesson.event_type)
+        ? lesson.event_type
+        : 'lesson',
+      active: lesson.active !== false,
+    };
+  });
 
   const templateIds = new Set(templates.map(template => template.id));
   if (templates.some(template =>
