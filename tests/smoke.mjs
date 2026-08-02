@@ -11,6 +11,37 @@ const telegramCalls = [];
 const courseSyncBodies = [];
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url);
+  if (target.includes('/rest/v1/groups?')) {
+    return Response.json([{
+      id: 'g1', name: 'Базовая А1', program: 'base', target_score: 18,
+      active: true, created_at: '2026-08-02T08:00:00.000Z', template_id: 'm1',
+    }]);
+  }
+  if (target.includes('/rest/v1/students?')) {
+    return Response.json([{
+      id: 's1', name: 'Иван Иванов', group_id: 'g1', status: 'active',
+      target_score: 18, created_at: '2026-08-02T08:10:00.000Z',
+    }]);
+  }
+  if (target.includes('/rest/v1/lessons?')) {
+    return Response.json([{
+      id: 'l1', group_id: 'g1', lesson_number: '1', topic: 'Числа', event_type: 'lesson',
+    }]);
+  }
+  if (target.includes('/rest/v1/homework_assignments?')) {
+    return Response.json([{
+      id: 'a1', group_id: 'g1', lesson_id: 'l1', topic: 'Числа',
+      due_date: '2026-08-09', hw_type: 'brief', is_advanced: false,
+      assigned_at: '2026-08-02T08:20:00.000Z',
+    }]);
+  }
+  if (target.includes('/rest/v1/homework_submissions?')) {
+    return Response.json([{
+      id: 'sub1', assignment_id: 'a1', student_id: 's1', status: 'checked',
+      submitted_at: '2026-08-03T08:00:00.000Z', checked_at: '2026-08-03T08:05:00.000Z',
+      score: 8, max_score: 10, on_time: true, comment: 'Хорошо',
+    }]);
+  }
   if (target.includes('/rest/v1/bot_sessions?')) {
     return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
@@ -140,6 +171,26 @@ await courseSyncHandler({
   body: { templates: [], lessons: [] },
 }, emptyCourseSyncResponse);
 assert.equal(emptyCourseSyncResponse.statusCode, 400);
+
+const { default: statsExportHandler } = await import('../api/stats-export.js');
+const statsExportResponse = responseRecorder();
+await statsExportHandler({
+  method: 'POST',
+  headers: { 'x-tutoros-sync-secret': 'sheet-secret' },
+}, statsExportResponse);
+assert.equal(statsExportResponse.statusCode, 200);
+assert.equal(statsExportResponse.body.overview.active_groups, 1);
+assert.equal(statsExportResponse.body.overview.active_students, 1);
+assert.equal(statsExportResponse.body.groups[0].group, 'Базовая А1');
+assert.equal(statsExportResponse.body.students[0].student, 'Иван Иванов');
+assert.equal(statsExportResponse.body.results[0].result, 0.8);
+
+const unauthorizedStatsResponse = responseRecorder();
+await statsExportHandler({
+  method: 'POST',
+  headers: { 'x-tutoros-sync-secret': 'wrong-secret' },
+}, unauthorizedStatsResponse);
+assert.equal(unauthorizedStatsResponse.statusCode, 401);
 
 const { default: setupWebhookHandler } = await import('../api/setup-webhook.js');
 const setupWebhookResponse = responseRecorder();

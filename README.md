@@ -27,6 +27,11 @@
 - `GOOGLE_SHEETS_WEBHOOK_URL` — адрес развёрнутого веб-приложения Apps Script;
 - `GOOGLE_SHEETS_WEBHOOK_SECRET` — общий случайный секрет для обмена с таблицей.
 
+Отдельный файл статистики подключается через Script Property
+`TUTOROS_STATS_SPREADSHEET_ID`. Функция `syncTutorOSStatsFile` получает из
+Supabase группы, учеников, ДЗ и результаты. `installTutorOSStatsTrigger`
+включает обновление каждые 10 минут.
+
 Код временно принимает и старую переменную `SUPABASE_SERVICE_ROLE_KEY`, чтобы
 можно было заменить ключ без остановки бота. После успешного перехода старый
 `service_role` следует отключить в Supabase.
