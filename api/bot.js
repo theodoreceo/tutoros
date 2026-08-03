@@ -104,8 +104,18 @@ async function tg(method, body) {
 
 const send  = (chatId, text, extra = {}) => tg('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', ...extra });
 const cbq   = (id, text = '') => tg('answerCallbackQuery', { callback_query_id: id, text });
-const kbd   = (rows) => ({ reply_markup: JSON.stringify({ inline_keyboard: rows }) });
+const kbd   = (rows) => {
+  for (const button of rows.flat()) {
+    if (!button?.callback_data) continue;
+    const length = new TextEncoder().encode(button.callback_data).length;
+    if (length > 64) {
+      throw new Error(`слишком длинная кнопка: ${button.callback_data.slice(0, 24)}… (${length} байт)`);
+    }
+  }
+  return { reply_markup: JSON.stringify({ inline_keyboard: rows }) };
+};
 const botId = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const callbackNonce = () => Math.random().toString(36).slice(2, 8);
 const html  = (value) => String(value ?? '')
   .replaceAll('&', '&amp;')
   .replaceAll('<', '&lt;')
@@ -918,16 +928,20 @@ async function startHwCreation(chatId, tid) {
 
   if (!groups.length) return send(chatId, 'группы не найдены.');
 
-  await setSession(tid, { step: 'choose_hw_group' });
+  const nonce = callbackNonce();
+  await setSession(tid, {
+    step: 'choose_hw_group',
+    data: { nonce, group_ids: groups.map(group => group.id) },
+  });
   return send(chatId, 'для какой группы создать ДЗ?', kbd(
-    groups.map(group => [{
+    groups.map((group, index) => [{
       text: group.name || 'Без названия',
-      callback_data: `hw_group:${group.id}`,
+      callback_data: `hwg:${nonce}:${index}`,
     }])
   ));
 }
 
-async function showLessonsForHomework(chatId, groupId, offset = 0) {
+async function showLessonsForHomework(chatId, tid, groupId, offset = 0) {
   const pageSize = 12;
   const [group, lessons] = await Promise.all([
     sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`),
@@ -936,21 +950,32 @@ async function showLessonsForHomework(chatId, groupId, offset = 0) {
   ]);
   if (!group) return send(chatId, 'группа не найдена.');
 
+  const nonce = callbackNonce();
+  await setSession(tid, {
+    step: 'choose_hw_lesson',
+    data: {
+      nonce,
+      group_id: group.id,
+      group_name: group.name,
+      lesson_ids: lessons.map(lesson => lesson.id),
+    },
+  });
+
   const buttons = [[{
     text: '➕ создать новый урок',
-    callback_data: `hw_new_lesson:${groupId}`,
-  }], ...lessons.map(lesson => [{
+    callback_data: `hwn:${nonce}`,
+  }], ...lessons.map((lesson, index) => [{
     text: `${lesson.lesson_number || '—'}. ${(lesson.topic || 'Без темы').slice(0, 42)}`,
-    callback_data: `hw_lesson:${lesson.id}`,
+    callback_data: `hwl:${nonce}:${index}`,
   }])];
   const nav = [];
   if (offset > 0) nav.push({
     text: '← назад',
-    callback_data: `hw_lessons:${groupId}:${Math.max(0, offset - pageSize)}`,
+    callback_data: `hwp:${nonce}:${Math.max(0, offset - pageSize)}`,
   });
   if (lessons.length === pageSize) nav.push({
     text: 'дальше →',
-    callback_data: `hw_lessons:${groupId}:${offset + pageSize}`,
+    callback_data: `hwp:${nonce}:${offset + pageSize}`,
   });
   if (nav.length) buttons.push(nav);
 
@@ -1419,15 +1444,75 @@ async function handleCallback(cq) {
   if (data === 'unlink:cancel') return send(chatId, 'отмена.');
 
   // Select group and lesson for a homework assignment
+  if (data.startsWith('hwg:') && owner) {
+    const [, nonce, rawIndex] = data.split(':');
+    const groupId = sess.step === 'choose_hw_group' && sess.data?.nonce === nonce
+      ? sess.data.group_ids?.[Number(rawIndex)]
+      : null;
+    if (!groupId) return send(chatId, 'список групп устарел. нажми «➕ создать дз» ещё раз.');
+    return showLessonsForHomework(chatId, tid, groupId, 0);
+  }
+  if (data.startsWith('hwp:') && owner) {
+    const [, nonce, rawOffset] = data.split(':');
+    const groupId = sess.step === 'choose_hw_lesson' && sess.data?.nonce === nonce
+      ? sess.data.group_id
+      : null;
+    if (!groupId) return send(chatId, 'список уроков устарел. начни создание ДЗ ещё раз.');
+    return showLessonsForHomework(chatId, tid, groupId, Number(rawOffset) || 0);
+  }
+  if (data.startsWith('hwn:') && owner) {
+    const nonce = data.slice('hwn:'.length);
+    const groupId = sess.step === 'choose_hw_lesson' && sess.data?.nonce === nonce
+      ? sess.data.group_id
+      : null;
+    const group = groupId
+      ? await sbOne('groups', `id=eq.${encodeURIComponent(groupId)}&active=eq.true`)
+      : null;
+    if (!group) return send(chatId, 'список уроков устарел. начни создание ДЗ ещё раз.');
+    await setSession(tid, {
+      step: 'await_lesson_topic',
+      data: { group_id: group.id, group_name: group.name },
+    });
+    return send(chatId,
+      `группа: <b>${html(group.name)}</b>\n\nвведи фактическую тему урока:`);
+  }
+  if (data.startsWith('hwl:') && owner) {
+    const [, nonce, rawIndex] = data.split(':');
+    const lessonId = sess.step === 'choose_hw_lesson' && sess.data?.nonce === nonce
+      ? sess.data.lesson_ids?.[Number(rawIndex)]
+      : null;
+    const lesson = lessonId
+      ? await sbOne('lessons', `id=eq.${encodeURIComponent(lessonId)}`)
+      : null;
+    if (!lesson) return send(chatId, 'список уроков устарел. начни создание ДЗ ещё раз.');
+    const group = await sbOne('groups', `id=eq.${encodeURIComponent(lesson.group_id)}`);
+    if (!group) return send(chatId, 'группа урока не найдена.');
+
+    await setSession(tid, {
+      step: 'await_date',
+      data: {
+        group_id: lesson.group_id,
+        group_name: group.name,
+        lesson_id: lesson.id,
+        lesson_number: lesson.lesson_number,
+        topic: lesson.topic,
+        assignment_id: botId(),
+      },
+    });
+    return send(chatId,
+      `урок: <b>${html(lesson.lesson_number || '—')}. ${html(lesson.topic)}</b>\n\nвведи дедлайн ДЗ (ДД.ММ.ГГГГ) или «-»:`);
+  }
+
+  // Compatibility with buttons sent by the previous version.
   if (data.startsWith('hw_group:') && owner) {
-    return showLessonsForHomework(chatId, data.slice('hw_group:'.length), 0);
+    return showLessonsForHomework(chatId, tid, data.slice('hw_group:'.length), 0);
   }
   if (data.startsWith('hw_lessons:') && owner) {
     const value = data.slice('hw_lessons:'.length);
     const separator = value.lastIndexOf(':');
     const groupId = value.slice(0, separator);
     const offset = parseInt(value.slice(separator + 1), 10) || 0;
-    return showLessonsForHomework(chatId, groupId, offset);
+    return showLessonsForHomework(chatId, tid, groupId, offset);
   }
   if (data.startsWith('hw_new_lesson:') && owner) {
     const groupId = data.slice('hw_new_lesson:'.length);

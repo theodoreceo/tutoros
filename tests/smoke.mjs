@@ -157,19 +157,34 @@ assert.equal(insertedStudents[0].group_id, insertedGroups[1].id);
 assert.equal('target_score' in insertedStudents[0], false);
 assert.equal(sessionState.step, 'owner');
 
+const startHomeworkResponse = responseRecorder();
+await botHandler({
+  method: 'POST',
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: { message: { chat: { id: 123 }, from: { id: 123 }, text: '/newdz' } },
+}, startHomeworkResponse);
+const groupChoiceKeyboard = JSON.parse(telegramCalls.at(-1).reply_markup).inline_keyboard;
+const compactGroupCallback = groupChoiceKeyboard[0][0].callback_data;
+assert.match(compactGroupCallback, /^hwg:[a-z0-9]+:0$/);
+assert.ok(Buffer.byteLength(compactGroupCallback) <= 64);
+
 const lessonChoiceResponse = responseRecorder();
 await botHandler({
   method: 'POST',
   headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
   body: {
     callback_query: {
-      id: 'cb-hw-group', data: 'hw_group:g1',
+      id: 'cb-hw-group', data: compactGroupCallback,
       message: { chat: { id: 123 } }, from: { id: 123 },
     },
   },
 }, lessonChoiceResponse);
 const lessonKeyboard = JSON.parse(telegramCalls.at(-1).reply_markup).inline_keyboard;
-assert.equal(lessonKeyboard[0][0].callback_data, 'hw_new_lesson:g1');
+const compactNewLessonCallback = lessonKeyboard[0][0].callback_data;
+assert.match(compactNewLessonCallback, /^hwn:[a-z0-9]+$/);
+for (const row of lessonKeyboard) {
+  for (const button of row) assert.ok(Buffer.byteLength(button.callback_data) <= 64);
+}
 
 const newLessonResponse = responseRecorder();
 await botHandler({
@@ -177,7 +192,7 @@ await botHandler({
   headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
   body: {
     callback_query: {
-      id: 'cb-new-lesson', data: 'hw_new_lesson:g1',
+      id: 'cb-new-lesson', data: compactNewLessonCallback,
       message: { chat: { id: 123 } }, from: { id: 123 },
     },
   },
