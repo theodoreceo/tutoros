@@ -60,6 +60,7 @@ globalThis.fetch = async (url, options = {}) => {
       return Response.json([{
         id: 'sub1', assignment_id: 'a1', student_id: 's1', status: 'submitted',
         submitted_at: '2026-08-03T08:00:00.000Z', on_time: true,
+        submitted_files: [{ type: 'photo', file_id: 'photo-1' }],
       }]);
     }
     return Response.json([{
@@ -295,5 +296,150 @@ await setupWebhookHandler({
 }, badWebhookResponse);
 
 assert.equal(badWebhookResponse.statusCode, 401);
+
+// Reliability: homework is created by one atomic RPC, notification failures are
+// reported by student name, and a repeated file submission changes state once.
+const reliabilityTelegramCalls = [];
+const reliabilityRpcCalls = [];
+let reliabilitySession = {
+  step: 'await_answers',
+  data: {
+    assignment_id: 'a-reliable',
+    group_id: 'g-reliable',
+    group_name: 'Базовая Надёжная',
+    lesson_id: 'l-reliable',
+    lesson_number: '3',
+    topic: 'Дроби',
+    due_date: '2026-08-20',
+    hw_type: 'brief',
+    total: 1,
+    collected: [],
+  },
+};
+let reliabilitySubmissionStatus = 'assigned';
+let reliabilitySubmissionPatches = 0;
+let directAssignmentWrites = 0;
+
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  const method = options.method || 'GET';
+  if (target.includes('/rest/v1/bot_sessions?')) {
+    return Response.json([{ state: reliabilitySession }]);
+  }
+  if (target.endsWith('/rest/v1/bot_sessions') && method === 'POST') {
+    reliabilitySession = JSON.parse(options.body).state;
+    return Response.json([{ state: reliabilitySession }]);
+  }
+  if (target.includes('/rest/v1/students?telegram_id=eq.456')) {
+    return Response.json([{
+      id: 's-reliable-1', name: 'Анна', group_id: 'g-reliable',
+      status: 'active', telegram_id: 456,
+    }]);
+  }
+  if (target.includes('/rest/v1/students?group_id=eq.g-reliable')) {
+    return Response.json([
+      { id: 's-reliable-1', name: 'Анна', status: 'active', telegram_id: 456 },
+      { id: 's-reliable-2', name: 'Пётр', status: 'active', telegram_id: 789 },
+    ]);
+  }
+  if (target.endsWith('/rest/v1/rpc/create_homework_for_group') && method === 'POST') {
+    const body = JSON.parse(options.body);
+    reliabilityRpcCalls.push(body);
+    return Response.json({
+      assignment_id: body.p_assignment_id,
+      students_count: 2,
+      already_created: false,
+    });
+  }
+  if (target.endsWith('/rest/v1/homework_assignments') && method === 'POST') {
+    directAssignmentWrites++;
+    return Response.json([]);
+  }
+  if (target.includes('/rest/v1/homework_submissions?') && method === 'PATCH') {
+    if (!target.includes('status=eq.assigned') || reliabilitySubmissionStatus !== 'assigned') {
+      return Response.json([]);
+    }
+    reliabilitySubmissionPatches++;
+    reliabilitySubmissionStatus = 'submitted';
+    return Response.json([{ id: 'sub-reliable', status: 'submitted' }]);
+  }
+  if (target.includes('/rest/v1/homework_submissions?')) {
+    if (target.includes('status=eq.assigned') && reliabilitySubmissionStatus !== 'assigned') {
+      return Response.json([]);
+    }
+    return Response.json([{
+      id: 'sub-reliable', assignment_id: 'a-file', student_id: 's-reliable-1',
+      status: reliabilitySubmissionStatus,
+    }]);
+  }
+  if (target.includes('/rest/v1/homework_assignments?')) {
+    return Response.json([{
+      id: 'a-file', group_id: 'g-reliable', topic: 'Геометрия',
+      due_date: '2026-08-20', hw_type: 'detailed',
+    }]);
+  }
+  if (target.includes('/rest/v1/groups?')) {
+    return Response.json([{ id: 'g-reliable', name: 'Базовая Надёжная', active: true }]);
+  }
+  if (target.includes('api.telegram.org')) {
+    const body = JSON.parse(options.body || '{}');
+    reliabilityTelegramCalls.push(body);
+    if (String(body.chat_id) === '789') {
+      return Response.json({ ok: false, description: 'Forbidden: bot was blocked by the user' });
+    }
+    return Response.json({ ok: true, result: {} });
+  }
+  throw new Error(`Unexpected reliability request: ${method} ${target}`);
+};
+
+const { default: reliabilityBotHandler } = await import(`../api/bot.js?reliability=${Date.now()}`);
+const reliableHomeworkResponse = responseRecorder();
+await reliabilityBotHandler({
+  method: 'POST',
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: { message: { chat: { id: 123 }, from: { id: 123 }, text: '4' } },
+}, reliableHomeworkResponse);
+assert.equal(reliabilityRpcCalls.length, 1);
+assert.equal(directAssignmentWrites, 0);
+assert.equal(reliabilityRpcCalls[0].p_assignment_id, 'a-reliable');
+assert.deepEqual(reliabilityRpcCalls[0].p_answers, ['4']);
+assert.match(reliabilityTelegramCalls.at(-1).text, /задание выдано: <b>2\/2<\/b>/);
+assert.match(reliabilityTelegramCalls.at(-1).text, /уведомления: <b>1\/2<\/b>/);
+assert.match(reliabilityTelegramCalls.at(-1).text, /Пётр/);
+
+reliabilitySession = {
+  step: 'await_files:sub-reliable',
+  data: { files: [{ type: 'photo', file_id: 'reliable-photo' }] },
+};
+const firstFileSubmissionResponse = responseRecorder();
+await reliabilityBotHandler({
+  method: 'POST',
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: {
+    callback_query: {
+      id: 'cb-file-first', data: 'submit_files:sub-reliable',
+      message: { chat: { id: 456 } }, from: { id: 456 },
+    },
+  },
+}, firstFileSubmissionResponse);
+
+const repeatedFileSubmissionResponse = responseRecorder();
+await reliabilityBotHandler({
+  method: 'POST',
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: {
+    callback_query: {
+      id: 'cb-file-repeat', data: 'submit_files:sub-reliable',
+      message: { chat: { id: 456 } }, from: { id: 456 },
+    },
+  },
+}, repeatedFileSubmissionResponse);
+
+assert.equal(reliabilitySubmissionPatches, 1);
+const reliableOwnerNotices = reliabilityTelegramCalls.filter(call =>
+  String(call.chat_id) === '123' && /Сдано ДЗ/.test(call.text || '')
+);
+assert.equal(reliableOwnerNotices.length, 1);
+assert.match(reliabilityTelegramCalls.at(-1).text, /уже была отправлена/i);
 
 console.log('Smoke tests passed');

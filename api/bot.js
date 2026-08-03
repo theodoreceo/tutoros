@@ -43,9 +43,12 @@ async function sbInsert(table, body) {
 
 async function sbPatch(table, qs, body) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${qs}`, {
-    method: 'PATCH', headers: SB, body: JSON.stringify(body),
+    method: 'PATCH',
+    headers: { ...SB, 'Prefer': 'return=representation' },
+    body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`sbPatch ${table}: ${await r.text()}`);
+  return r.json();
 }
 
 async function sbDelete(table, qs) {
@@ -62,6 +65,14 @@ async function sbUpsert(table, body) {
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`sbUpsert ${table}: ${await r.text()}`);
+  return r.json();
+}
+
+async function sbRpc(fn, body) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST', headers: SB, body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`sbRpc ${fn}: ${await r.text()}`);
   return r.json();
 }
 
@@ -84,7 +95,11 @@ async function tg(method, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  return r.json();
+  const result = await r.json().catch(() => null);
+  if (!r.ok || !result?.ok) {
+    throw new Error(`Telegram ${method}: ${result?.description || r.status}`);
+  }
+  return result;
 }
 
 const send  = (chatId, text, extra = {}) => tg('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', ...extra });
@@ -111,10 +126,23 @@ const moscowDateTime = (isoDate) => isoDate
 const isSubmittedOnTime = (assignment, submittedAt) =>
   assignment?.due_date ? moscowDate(submittedAt) <= assignment.due_date : null;
 
+async function updateAssignedSubmission(subId, studentId, changes) {
+  const updated = await sbPatch(
+    'homework_submissions',
+    `id=eq.${encodeURIComponent(subId)}` +
+      `&student_id=eq.${encodeURIComponent(studentId)}&status=eq.assigned`,
+    changes
+  );
+  return updated[0] ?? null;
+}
+
 let cachedBotUsername;
 async function getBotUsername() {
   if (cachedBotUsername) return cachedBotUsername;
-  const me = await tg('getMe', {});
+  const me = await tg('getMe', {}).catch(error => {
+    console.error('Telegram getMe failed:', error);
+    return null;
+  });
   cachedBotUsername = me?.result?.username || '';
   return cachedBotUsername;
 }
@@ -153,6 +181,12 @@ export default async function handler(req, res) {
     else if (update.message?.text)                               await handleText(update.message);
   } catch (err) {
     console.error('Bot error:', err);
+    const chatId = update.callback_query?.message?.chat?.id ?? update.message?.chat?.id;
+    if (chatId) {
+      await send(chatId,
+        '⚠️ не удалось выполнить действие из-за временной ошибки. данные не потеряны — попробуй ещё раз.'
+      ).catch(() => {});
+    }
   }
   res.status(200).json({ ok: true });
 }
@@ -730,22 +764,32 @@ async function showBriefReviewPage(chatId, tid, subId, correct, given) {
 
 async function submitBriefAnswers(chatId, student, subId, correct, given) {
   const now = new Date().toISOString();
-  const sub = await sbOne('homework_submissions', `id=eq.${subId}&student_id=eq.${student.id}`);
+  const sub = await sbOne('homework_submissions',
+    `id=eq.${encodeURIComponent(subId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
+  if (!sub) {
+    await setSession(student.telegram_id, { step: 'student' });
+    return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
+  }
   const assignment = sub
     ? await sbOne('homework_assignments', `id=eq.${sub.assignment_id}`)
     : null;
+  if (!assignment) return send(chatId, 'задание не найдено. сообщи преподавателю.');
   const results    = correct.map((c, i) => given[i]?.toLowerCase().trim() === c.toLowerCase().trim());
   const numCorrect = results.filter(Boolean).length;
   const score      = numCorrect;
   const maxScore   = correct.length;
 
-  await sbPatch('homework_submissions', `id=eq.${subId}`, {
+  const updated = await updateAssignedSubmission(subId, student.id, {
     status: 'checked', submitted_at: now, checked_at: now,
     score, max_score: maxScore,
     comment: `${numCorrect}/${correct.length} верно`,
     student_answers: given, source: 'telegram',
     on_time: isSubmittedOnTime(assignment, now),
   });
+  if (!updated) {
+    await setSession(student.telegram_id, { step: 'student' });
+    return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
+  }
   await setSession(student.telegram_id, { step: 'student' });
   if (assignment) {
     await notifyOwnerSubmission(subId, assignment, student, {
@@ -760,8 +804,12 @@ async function submitBriefAnswers(chatId, student, subId, correct, given) {
 }
 
 async function handleStudentAnswer(chatId, student, subId, text, sess) {
-  const sub = await sbOne('homework_submissions', `id=eq.${subId}&student_id=eq.${student.id}`);
-  if (!sub) return send(chatId, 'задание не найдено.');
+  const sub = await sbOne('homework_submissions',
+    `id=eq.${encodeURIComponent(subId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
+  if (!sub) {
+    await setSession(student.telegram_id, { step: 'student' });
+    return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
+  }
 
   const assignment = await sbOne('homework_assignments', `id=eq.${sub.assignment_id}`);
   if (!assignment) return send(chatId, 'задание не найдено.');
@@ -782,13 +830,17 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
     const maxScore   = 100;
     const feedback   = results.map((ok, i) => `${i + 1}. ${ok ? '✅' : `❌ (верно: ${correct[i]})`}`).join('\n');
 
-    await sbPatch('homework_submissions', `id=eq.${subId}`, {
+    const updated = await updateAssignedSubmission(subId, student.id, {
       status: 'checked', submitted_at: now, checked_at: now,
       score, max_score: maxScore,
       comment: `${numCorrect}/${correct.length} верно`,
       student_answers: given, source: 'telegram',
       on_time: isSubmittedOnTime(assignment, now),
     });
+    if (!updated) {
+      await setSession(student.telegram_id, { step: 'student' });
+      return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
+    }
     await setSession(student.telegram_id, { step: 'student' });
     await notifyOwnerSubmission(subId, assignment, student, {
       score,
@@ -802,13 +854,17 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
   // Single correct_answer (legacy)
   const correct   = (assignment.correct_answer ?? '').trim();
   const isCorrect = correct !== '' && text.trim() === correct;
-  await sbPatch('homework_submissions', `id=eq.${subId}`, {
+  const updated = await updateAssignedSubmission(subId, student.id, {
     status: 'checked', submitted_at: now, checked_at: now,
     score: isCorrect ? 100 : 0, max_score: 100,
     comment: isCorrect ? 'верно!' : `неверно. правильный ответ: ${correct || 'не указан'}`,
     source: 'telegram',
     on_time: isSubmittedOnTime(assignment, now),
   });
+  if (!updated) {
+    await setSession(student.telegram_id, { step: 'student' });
+    return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
+  }
   if (student.telegram_id) await setSession(student.telegram_id, { step: 'student' });
   await notifyOwnerSubmission(subId, assignment, student, {
     score: isCorrect ? 100 : 0,
@@ -822,19 +878,27 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
 // ── Student: finalize file submission ─────────────────────────────────────────
 
 async function finalizeStudentFiles(chatId, student, subId, files) {
-  const sub = await sbOne('homework_submissions', `id=eq.${subId}&student_id=eq.${student.id}`);
-  if (!sub) return send(chatId, 'задание не найдено.');
+  const sub = await sbOne('homework_submissions',
+    `id=eq.${encodeURIComponent(subId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
+  if (!sub) {
+    await setSession(student.telegram_id, { step: 'student' });
+    return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
+  }
 
   const assignment = await sbOne('homework_assignments', `id=eq.${sub.assignment_id}`);
 
   const submittedAt = new Date().toISOString();
-  await sbPatch('homework_submissions', `id=eq.${subId}`, {
+  const updated = await updateAssignedSubmission(subId, student.id, {
     status:          'submitted',
     submitted_at:    submittedAt,
     submitted_files: files,
     source:          'telegram',
     on_time:          isSubmittedOnTime(assignment, submittedAt),
   });
+  if (!updated) {
+    await setSession(student.telegram_id, { step: 'student' });
+    return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
+  }
   await setSession(student.telegram_id, { step: 'student' });
 
   if (assignment) await notifyOwnerWithFiles(subId, assignment, student, files, submittedAt);
@@ -941,6 +1005,7 @@ async function createLessonForHomework(chatId, tid, rawTopic, sess) {
       lesson_id: lessonId,
       lesson_number: String(sequence),
       topic,
+      assignment_id: botId(),
     },
   });
   return send(chatId,
@@ -1068,48 +1133,55 @@ async function finishHwCreation(chatId, tid, data) {
     : 'brief';
   const is_advanced = data.hw_type === 'detailed_hard';
 
-  const assignmentId = botId();
+  const assignmentId = data.assignment_id || botId();
+  let students;
   try {
-    await sbInsert('homework_assignments', {
-      id:             assignmentId,
-      group_id:       data.group_id,
-      lesson_id:      data.lesson_id,
-      topic:          data.topic,
-      description:    '',
-      due_date:       data.due_date || null,
-      hw_type,
-      is_advanced,
-      assigned_at:    new Date().toISOString(),
-      file_id:        data.file_id     ?? null,
-      answers:        data.answers     ?? null,
-      task_config:    data.task_config ?? null,
+    students = await sbSelect('students',
+      `group_id=eq.${encodeURIComponent(data.group_id)}&status=eq.active`);
+    if (!students.length) {
+      await setSession(tid, { step: 'owner' });
+      return send(chatId, '⚠️ в группе нет активных учеников. сначала добавь ученика, затем создай ДЗ.');
+    }
+
+    const result = await sbRpc('create_homework_for_group', {
+      p_assignment_id: assignmentId,
+      p_group_id: data.group_id,
+      p_lesson_id: data.lesson_id,
+      p_topic: data.topic,
+      p_due_date: data.due_date || null,
+      p_hw_type: hw_type,
+      p_is_advanced: is_advanced,
+      p_file_id: data.file_id ?? null,
+      p_answers: data.answers ?? null,
+      p_task_config: data.task_config ?? null,
     });
+    const assignedCount = Number(result?.students_count);
+    if (assignedCount !== students.length) {
+      throw new Error(`ожидалось учеников: ${students.length}, создано записей: ${assignedCount}`);
+    }
   } catch (err) {
     await setSession(tid, { step: 'owner' });
-    return send(chatId, `❌ ошибка при создании задания:\n<code>${html(err.message)}</code>`);
+    return send(chatId,
+      `❌ ДЗ не создано и никому не отправлено.\n\n<code>${html(err.message)}</code>`);
   }
 
-  const students = await sbSelect('students',
-    `group_id=eq.${encodeURIComponent(data.group_id)}&status=eq.active`);
-  let subErrors = 0;
   const due = data.due_date ? `\nдедлайн: <b>${data.due_date}</b>` : '';
   const notifyText = `📚 новое ДЗ: <b>${html(data.topic)}</b>${due}\n/dz — открыть задания`;
-
-  for (const student of students) {
+  const connectedStudents = students.filter(student => student.telegram_id);
+  const notificationResults = await Promise.all(connectedStudents.map(async student => {
     try {
-      await sbInsert('homework_submissions', {
-        id: botId(),
-        assignment_id: assignmentId,
-        student_id: student.id,
-        status: 'assigned',
-        source: 'telegram',
-        submitted_at: null,
-        score: null,
-        comment: '',
-      });
-    } catch { subErrors++; }
-    if (student.telegram_id) await send(student.telegram_id, notifyText).catch(() => {});
-  }
+      await send(student.telegram_id, notifyText);
+      return { student, sent: true };
+    } catch (error) {
+      console.error(`Homework notification failed for ${student.id}:`, error);
+      return { student, sent: false };
+    }
+  }));
+  const failedNotifications = notificationResults
+    .filter(result => !result.sent)
+    .map(result => result.student);
+  const disconnectedStudents = students.filter(student => !student.telegram_id);
+  const sentNotifications = notificationResults.length - failedNotifications.length;
 
   await setSession(tid, { step: 'owner' });
 
@@ -1123,12 +1195,19 @@ async function finishHwCreation(chatId, tid, data) {
     ? `\nбаллов за задания: <code>${data.task_config.join(', ')}</code> (сумма: ${data.task_config.reduce((a, b) => a + b, 0)})`
     : '';
 
-  const warnLine    = subErrors ? `\n⚠️ ошибок при создании записей: ${subErrors}` : '';
+  const deliveryLine = `\nзадание выдано: <b>${students.length}/${students.length}</b>` +
+    `\nуведомления: <b>${sentNotifications}/${connectedStudents.length}</b>`;
+  const disconnectedLine = disconnectedStudents.length
+    ? `\n⏳ не подключены к боту: ${disconnectedStudents.map(student => html(student.name)).join(', ')}`
+    : '';
+  const failedLine = failedNotifications.length
+    ? `\n⚠️ уведомление не доставлено: ${failedNotifications.map(student => html(student.name)).join(', ')}`
+    : '';
 
   return send(chatId,
     `✅ дз создано!\nгруппа: <b>${html(data.group_name)}</b>\nурок: <b>${html(data.lesson_number || '—')}</b>\nтема: <b>${html(data.topic)}</b>\n` +
     `тип: <b>${typeLabel}</b>\nдедлайн: <b>${data.due_date || 'не указан'}</b>\n` +
-    `учеников: <b>${students.length}</b>${extra}${warnLine}`,
+    `учеников: <b>${students.length}</b>${extra}${deliveryLine}${disconnectedLine}${failedLine}`,
     rkbd(OWNER_KBD));
 }
 
@@ -1246,7 +1325,7 @@ async function handleCallback(cq) {
   const chatId = cq.message.chat.id;
   const tid    = cq.from.id;
   const data   = cq.data;
-  await cbq(cq.id);
+  await cbq(cq.id).catch(() => {});
 
   const owner = isOwner(tid);
   const [student, sess] = await Promise.all([
@@ -1372,6 +1451,7 @@ async function handleCallback(cq) {
         lesson_id: lesson.id,
         lesson_number: lesson.lesson_number,
         topic: lesson.topic,
+        assignment_id: botId(),
       },
     });
     return send(chatId,
@@ -1422,6 +1502,16 @@ async function handleCallback(cq) {
   // Student submits collected files
   if (data.startsWith('submit_files:') && student) {
     const subId = data.slice('submit_files:'.length);
+    const activeSubmission = await sbOne('homework_submissions',
+      `id=eq.${encodeURIComponent(subId)}` +
+      `&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
+    if (!activeSubmission) {
+      await setSession(tid, { step: 'student' });
+      return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
+    }
+    if (sess.step !== `await_files:${subId}`) {
+      return send(chatId, 'эта кнопка устарела. снова открой задание через /dz.');
+    }
     const files = sess.data?.files || [];
     if (!files.length) return send(chatId, 'пришли хотя бы один файл с выполненным заданием!');
     return finalizeStudentFiles(chatId, student, subId, files);
@@ -1434,15 +1524,26 @@ async function handleCallback(cq) {
   }
 
   // Brief answer: go back to edit
-  if (data.startsWith('brief_back_to_edit:') && student && sess.step?.startsWith('brief_review:')) {
+  if (data.startsWith('brief_back_to_edit:') && student) {
     const subId = data.slice('brief_back_to_edit:'.length);
+    if (sess.step !== `brief_review:${subId}`) {
+      return send(chatId, 'эта кнопка устарела. снова открой задание через /dz.');
+    }
     const { correct, given } = sess.data;
     return showBriefAnswerStep(chatId, tid, subId, correct, given, 0);
   }
 
   // Brief answer: final submit
-  if (data.startsWith('brief_final_submit:') && student && sess.step?.startsWith('brief_review:')) {
+  if (data.startsWith('brief_final_submit:') && student) {
     const subId = data.slice('brief_final_submit:'.length);
+    if (sess.step !== `brief_review:${subId}`) {
+      const activeSubmission = await sbOne('homework_submissions',
+        `id=eq.${encodeURIComponent(subId)}` +
+        `&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
+      return send(chatId, activeSubmission
+        ? 'эта кнопка устарела. снова открой задание через /dz.'
+        : 'эта работа уже была отправлена. повторно сдавать её не нужно.');
+    }
     const { correct, given } = sess.data;
     return submitBriefAnswers(chatId, student, subId, correct, given);
   }
@@ -1462,8 +1563,9 @@ async function handleCallback(cq) {
 // ── Owner: review detailed/trial submission ───────────────────────────────────
 
 async function startOwnerReview(chatId, tid, subId) {
-  const sub = await sbOne('homework_submissions', `id=eq.${encodeURIComponent(subId)}`);
-  if (!sub) return send(chatId, 'работа не найдена.');
+  const sub = await sbOne('homework_submissions',
+    `id=eq.${encodeURIComponent(subId)}&status=eq.submitted`);
+  if (!sub) return send(chatId, 'эта работа уже проверена или больше не находится в очереди.');
 
   const [assignment, student] = await Promise.all([
     sbOne('homework_assignments', `id=eq.${encodeURIComponent(sub.assignment_id)}`),
@@ -1492,8 +1594,12 @@ async function startOwnerReview(chatId, tid, subId) {
 }
 
 async function saveOwnerReview(chatId, tid, subId, comment, review) {
-  const sub = await sbOne('homework_submissions', `id=eq.${encodeURIComponent(subId)}`);
-  if (!sub) return send(chatId, 'работа не найдена.');
+  const sub = await sbOne('homework_submissions',
+    `id=eq.${encodeURIComponent(subId)}&status=eq.submitted`);
+  if (!sub) {
+    await setSession(tid, { step: 'owner' });
+    return send(chatId, 'эта работа уже проверена или больше не находится в очереди.');
+  }
   const [assignment, student] = await Promise.all([
     sbOne('homework_assignments', `id=eq.${encodeURIComponent(sub.assignment_id)}`),
     sbOne('students', `id=eq.${encodeURIComponent(sub.student_id)}`),
@@ -1507,7 +1613,8 @@ async function saveOwnerReview(chatId, tid, subId, comment, review) {
   const maxScore = Number(review.max_score) || 100;
   const checkedAt = new Date().toISOString();
 
-  await sbPatch('homework_submissions', `id=eq.${encodeURIComponent(subId)}`, {
+  const updated = await sbPatch('homework_submissions',
+    `id=eq.${encodeURIComponent(subId)}&status=eq.submitted`, {
     status: 'checked',
     score,
     max_score: maxScore,
@@ -1515,6 +1622,10 @@ async function saveOwnerReview(chatId, tid, subId, comment, review) {
     comment,
     checked_at: checkedAt,
   });
+  if (!updated.length) {
+    await setSession(tid, { step: 'owner' });
+    return send(chatId, 'эта работа уже была проверена. повторная оценка не сохранена.');
+  }
   await setSession(tid, { step: 'owner' });
 
   if (student.telegram_id) {
