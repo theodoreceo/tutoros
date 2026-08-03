@@ -63,7 +63,8 @@ alter table homework_assignments
   add column if not exists file_id text,
   add column if not exists answers jsonb,
   add column if not exists task_numbers jsonb,
-  add column if not exists task_config jsonb;
+  add column if not exists task_config jsonb,
+  add column if not exists archived_at timestamptz;
 
 alter table homework_submissions
   add column if not exists max_score numeric,

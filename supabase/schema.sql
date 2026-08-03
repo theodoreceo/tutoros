@@ -63,7 +63,8 @@ create table homework_assignments (
   answers jsonb,
   task_numbers jsonb,
   task_config jsonb,
-  assigned_at timestamptz not null default now()
+  assigned_at timestamptz not null default now(),
+  archived_at timestamptz
 );
 
 create table homework_submissions (
@@ -71,7 +72,7 @@ create table homework_submissions (
   assignment_id text not null references homework_assignments(id) on delete cascade,
   student_id text not null references students(id) on delete cascade,
   status text not null default 'assigned'
-    check (status in ('assigned', 'submitted', 'checked', 'revision')),
+    check (status in ('assigned', 'submitted', 'checked', 'revision', 'cancelled')),
   source text not null default 'telegram',
   submitted_at timestamptz,
   checked_at timestamptz,
@@ -215,6 +216,58 @@ revoke all on function public.create_homework_for_group(
 grant execute on function public.create_homework_for_group(
   text, text, text, text, date, text, boolean, text, jsonb, jsonb
 ) to service_role;
+
+-- Archiving is reversible and keeps submitted and checked work intact.
+create or replace function public.set_homework_archived(
+  p_assignment_id text,
+  p_archived boolean
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_changed integer;
+  v_pending_changed integer;
+begin
+  update homework_assignments
+  set archived_at = case
+    when p_archived then coalesce(archived_at, now())
+    else null
+  end
+  where id = p_assignment_id;
+
+  get diagnostics v_changed = row_count;
+  if v_changed = 0 then
+    raise exception 'homework_not_found';
+  end if;
+
+  if p_archived then
+    update homework_submissions
+    set status = 'cancelled'
+    where assignment_id = p_assignment_id and status = 'assigned';
+  else
+    update homework_submissions
+    set status = 'assigned'
+    where assignment_id = p_assignment_id and status = 'cancelled';
+  end if;
+
+  get diagnostics v_pending_changed = row_count;
+
+  return jsonb_build_object(
+    'assignment_id', p_assignment_id,
+    'archived', p_archived,
+    'pending_changed', v_pending_changed
+  );
+end;
+$$;
+
+revoke all on function public.set_homework_archived(text, boolean)
+from public, anon, authenticated;
+
+grant execute on function public.set_homework_archived(text, boolean)
+to service_role;
 
 -- No browser or client connects directly to these tables. RLS remains enabled
 -- without anon/authenticated policies; the server-side Supabase secret bypasses it.
