@@ -54,22 +54,22 @@ function syncTutorOSStatsFile() {
   spreadsheet.setSpreadsheetTimeZone('Europe/Moscow');
   writeTutorOSStatsOverview_(spreadsheet, data);
   writeTutorOSStatsTable_(spreadsheet, 'Группы', [
-    'Группа', 'Формат', 'Программа', 'Цель', 'Ученики', 'Выдано ДЗ',
+    'Группа', 'Формат', 'Ученики', 'Выдано ДЗ',
     'Работ сдано', 'Средний результат', 'Сдано вовремя', 'Статус',
   ], data.groups.map(row => [
-    row.group, row.format, row.program, row.target_score, row.students, row.assignments,
+    row.group, row.format, row.students, row.assignments,
     row.submitted, row.average_score, row.on_time_rate, row.status,
-  ]), [190, 120, 120, 75, 85, 90, 100, 130, 120, 90], {
-    integers: [4, 5, 6, 7], percentages: [8, 9],
+  ]), [190, 120, 85, 90, 100, 130, 120, 90], {
+    integers: [3, 4, 5], percentages: [6, 7],
   });
   writeTutorOSStatsTable_(spreadsheet, 'Ученики', [
-    'Ученик', 'Формат', 'Группа', 'Программа', 'Цель', 'Статус', 'Выдано ДЗ',
+    'Ученик', 'Формат', 'Группа', 'Статус', 'Выдано ДЗ',
     'Сдано', 'Проверено', 'Средний результат', 'Сдано вовремя',
   ], data.students.map(row => [
-    row.student, row.format, row.group, row.program, row.target_score, row.status,
+    row.student, row.format, row.group, row.status,
     row.assigned, row.submitted, row.checked, row.average_score, row.on_time_rate,
-  ]), [180, 120, 190, 120, 75, 95, 90, 80, 95, 130, 120], {
-    integers: [5, 7, 8, 9], percentages: [10, 11],
+  ]), [180, 120, 190, 95, 90, 80, 95, 130, 120], {
+    integers: [5, 6, 7], percentages: [8, 9],
   });
   writeTutorOSStatsTable_(spreadsheet, 'ДЗ', [
     'Выдано', 'Группа', 'Урок', 'Тема', 'Тип', 'Уровень', 'Дедлайн',

@@ -116,23 +116,8 @@ await botHandler({
   body: { message: { chat: { id: 123 }, from: { id: 123 }, text: '/newgroup' } },
 }, newGroupResponse);
 assert.equal(newGroupResponse.statusCode, 200);
-assert.match(telegramCalls.at(-1).text, /какая программа/i);
-const programKeyboard = JSON.parse(telegramCalls.at(-1).reply_markup).inline_keyboard;
-assert.deepEqual(programKeyboard.map(row => row[0].callback_data), ['ngp:base', 'ngp:advanced']);
-
-const programResponse = responseRecorder();
-await botHandler({
-  method: 'POST',
-  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
-  body: {
-    callback_query: {
-      id: 'cb-program', data: 'ngp:base',
-      message: { chat: { id: 123 } }, from: { id: 123 },
-    },
-  },
-}, programResponse);
+assert.match(telegramCalls.at(-1).text, /введи название группы/i);
 assert.equal(sessionState.step, 'await_group_name');
-assert.equal(sessionState.data.program, 'base');
 
 const groupNameResponse = responseRecorder();
 await botHandler({
@@ -141,9 +126,9 @@ await botHandler({
   body: { message: { chat: { id: 123 }, from: { id: 123 }, text: 'Базовая А2' } },
 }, groupNameResponse);
 assert.equal(insertedGroups.length, 1);
-assert.equal(insertedGroups[0].program, 'base');
 assert.equal(insertedGroups[0].group_type, 'mini_group');
-assert.equal(insertedGroups[0].target_score, 18);
+assert.equal('program' in insertedGroups[0], false);
+assert.equal('target_score' in insertedGroups[0], false);
 assert.equal('template_id' in insertedGroups[0], false);
 
 const newIndividualResponse = responseRecorder();
@@ -152,22 +137,8 @@ await botHandler({
   headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
   body: { message: { chat: { id: 123 }, from: { id: 123 }, text: '/newindividual' } },
 }, newIndividualResponse);
-const individualProgramKeyboard = JSON.parse(telegramCalls.at(-1).reply_markup).inline_keyboard;
-assert.deepEqual(individualProgramKeyboard.map(row => row[0].callback_data), ['nip:base', 'nip:advanced']);
-
-const individualProgramResponse = responseRecorder();
-await botHandler({
-  method: 'POST',
-  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
-  body: {
-    callback_query: {
-      id: 'cb-individual-program', data: 'nip:advanced',
-      message: { chat: { id: 123 } }, from: { id: 123 },
-    },
-  },
-}, individualProgramResponse);
+assert.match(telegramCalls.at(-1).text, /введи имя индивидуального ученика/i);
 assert.equal(sessionState.step, 'await_individual_name');
-assert.equal(sessionState.data.program, 'advanced');
 
 const individualNameResponse = responseRecorder();
 await botHandler({
@@ -178,11 +149,11 @@ await botHandler({
 assert.equal(insertedGroups.length, 2);
 assert.equal(insertedGroups[1].name, 'Индивидуально · Мария Смирнова');
 assert.equal(insertedGroups[1].group_type, 'individual');
-assert.equal(insertedGroups[1].program, 'advanced');
-assert.equal(insertedGroups[1].target_score, 23);
+assert.equal('program' in insertedGroups[1], false);
+assert.equal('target_score' in insertedGroups[1], false);
 assert.equal(insertedStudents.length, 1);
 assert.equal(insertedStudents[0].group_id, insertedGroups[1].id);
-assert.equal(insertedStudents[0].target_score, 23);
+assert.equal('target_score' in insertedStudents[0], false);
 assert.equal(sessionState.step, 'owner');
 
 const lessonChoiceResponse = responseRecorder();

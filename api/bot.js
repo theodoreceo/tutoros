@@ -364,7 +364,7 @@ async function handleRegistration(chatId, tid, token) {
 // ── Owner: groups and students ───────────────────────────────────────────────
 
 async function showOwnerGroups(chatId) {
-  const groups = await sbSelect('groups', 'active=eq.true&target_score=not.is.null&order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
   if (!groups.length) {
     return send(chatId, 'групп пока нет.', kbd([
       [{ text: '➕ создать первую группу', callback_data: 'new_group' }],
@@ -393,7 +393,6 @@ async function showOwnerGroup(chatId, groupId) {
       `${index + 1}. ${student.telegram_id ? '✅' : '⏳'} ${html(student.name)}`
     ).join('\n')
     : 'учеников пока нет';
-  const targetScore = group.target_score || (group.program === 'advanced' ? 23 : 18);
   const isIndividual = group.group_type === 'individual';
   const buttons = [];
   if (!isIndividual) {
@@ -402,28 +401,19 @@ async function showOwnerGroup(chatId, groupId) {
   buttons.push([{ text: '← ко всем группам', callback_data: 'owner_groups' }]);
 
   return send(chatId,
-    `<b>${html(group.name)}</b>\nформат: <b>${isIndividual ? 'индивидуально' : 'мини-группа'}</b>\nцель: <b>${targetScore}+ баллов</b>\n\n${studentLines}\n\n✅ подключён к боту · ⏳ ещё не открыл ссылку`,
+    `<b>${html(group.name)}</b>\nформат: <b>${isIndividual ? 'индивидуально' : 'мини-группа'}</b>\n\n${studentLines}\n\n✅ подключён к боту · ⏳ ещё не открыл ссылку`,
     kbd(buttons));
 }
 
 async function startGroupCreation(chatId, tid) {
-  await setSession(tid, { step: 'choose_group_program' });
-  return send(chatId, 'какая программа будет у группы?', kbd([
-    [{ text: 'Базовая · цель 18+ баллов', callback_data: 'ngp:base' }],
-    [{ text: 'Продвинутая · цель 23+ балла', callback_data: 'ngp:advanced' }],
-  ]));
+  await setSession(tid, { step: 'await_group_name' });
+  return send(chatId, 'введи название группы, например «Базовая А1» или «Продвинутая Б1»:');
 }
 
 async function finishGroupCreation(chatId, tid, rawName, sess) {
   const name = rawName.trim();
   if (name.length < 2 || name.length > 80) {
     return send(chatId, 'введи название группы длиной от 2 до 80 символов:');
-  }
-
-  const program = sess.data?.program;
-  if (!['base', 'advanced'].includes(program)) {
-    await setSession(tid, { step: 'owner' });
-    return send(chatId, 'программа не выбрана. начни создание группы заново.');
   }
 
   const sameName = await sbOne('groups',
@@ -433,14 +423,11 @@ async function finishGroupCreation(chatId, tid, rawName, sess) {
   }
 
   const groupId = botId();
-  const targetScore = program === 'advanced' ? 23 : 18;
   try {
     await sbInsert('groups', {
       id: groupId,
       name,
-      program,
       group_type: 'mini_group',
-      target_score: targetScore,
       sheet_key: null,
       active: true,
       created_at: new Date().toISOString(),
@@ -453,9 +440,8 @@ async function finishGroupCreation(chatId, tid, rawName, sess) {
   }
 
   await setSession(tid, { step: 'owner' });
-  const programName = program === 'advanced' ? 'Продвинутая' : 'Базовая';
   return send(chatId,
-    `✅ группа <b>${html(name)}</b> создана.\n\nпрограмма: <b>${programName}</b>\nцель: <b>${targetScore}+ баллов</b>\n\nуроки будут добавляться по факту при создании ДЗ.`,
+    `✅ группа <b>${html(name)}</b> создана.\n\nуроки будут добавляться по факту при создании ДЗ.`,
     kbd([
       [{ text: '➕ добавить ученика', callback_data: `student_group:${groupId}` }],
       [{ text: '← ко всем группам', callback_data: 'owner_groups' }],
@@ -463,7 +449,7 @@ async function finishGroupCreation(chatId, tid, rawName, sess) {
 }
 
 async function startStudentCreation(chatId, tid) {
-  const groups = await sbSelect('groups', 'active=eq.true&group_type=eq.mini_group&target_score=not.is.null&order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&group_type=eq.mini_group&order=name.asc');
   if (!groups.length) {
     return send(chatId, 'сначала создай группу в боте.');
   }
@@ -500,7 +486,6 @@ async function finishStudentCreation(chatId, tid, rawName, sess) {
     id: botId(),
     name,
     group_id: groupId,
-    target_score: group.target_score || (group.program === 'advanced' ? 23 : 18),
     status: 'active',
     created_at: new Date().toISOString(),
   });
@@ -525,23 +510,14 @@ async function finishStudentCreation(chatId, tid, rawName, sess) {
 }
 
 async function startIndividualStudentCreation(chatId, tid) {
-  await setSession(tid, { step: 'choose_individual_program' });
-  return send(chatId, 'по какой программе занимается индивидуальный ученик?', kbd([
-    [{ text: 'Базовая · цель 18+ баллов', callback_data: 'nip:base' }],
-    [{ text: 'Продвинутая · цель 23+ балла', callback_data: 'nip:advanced' }],
-  ]));
+  await setSession(tid, { step: 'await_individual_name' });
+  return send(chatId, 'введи имя индивидуального ученика:');
 }
 
 async function finishIndividualStudentCreation(chatId, tid, rawName, sess) {
   const name = rawName.trim();
   if (name.length < 2 || name.length > 80) {
     return send(chatId, 'введи имя ученика длиной от 2 до 80 символов:');
-  }
-
-  const program = sess.data?.program;
-  if (!['base', 'advanced'].includes(program)) {
-    await setSession(tid, { step: 'owner' });
-    return send(chatId, 'программа не выбрана. начни добавление ученика заново.');
   }
 
   const groupName = `Индивидуально · ${name}`;
@@ -553,16 +529,13 @@ async function finishIndividualStudentCreation(chatId, tid, rawName, sess) {
 
   const groupId = botId();
   const studentId = botId();
-  const targetScore = program === 'advanced' ? 23 : 18;
   const now = new Date().toISOString();
   let student;
   try {
     await sbInsert('groups', {
       id: groupId,
       name: groupName,
-      program,
       group_type: 'individual',
-      target_score: targetScore,
       sheet_key: null,
       active: true,
       created_at: now,
@@ -572,7 +545,6 @@ async function finishIndividualStudentCreation(chatId, tid, rawName, sess) {
       id: studentId,
       name,
       group_id: groupId,
-      target_score: targetScore,
       status: 'active',
       created_at: now,
     });
@@ -593,11 +565,9 @@ async function finishIndividualStudentCreation(chatId, tid, rawName, sess) {
     : token
       ? `\n\nрегистрационный код: <code>${token}</code>`
       : '\n\nне удалось получить ссылку. открой ученика в списке и повтори попытку.';
-  const programName = program === 'advanced' ? 'Продвинутая' : 'Базовая';
-
   await setSession(tid, { step: 'owner' });
   return send(chatId,
-    `✅ индивидуальный ученик <b>${html(name)}</b> добавлен.\n\nпрограмма: <b>${programName}</b>\nцель: <b>${targetScore}+ баллов</b>${inviteText}`,
+    `✅ индивидуальный ученик <b>${html(name)}</b> добавлен.${inviteText}`,
     rkbd(OWNER_KBD));
 }
 
@@ -876,7 +846,7 @@ async function finalizeStudentFiles(chatId, student, subId, files) {
 // ── Owner: start HW creation for a concrete lesson ────────────────────────────
 
 async function startHwCreation(chatId, tid) {
-  const groups = await sbSelect('groups', 'active=eq.true&target_score=not.is.null&order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
 
   if (!groups.length) return send(chatId, 'группы не найдены.');
 
@@ -1295,26 +1265,10 @@ async function handleCallback(cq) {
     return startIndividualStudentCreation(chatId, tid);
   }
   if (data.startsWith('ngp:') && owner) {
-    const program = data.slice(4);
-    if (!['base', 'advanced'].includes(program)) return send(chatId, 'неизвестная программа.');
-    await setSession(tid, {
-      step: 'await_group_name',
-      data: { program },
-    });
-    const programName = program === 'advanced' ? 'Продвинутая' : 'Базовая';
-    return send(chatId,
-      `программа: <b>${programName}</b>\n\nвведи название группы, например «Базовая А1»: `);
+    return startGroupCreation(chatId, tid);
   }
   if (data.startsWith('nip:') && owner) {
-    const program = data.slice(4);
-    if (!['base', 'advanced'].includes(program)) return send(chatId, 'неизвестная программа.');
-    await setSession(tid, {
-      step: 'await_individual_name',
-      data: { program },
-    });
-    const programName = program === 'advanced' ? 'Продвинутая' : 'Базовая';
-    return send(chatId,
-      `программа: <b>${programName}</b>\n\nвведи имя индивидуального ученика:`);
+    return startIndividualStudentCreation(chatId, tid);
   }
   if (data.startsWith('owner_group:') && owner) {
     return showOwnerGroup(chatId, data.slice('owner_group:'.length));
