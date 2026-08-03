@@ -9,6 +9,7 @@ process.env.GOOGLE_SHEETS_WEBHOOK_SECRET = 'sheet-secret';
 
 const telegramCalls = [];
 const insertedGroups = [];
+const insertedStudents = [];
 const insertedLessons = [];
 let sessionState = {};
 globalThis.fetch = async (url, options = {}) => {
@@ -17,7 +18,7 @@ globalThis.fetch = async (url, options = {}) => {
     if (target.includes('name=eq.')) return Response.json([]);
     return Response.json([{
       id: 'g1', name: 'Базовая А1', program: 'base', target_score: 18,
-      active: true, created_at: '2026-08-02T08:00:00.000Z',
+      group_type: 'mini_group', active: true, created_at: '2026-08-02T08:00:00.000Z',
     }]);
   }
   if (target.endsWith('/rest/v1/groups') && options.method === 'POST') {
@@ -30,6 +31,11 @@ globalThis.fetch = async (url, options = {}) => {
       id: 's1', name: 'Иван Иванов', group_id: 'g1', status: 'active',
       target_score: 18, created_at: '2026-08-02T08:10:00.000Z',
     }]);
+  }
+  if (target.endsWith('/rest/v1/students') && options.method === 'POST') {
+    const student = { reg_token: 'individual-token', ...JSON.parse(options.body) };
+    insertedStudents.push(student);
+    return Response.json([student]);
   }
   if (target.includes('/rest/v1/lessons?')) {
     if (target.includes('sheet_lesson_key=like.manual:*')) return Response.json([]);
@@ -136,8 +142,48 @@ await botHandler({
 }, groupNameResponse);
 assert.equal(insertedGroups.length, 1);
 assert.equal(insertedGroups[0].program, 'base');
+assert.equal(insertedGroups[0].group_type, 'mini_group');
 assert.equal(insertedGroups[0].target_score, 18);
 assert.equal('template_id' in insertedGroups[0], false);
+
+const newIndividualResponse = responseRecorder();
+await botHandler({
+  method: 'POST',
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: { message: { chat: { id: 123 }, from: { id: 123 }, text: '/newindividual' } },
+}, newIndividualResponse);
+const individualProgramKeyboard = JSON.parse(telegramCalls.at(-1).reply_markup).inline_keyboard;
+assert.deepEqual(individualProgramKeyboard.map(row => row[0].callback_data), ['nip:base', 'nip:advanced']);
+
+const individualProgramResponse = responseRecorder();
+await botHandler({
+  method: 'POST',
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: {
+    callback_query: {
+      id: 'cb-individual-program', data: 'nip:advanced',
+      message: { chat: { id: 123 } }, from: { id: 123 },
+    },
+  },
+}, individualProgramResponse);
+assert.equal(sessionState.step, 'await_individual_name');
+assert.equal(sessionState.data.program, 'advanced');
+
+const individualNameResponse = responseRecorder();
+await botHandler({
+  method: 'POST',
+  headers: { 'x-telegram-bot-api-secret-token': 'webhook-secret' },
+  body: { message: { chat: { id: 123 }, from: { id: 123 }, text: 'Мария Смирнова' } },
+}, individualNameResponse);
+assert.equal(insertedGroups.length, 2);
+assert.equal(insertedGroups[1].name, 'Индивидуально · Мария Смирнова');
+assert.equal(insertedGroups[1].group_type, 'individual');
+assert.equal(insertedGroups[1].program, 'advanced');
+assert.equal(insertedGroups[1].target_score, 23);
+assert.equal(insertedStudents.length, 1);
+assert.equal(insertedStudents[0].group_id, insertedGroups[1].id);
+assert.equal(insertedStudents[0].target_score, 23);
+assert.equal(sessionState.step, 'owner');
 
 const lessonChoiceResponse = responseRecorder();
 await botHandler({
@@ -237,9 +283,13 @@ await statsExportHandler({
 }, statsExportResponse);
 assert.equal(statsExportResponse.statusCode, 200);
 assert.equal(statsExportResponse.body.overview.active_groups, 1);
+assert.equal(statsExportResponse.body.overview.active_mini_groups, 1);
+assert.equal(statsExportResponse.body.overview.active_individuals, 0);
 assert.equal(statsExportResponse.body.overview.active_students, 1);
 assert.equal(statsExportResponse.body.groups[0].group, 'Базовая А1');
+assert.equal(statsExportResponse.body.groups[0].format, 'Мини-группа');
 assert.equal(statsExportResponse.body.students[0].student, 'Иван Иванов');
+assert.equal(statsExportResponse.body.students[0].format, 'Мини-группа');
 assert.equal(statsExportResponse.body.results[0].result, 0.8);
 
 const unauthorizedStatsResponse = responseRecorder();

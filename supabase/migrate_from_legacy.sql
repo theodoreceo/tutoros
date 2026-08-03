@@ -6,11 +6,27 @@ create extension if not exists pgcrypto;
 
 alter table groups
   add column if not exists program text,
+  add column if not exists group_type text not null default 'mini_group',
   add column if not exists sheet_key text,
   add column if not exists active boolean not null default true,
   add column if not exists updated_at timestamptz not null default now();
 
 -- Groups are managed directly in Telegram. A missing sheet_key is normal.
+
+update groups
+set group_type = 'mini_group'
+where group_type is null or group_type not in ('mini_group', 'individual');
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'groups_group_type_check'
+  ) then
+    alter table groups
+      add constraint groups_group_type_check
+      check (group_type in ('mini_group', 'individual'));
+  end if;
+end $$;
 
 alter table lessons
   add column if not exists sheet_lesson_key text,

@@ -127,7 +127,7 @@ const STUDENT_KBD = [
 ];
 const OWNER_KBD = [
   [{ text: '👥 группы' }, { text: '➕ создать группу' }],
-  [{ text: '➕ добавить ученика' }],
+  [{ text: '➕ добавить ученика' }, { text: '👤 индивидуальный ученик' }],
   [{ text: '➕ создать дз' }, { text: '🕒 непроверено' }],
   [{ text: '📋 домашние задания' }],
   [{ text: '❓ помощь' }],
@@ -173,6 +173,7 @@ async function handleText(msg) {
   if (text === '👥 группы'            && owner) return showOwnerGroups(chatId);
   if (text === '➕ создать группу'     && owner) return startGroupCreation(chatId, tid);
   if (text === '➕ добавить ученика'  && owner) return startStudentCreation(chatId, tid);
+  if (text === '👤 индивидуальный ученик' && owner) return startIndividualStudentCreation(chatId, tid);
   if (text === '➕ создать дз'         && owner) return startHwCreation(chatId, tid);
   if (text === '🕒 непроверено'        && owner) return showUncheckedSubmissions(chatId, 0);
   if (text === '📋 домашние задания'  && owner) return showOwnerAssignments(chatId, 0);
@@ -240,12 +241,16 @@ async function handleText(msg) {
     if (text === '/groups')     return showOwnerGroups(chatId);
     if (text === '/newgroup')   return startGroupCreation(chatId, tid);
     if (text === '/newstudent') return startStudentCreation(chatId, tid);
+    if (text === '/newindividual') return startIndividualStudentCreation(chatId, tid);
     if (text === '/newdz')      return startHwCreation(chatId, tid);
     if (text === '/unchecked')  return showUncheckedSubmissions(chatId, 0);
     if (text === '/mydz')       return showOwnerAssignments(chatId, 0);
     const sess = await getSession(tid);
     if (sess.step === 'await_student_name') {
       return finishStudentCreation(chatId, tid, text, sess);
+    }
+    if (sess.step === 'await_individual_name') {
+      return finishIndividualStudentCreation(chatId, tid, text, sess);
     }
     if (sess.step === 'await_group_name') {
       return finishGroupCreation(chatId, tid, text, sess);
@@ -291,7 +296,7 @@ async function sendOwnerHome(chatId, tid) {
 
 function sendOwnerHelp(chatId) {
   return send(chatId,
-    'команды:\n/groups — группы и ученики\n/newgroup — создать группу\n/newstudent — добавить ученика\n/newdz — создать ДЗ\n/unchecked — непроверенные работы\n/mydz — все домашние задания',
+    'команды:\n/groups — группы и ученики\n/newgroup — создать группу\n/newstudent — добавить ученика в мини-группу\n/newindividual — добавить индивидуального ученика\n/newdz — создать ДЗ\n/unchecked — непроверенные работы\n/mydz — все домашние задания',
     rkbd(OWNER_KBD));
 }
 
@@ -363,14 +368,16 @@ async function showOwnerGroups(chatId) {
   if (!groups.length) {
     return send(chatId, 'групп пока нет.', kbd([
       [{ text: '➕ создать первую группу', callback_data: 'new_group' }],
+      [{ text: '👤 добавить индивидуального ученика', callback_data: 'new_individual' }],
     ]));
   }
 
   const buttons = groups.map(group => [{
-    text: group.name || 'Без названия',
+    text: `${group.group_type === 'individual' ? '👤' : '👥'} ${group.name || 'Без названия'}`,
     callback_data: `owner_group:${group.id}`,
   }]);
   buttons.push([{ text: '➕ создать группу', callback_data: 'new_group' }]);
+  buttons.push([{ text: '👤 индивидуальный ученик', callback_data: 'new_individual' }]);
   return send(chatId, 'выбери группу:', kbd(buttons));
 }
 
@@ -387,13 +394,16 @@ async function showOwnerGroup(chatId, groupId) {
     ).join('\n')
     : 'учеников пока нет';
   const targetScore = group.target_score || (group.program === 'advanced' ? 23 : 18);
+  const isIndividual = group.group_type === 'individual';
+  const buttons = [];
+  if (!isIndividual) {
+    buttons.push([{ text: '➕ добавить ученика', callback_data: `student_group:${group.id}` }]);
+  }
+  buttons.push([{ text: '← ко всем группам', callback_data: 'owner_groups' }]);
 
   return send(chatId,
-    `<b>${html(group.name)}</b>\nцель: <b>${targetScore}+ баллов</b>\n\n${studentLines}\n\n✅ подключён к боту · ⏳ ещё не открыл ссылку`,
-    kbd([
-      [{ text: '➕ добавить ученика', callback_data: `student_group:${group.id}` }],
-      [{ text: '← ко всем группам', callback_data: 'owner_groups' }],
-    ]));
+    `<b>${html(group.name)}</b>\nформат: <b>${isIndividual ? 'индивидуально' : 'мини-группа'}</b>\nцель: <b>${targetScore}+ баллов</b>\n\n${studentLines}\n\n✅ подключён к боту · ⏳ ещё не открыл ссылку`,
+    kbd(buttons));
 }
 
 async function startGroupCreation(chatId, tid) {
@@ -429,6 +439,7 @@ async function finishGroupCreation(chatId, tid, rawName, sess) {
       id: groupId,
       name,
       program,
+      group_type: 'mini_group',
       target_score: targetScore,
       sheet_key: null,
       active: true,
@@ -452,7 +463,7 @@ async function finishGroupCreation(chatId, tid, rawName, sess) {
 }
 
 async function startStudentCreation(chatId, tid) {
-  const groups = await sbSelect('groups', 'active=eq.true&target_score=not.is.null&order=name.asc');
+  const groups = await sbSelect('groups', 'active=eq.true&group_type=eq.mini_group&target_score=not.is.null&order=name.asc');
   if (!groups.length) {
     return send(chatId, 'сначала создай группу в боте.');
   }
@@ -480,6 +491,10 @@ async function finishStudentCreation(chatId, tid, rawName, sess) {
     await setSession(tid, { step: 'owner' });
     return send(chatId, 'группа не найдена. начни добавление ученика заново.');
   }
+  if (group.group_type === 'individual') {
+    await setSession(tid, { step: 'owner' });
+    return send(chatId, 'в персональную группу нельзя добавить второго ученика.');
+  }
 
   const inserted = await sbInsert('students', {
     id: botId(),
@@ -506,6 +521,83 @@ async function finishStudentCreation(chatId, tid, rawName, sess) {
 
   return send(chatId,
     `✅ <b>${html(name)}</b> добавлен в группу «${html(group.name)}».${inviteText}`,
+    rkbd(OWNER_KBD));
+}
+
+async function startIndividualStudentCreation(chatId, tid) {
+  await setSession(tid, { step: 'choose_individual_program' });
+  return send(chatId, 'по какой программе занимается индивидуальный ученик?', kbd([
+    [{ text: 'Базовая · цель 18+ баллов', callback_data: 'nip:base' }],
+    [{ text: 'Продвинутая · цель 23+ балла', callback_data: 'nip:advanced' }],
+  ]));
+}
+
+async function finishIndividualStudentCreation(chatId, tid, rawName, sess) {
+  const name = rawName.trim();
+  if (name.length < 2 || name.length > 80) {
+    return send(chatId, 'введи имя ученика длиной от 2 до 80 символов:');
+  }
+
+  const program = sess.data?.program;
+  if (!['base', 'advanced'].includes(program)) {
+    await setSession(tid, { step: 'owner' });
+    return send(chatId, 'программа не выбрана. начни добавление ученика заново.');
+  }
+
+  const groupName = `Индивидуально · ${name}`;
+  const sameName = await sbOne('groups',
+    `name=eq.${encodeURIComponent(groupName)}&active=eq.true`);
+  if (sameName) {
+    return send(chatId, 'индивидуальный ученик с таким именем уже существует. уточни имя:');
+  }
+
+  const groupId = botId();
+  const studentId = botId();
+  const targetScore = program === 'advanced' ? 23 : 18;
+  const now = new Date().toISOString();
+  let student;
+  try {
+    await sbInsert('groups', {
+      id: groupId,
+      name: groupName,
+      program,
+      group_type: 'individual',
+      target_score: targetScore,
+      sheet_key: null,
+      active: true,
+      created_at: now,
+      updated_at: now,
+    });
+    const inserted = await sbInsert('students', {
+      id: studentId,
+      name,
+      group_id: groupId,
+      target_score: targetScore,
+      status: 'active',
+      created_at: now,
+    });
+    student = inserted?.[0];
+  } catch (error) {
+    await sbDelete('groups', `id=eq.${encodeURIComponent(groupId)}`).catch(() => {});
+    await setSession(tid, { step: 'owner' });
+    return send(chatId, `❌ не удалось добавить ученика:\n<code>${html(error.message)}</code>`);
+  }
+
+  const token = student?.reg_token;
+  const username = await getBotUsername();
+  const inviteLink = username && token
+    ? `https://t.me/${username}?start=${token}`
+    : null;
+  const inviteText = inviteLink
+    ? `\n\nперешли ученику эту ссылку:\n<code>${inviteLink}</code>`
+    : token
+      ? `\n\nрегистрационный код: <code>${token}</code>`
+      : '\n\nне удалось получить ссылку. открой ученика в списке и повтори попытку.';
+  const programName = program === 'advanced' ? 'Продвинутая' : 'Базовая';
+
+  await setSession(tid, { step: 'owner' });
+  return send(chatId,
+    `✅ индивидуальный ученик <b>${html(name)}</b> добавлен.\n\nпрограмма: <b>${programName}</b>\nцель: <b>${targetScore}+ баллов</b>${inviteText}`,
     rkbd(OWNER_KBD));
 }
 
@@ -1199,6 +1291,9 @@ async function handleCallback(cq) {
   if (data === 'new_group' && owner) {
     return startGroupCreation(chatId, tid);
   }
+  if (data === 'new_individual' && owner) {
+    return startIndividualStudentCreation(chatId, tid);
+  }
   if (data.startsWith('ngp:') && owner) {
     const program = data.slice(4);
     if (!['base', 'advanced'].includes(program)) return send(chatId, 'неизвестная программа.');
@@ -1210,6 +1305,17 @@ async function handleCallback(cq) {
     return send(chatId,
       `программа: <b>${programName}</b>\n\nвведи название группы, например «Базовая А1»: `);
   }
+  if (data.startsWith('nip:') && owner) {
+    const program = data.slice(4);
+    if (!['base', 'advanced'].includes(program)) return send(chatId, 'неизвестная программа.');
+    await setSession(tid, {
+      step: 'await_individual_name',
+      data: { program },
+    });
+    const programName = program === 'advanced' ? 'Продвинутая' : 'Базовая';
+    return send(chatId,
+      `программа: <b>${programName}</b>\n\nвведи имя индивидуального ученика:`);
+  }
   if (data.startsWith('owner_group:') && owner) {
     return showOwnerGroup(chatId, data.slice('owner_group:'.length));
   }
@@ -1217,6 +1323,9 @@ async function handleCallback(cq) {
     const groupId = data.slice('student_group:'.length);
     const group = await sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`);
     if (!group) return send(chatId, 'группа не найдена.');
+    if (group.group_type === 'individual') {
+      return send(chatId, 'в персональную группу нельзя добавить второго ученика.');
+    }
     await setSession(tid, { step: 'await_student_name', data: { group_id: groupId } });
     return send(chatId, `группа: <b>${html(group.name)}</b>\n\nвведи имя ученика:`);
   }

@@ -32,6 +32,7 @@ async function sbAll(table, query) {
 }
 
 const programLabel = program => program === 'advanced' ? 'Продвинутая' : 'Базовая';
+const groupTypeLabel = groupType => groupType === 'individual' ? 'Индивидуально' : 'Мини-группа';
 const groupStatusLabel = active => active ? 'Активна' : 'Остановлена';
 const studentStatusLabel = status => ({
   active: 'Активен', paused: 'Пауза', left: 'Ушёл',
@@ -71,7 +72,7 @@ export default async function handler(req, res) {
 
   try {
     const [rawGroups, rawStudents, rawLessons, rawAssignments, rawSubmissions] = await Promise.all([
-      sbAll('groups', 'select=id,name,program,target_score,active,created_at&target_score=not.is.null'),
+      sbAll('groups', 'select=id,name,program,group_type,target_score,active,created_at&target_score=not.is.null'),
       sbAll('students', 'select=id,name,group_id,status,target_score,created_at'),
       sbAll('lessons', 'select=id,group_id,lesson_number,topic,event_type'),
       sbAll('homework_assignments', 'select=id,group_id,lesson_id,topic,due_date,hw_type,is_advanced,assigned_at'),
@@ -103,6 +104,7 @@ export default async function handler(req, res) {
       );
       return {
         group: group.name,
+        format: groupTypeLabel(group.group_type),
         program: programLabel(group.program),
         target_score: Number(group.target_score) || null,
         students: groupStudents.length,
@@ -120,6 +122,7 @@ export default async function handler(req, res) {
       return {
         student: student.name,
         group: group?.name || '—',
+        format: groupTypeLabel(group?.group_type),
         program: programLabel(group?.program),
         target_score: Number(student.target_score ?? group?.target_score) || null,
         status: studentStatusLabel(student.status),
@@ -184,6 +187,8 @@ export default async function handler(req, res) {
       updated_at: new Date().toISOString(),
       overview: {
         active_groups: groups.filter(group => group.active).length,
+        active_mini_groups: groups.filter(group => group.active && group.group_type !== 'individual').length,
+        active_individuals: groups.filter(group => group.active && group.group_type === 'individual').length,
         active_students: students.filter(student => student.status === 'active').length,
         assignments: assignments.length,
         checked: submissions.filter(row => row.status === 'checked').length,

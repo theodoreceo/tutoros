@@ -7,6 +7,8 @@ create table groups (
   id text primary key,
   name text not null,
   program text check (program in ('base', 'advanced')),
+  group_type text not null default 'mini_group'
+    check (group_type in ('mini_group', 'individual')),
   target_score numeric,
   sheet_key text unique,
   active boolean not null default true,

@@ -54,22 +54,22 @@ function syncTutorOSStatsFile() {
   spreadsheet.setSpreadsheetTimeZone('Europe/Moscow');
   writeTutorOSStatsOverview_(spreadsheet, data);
   writeTutorOSStatsTable_(spreadsheet, 'Группы', [
-    'Группа', 'Программа', 'Цель', 'Ученики', 'Выдано ДЗ',
+    'Группа', 'Формат', 'Программа', 'Цель', 'Ученики', 'Выдано ДЗ',
     'Работ сдано', 'Средний результат', 'Сдано вовремя', 'Статус',
   ], data.groups.map(row => [
-    row.group, row.program, row.target_score, row.students, row.assignments,
+    row.group, row.format, row.program, row.target_score, row.students, row.assignments,
     row.submitted, row.average_score, row.on_time_rate, row.status,
-  ]), [170, 120, 75, 85, 90, 100, 130, 120, 90], {
-    integers: [3, 4, 5, 6], percentages: [7, 8],
+  ]), [190, 120, 120, 75, 85, 90, 100, 130, 120, 90], {
+    integers: [4, 5, 6, 7], percentages: [8, 9],
   });
   writeTutorOSStatsTable_(spreadsheet, 'Ученики', [
-    'Ученик', 'Группа', 'Программа', 'Цель', 'Статус', 'Выдано ДЗ',
+    'Ученик', 'Формат', 'Группа', 'Программа', 'Цель', 'Статус', 'Выдано ДЗ',
     'Сдано', 'Проверено', 'Средний результат', 'Сдано вовремя',
   ], data.students.map(row => [
-    row.student, row.group, row.program, row.target_score, row.status,
+    row.student, row.format, row.group, row.program, row.target_score, row.status,
     row.assigned, row.submitted, row.checked, row.average_score, row.on_time_rate,
-  ]), [180, 160, 120, 75, 95, 90, 80, 95, 130, 120], {
-    integers: [4, 6, 7, 8], percentages: [9, 10],
+  ]), [180, 120, 190, 120, 75, 95, 90, 80, 95, 130, 120], {
+    integers: [5, 7, 8, 9], percentages: [10, 11],
   });
   writeTutorOSStatsTable_(spreadsheet, 'ДЗ', [
     'Выдано', 'Группа', 'Урок', 'Тема', 'Тип', 'Уровень', 'Дедлайн',
@@ -102,33 +102,33 @@ function writeTutorOSStatsOverview_(spreadsheet, data) {
   sheet.getRange('A1:F20').breakApart();
   sheet.getRange('A1:F1').merge();
   sheet.getRange('A2:F2').merge();
-  sheet.getRange('A12:F12').merge();
+  sheet.getRange('A13:F13').merge();
   sheet.getRange('A1').setValue('TutorOS — учёт и статистика');
   sheet.getRange('A2').setValue('Данные обновляются из TutorOS автоматически каждые 10 минут.');
   sheet.getRange('A3:B3').setValues([[
     'Последнее обновление', tutorOSStatsDate_(data.updated_at),
   ]]);
-  sheet.getRange('A5:A10').setValues([
-    ['Активных групп'], ['Активных учеников'], ['Выдано ДЗ'],
+  sheet.getRange('A5:A11').setValues([
+    ['Активных мини-групп'], ['Индивидуальных учеников'], ['Всего активных учеников'], ['Выдано ДЗ'],
     ['Проверено работ'], ['Средний результат'], ['Сдано вовремя'],
   ]);
-  sheet.getRange('B5:B10').setValues([
-    [data.overview.active_groups], [data.overview.active_students],
+  sheet.getRange('B5:B11').setValues([
+    [data.overview.active_mini_groups], [data.overview.active_individuals], [data.overview.active_students],
     [data.overview.assignments], [data.overview.checked],
     [data.overview.average_score], [data.overview.on_time_rate],
   ]);
-  sheet.getRange('A12').setValue(
+  sheet.getRange('A13').setValue(
     'Чтобы посмотреть конкретную группу или ученика, включите фильтр на соответствующем листе.'
   );
   sheet.setHiddenGridlines(true);
   sheet.setFrozenRows(3);
   sheet.getRange('A1:F1').setBackground('#e8eaed').setFontWeight('bold').setFontSize(16);
   sheet.getRange('A2').setFontColor('#5f6368').setFontStyle('italic');
-  sheet.getRange('A5:A10').setFontWeight('bold');
-  sheet.getRange('B5:B10').setFontWeight('bold').setFontSize(13);
-  sheet.getRange('B5:B8').setNumberFormat('0');
-  sheet.getRange('B9:B10').setNumberFormat('0%');
-  sheet.getRange('A12').setFontColor('#5f6368').setWrap(true);
+  sheet.getRange('A5:A11').setFontWeight('bold');
+  sheet.getRange('B5:B11').setFontWeight('bold').setFontSize(13);
+  sheet.getRange('B5:B9').setNumberFormat('0');
+  sheet.getRange('B10:B11').setNumberFormat('0%');
+  sheet.getRange('A13').setFontColor('#5f6368').setWrap(true);
   sheet.setColumnWidth(1, 190);
   sheet.setColumnWidth(2, 150);
   for (let column = 3; column <= 6; column++) sheet.setColumnWidth(column, 95);
