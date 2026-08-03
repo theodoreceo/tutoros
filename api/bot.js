@@ -182,9 +182,13 @@ export default async function handler(req, res) {
   } catch (err) {
     console.error('Bot error:', err);
     const chatId = update.callback_query?.message?.chat?.id ?? update.message?.chat?.id;
+    const telegramId = update.callback_query?.from?.id ?? update.message?.from?.id;
     if (chatId) {
+      const details = isOwner(telegramId)
+        ? `\n\nпричина: <code>${html(err?.message || 'неизвестная ошибка')}</code>`
+        : '';
       await send(chatId,
-        '⚠️ не удалось выполнить действие из-за временной ошибки. данные не потеряны — попробуй ещё раз.'
+        `⚠️ не удалось выполнить действие из-за временной ошибки. данные не потеряны — попробуй ещё раз.${details}`
       ).catch(() => {});
     }
   }
