@@ -38,6 +38,7 @@ const studentStatusLabel = status => ({
 }[status] || status || '—');
 const submissionStatusLabel = status => ({
   assigned: 'Не сдано', submitted: 'Сдано', checked: 'Проверено', revision: 'На доработке',
+  cancelled: 'Отменено (ДЗ в архиве)',
 }[status] || status || '—');
 const homeworkTypeLabel = type => ({
   brief: 'Краткий ответ', detailed: 'Подробное решение', trial: 'Пробник',
@@ -61,7 +62,7 @@ const onTimeRate = rows => {
   return known.length ? known.filter(row => row.on_time).length / known.length : null;
 };
 
-const submitted = row => row.status !== 'assigned';
+const submitted = row => !['assigned', 'cancelled'].includes(row.status);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -74,7 +75,7 @@ export default async function handler(req, res) {
       sbAll('groups', 'select=id,name,group_type,active,created_at'),
       sbAll('students', 'select=id,name,group_id,status,created_at'),
       sbAll('lessons', 'select=id,group_id,lesson_number,topic,event_type'),
-      sbAll('homework_assignments', 'select=id,group_id,lesson_id,topic,due_date,hw_type,is_advanced,assigned_at'),
+      sbAll('homework_assignments', 'select=id,group_id,lesson_id,topic,due_date,hw_type,is_advanced,assigned_at,archived_at'),
       sbAll('homework_submissions', 'select=id,assignment_id,student_id,status,submitted_at,checked_at,score,max_score,on_time,comment'),
     ]);
 
@@ -86,6 +87,7 @@ export default async function handler(req, res) {
       rawLessons.filter(lesson => groupMap.has(lesson.group_id)).map(lesson => [lesson.id, lesson])
     );
     const assignments = rawAssignments.filter(assignment => groupMap.has(assignment.group_id));
+    const activeAssignments = assignments.filter(assignment => !assignment.archived_at);
     const assignmentMap = new Map(assignments.map(assignment => [assignment.id, assignment]));
     const submissions = rawSubmissions.filter(submission =>
       assignmentMap.has(submission.assignment_id) && studentMap.has(submission.student_id)
@@ -97,7 +99,7 @@ export default async function handler(req, res) {
       const groupStudents = students.filter(student =>
         student.group_id === group.id && student.status === 'active'
       );
-      const groupAssignments = assignments.filter(assignment => assignment.group_id === group.id);
+      const groupAssignments = activeAssignments.filter(assignment => assignment.group_id === group.id);
       const groupSubmissions = groupAssignments.flatMap(assignment =>
         submissionsFor('assignment_id', assignment.id)
       );
@@ -115,7 +117,8 @@ export default async function handler(req, res) {
 
     const studentRows = students.map(student => {
       const group = groupMap.get(student.group_id);
-      const studentSubmissions = submissionsFor('student_id', student.id);
+      const studentSubmissions = submissionsFor('student_id', student.id)
+        .filter(row => !assignmentMap.get(row.assignment_id)?.archived_at);
       return {
         student: student.name,
         group: group?.name || '—',
@@ -142,6 +145,7 @@ export default async function handler(req, res) {
         topic: assignment.topic,
         type: homeworkTypeLabel(assignment.hw_type),
         level: assignment.is_advanced ? 'Продвинутый' : 'Основной',
+        state: assignment.archived_at ? 'Архив' : 'Активно',
         due_date: assignment.due_date,
         students: assignmentSubmissions.length,
         submitted: assignmentSubmissions.filter(submitted).length,
@@ -162,6 +166,7 @@ export default async function handler(req, res) {
         student: student?.name || '—',
         lesson: lesson?.lesson_number || '—',
         topic: assignment?.topic || '—',
+        assignment_state: assignment?.archived_at ? 'Архив' : 'Активно',
         status: submissionStatusLabel(submission.status),
         submitted_at: submission.submitted_at,
         checked_at: submission.checked_at,
@@ -185,10 +190,12 @@ export default async function handler(req, res) {
         active_mini_groups: groups.filter(group => group.active && group.group_type !== 'individual').length,
         active_individuals: groups.filter(group => group.active && group.group_type === 'individual').length,
         active_students: students.filter(student => student.status === 'active').length,
-        assignments: assignments.length,
-        checked: submissions.filter(row => row.status === 'checked').length,
-        average_score: average(submissions.map(row => ratio(row.score, row.max_score))),
-        on_time_rate: onTimeRate(submissions),
+        assignments: activeAssignments.length,
+        checked: submissions.filter(row => row.status === 'checked' && !assignmentMap.get(row.assignment_id)?.archived_at).length,
+        average_score: average(submissions
+          .filter(row => !assignmentMap.get(row.assignment_id)?.archived_at)
+          .map(row => ratio(row.score, row.max_score))),
+        on_time_rate: onTimeRate(submissions.filter(row => !assignmentMap.get(row.assignment_id)?.archived_at)),
       },
       groups: groupRows,
       students: studentRows,

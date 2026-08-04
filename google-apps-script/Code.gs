@@ -72,25 +72,25 @@ function syncTutorOSStatsFile() {
     integers: [5, 6, 7], percentages: [8, 9],
   });
   writeTutorOSStatsTable_(spreadsheet, 'ДЗ', [
-    'Выдано', 'Группа', 'Урок', 'Тема', 'Тип', 'Уровень', 'Дедлайн',
+    'Выдано', 'Группа', 'Урок', 'Тема', 'Тип', 'Уровень', 'Состояние', 'Дедлайн',
     'Учеников', 'Сдано', 'Проверено', 'Средний результат',
   ], data.assignments.map(row => [
     tutorOSStatsDate_(row.assigned_at), row.group, row.lesson, row.topic,
-    row.type, row.level, tutorOSStatsDate_(row.due_date, true), row.students,
+    row.type, row.level, row.state, tutorOSStatsDate_(row.due_date, true), row.students,
     row.submitted, row.checked, row.average_score,
-  ]), [120, 150, 80, 280, 120, 105, 105, 90, 80, 95, 130], {
-    dateTimes: [1], dates: [7], integers: [8, 9, 10], percentages: [11],
+  ]), [120, 150, 80, 280, 120, 105, 95, 105, 90, 80, 95, 130], {
+    dateTimes: [1], dates: [8], integers: [9, 10, 11], percentages: [12],
   });
   writeTutorOSStatsTable_(spreadsheet, 'Результаты', [
-    'Выдано', 'Дедлайн', 'Группа', 'Ученик', 'Урок', 'Тема', 'Статус',
+    'Выдано', 'Дедлайн', 'Группа', 'Ученик', 'Урок', 'Тема', 'Состояние ДЗ', 'Статус',
     'Сдано', 'Проверено', 'Балл', 'Максимум', 'Результат', 'Вовремя', 'Комментарий',
   ], data.results.map(row => [
     tutorOSStatsDate_(row.assigned_at), tutorOSStatsDate_(row.due_date, true),
-    row.group, row.student, row.lesson, row.topic, row.status,
+    row.group, row.student, row.lesson, row.topic, row.assignment_state, row.status,
     tutorOSStatsDate_(row.submitted_at), tutorOSStatsDate_(row.checked_at),
     row.score, row.max_score, row.result, row.on_time, row.comment,
-  ]), [120, 105, 150, 180, 80, 260, 105, 120, 120, 75, 85, 100, 90, 280], {
-    dateTimes: [1, 8, 9], dates: [2], integers: [10, 11], percentages: [12],
+  ]), [120, 105, 150, 180, 80, 260, 105, 140, 120, 120, 75, 85, 100, 90, 280], {
+    dateTimes: [1, 9, 10], dates: [2], integers: [11, 12], percentages: [13],
   });
   SpreadsheetApp.flush();
   return { groups: data.groups.length, students: data.students.length };

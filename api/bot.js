@@ -1,16 +1,18 @@
-// api/bot.js — Telegram Bot Webhook (Vercel Serverless, Node 18+)
-// Env vars: SUPABASE_URL, SUPABASE_SECRET_KEY, TELEGRAM_BOT_TOKEN,
-// TELEGRAM_WEBHOOK_SECRET
+// api/bot.js — VK Community Callback API (Vercel Serverless, Node 18+)
+// Env vars: SUPABASE_URL, SUPABASE_SECRET_KEY, VK_GROUP_TOKEN,
+// VK_GROUP_ID, VK_CALLBACK_SECRET, OWNER_VK_ID
 
 const SUPABASE_URL       = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY
   || process.env.SUPABASE_SERVICE_ROLE_KEY;
-const BOT_TOKEN          = process.env.TELEGRAM_BOT_TOKEN;
-const WEBHOOK_SECRET     = process.env.TELEGRAM_WEBHOOK_SECRET;
-const OWNER_TELEGRAM_ID  = process.env.OWNER_TELEGRAM_ID;
+const VK_GROUP_TOKEN     = process.env.VK_GROUP_TOKEN;
+const VK_GROUP_ID        = process.env.VK_GROUP_ID;
+const VK_CALLBACK_SECRET = process.env.VK_CALLBACK_SECRET;
+const VK_API_VERSION     = process.env.VK_API_VERSION || '5.199';
+const OWNER_VK_ID        = process.env.OWNER_VK_ID;
 
-const isOwner = (telegramId) =>
-  Boolean(OWNER_TELEGRAM_ID) && String(telegramId) === String(OWNER_TELEGRAM_ID);
+const isOwner = (vkUserId) =>
+  Boolean(OWNER_VK_ID) && String(vkUserId) === String(OWNER_VK_ID);
 
 // ── Supabase REST helpers ─────────────────────────────────────────────────────
 
@@ -79,40 +81,73 @@ async function sbRpc(fn, body) {
 // ── Session ───────────────────────────────────────────────────────────────────
 
 async function getSession(tid) {
-  const row = await sbOne('bot_sessions', `telegram_id=eq.${tid}`);
+  const row = await sbOne('vk_sessions', `vk_user_id=eq.${tid}`);
   return row?.state ?? {};
 }
 
 async function setSession(tid, state) {
-  await sbUpsert('bot_sessions', { telegram_id: tid, state, updated_at: new Date().toISOString() });
+  await sbUpsert('vk_sessions', { vk_user_id: tid, state, updated_at: new Date().toISOString() });
 }
 
-// ── Telegram helpers ──────────────────────────────────────────────────────────
+// ── VK helpers ────────────────────────────────────────────────────────────────
 
-async function tg(method, body) {
-  const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+async function vk(method, params = {}) {
+  if (!VK_GROUP_TOKEN) throw new Error('VK_GROUP_TOKEN не настроен');
+  const body = new URLSearchParams();
+  for (const [key, value] of Object.entries({ ...params, access_token: VK_GROUP_TOKEN, v: VK_API_VERSION })) {
+    if (value === undefined || value === null || value === '') continue;
+    body.set(key, typeof value === 'string' ? value : JSON.stringify(value));
+  }
+  const r = await fetch(`https://api.vk.com/method/${method}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
   });
   const result = await r.json().catch(() => null);
-  if (!r.ok || !result?.ok) {
-    throw new Error(`Telegram ${method}: ${result?.description || r.status}`);
+  if (!r.ok || result?.error) {
+    throw new Error(`VK ${method}: ${result?.error?.error_msg || r.status}`);
   }
-  return result;
+  return result?.response;
 }
 
-const send  = (chatId, text, extra = {}) => tg('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', ...extra });
-const cbq   = (id, text = '') => tg('answerCallbackQuery', { callback_query_id: id, text });
+const randomId = () => Math.floor(Math.random() * 2147483647) || 1;
+const plainText = value => String(value ?? '')
+  .replace(/<\/?(?:b|code)>/g, '')
+  .replaceAll('&lt;', '<')
+  .replaceAll('&gt;', '>')
+  .replaceAll('&amp;', '&');
+const send = (peerId, message, extra = {}) => vk('messages.send', {
+  peer_id: peerId,
+  random_id: randomId(),
+  message: plainText(message),
+  ...extra,
+});
+const sendAttachment = (peerId, attachment) => vk('messages.send', {
+  peer_id: peerId,
+  random_id: randomId(),
+  attachment,
+});
+const cbq = (eventId, text = '', context = {}) => vk('messages.sendMessageEventAnswer', {
+  event_id: eventId,
+  user_id: context.user_id,
+  peer_id: context.peer_id,
+  event_data: JSON.stringify({ type: 'show_snackbar', text: text || '✓' }),
+});
+const vkButton = (button, callback = true) => ({
+  action: callback && button.callback_data
+    ? { type: 'callback', label: button.text, payload: JSON.stringify({ cmd: button.callback_data }) }
+    : { type: 'text', label: button.text, payload: '{}' },
+  color: button.color || 'secondary',
+});
 const kbd   = (rows) => {
   for (const button of rows.flat()) {
     if (!button?.callback_data) continue;
     const length = new TextEncoder().encode(button.callback_data).length;
-    if (length > 64) {
-      throw new Error(`слишком длинная кнопка: ${button.callback_data.slice(0, 24)}… (${length} байт)`);
+    if (length > 200) {
+      throw new Error(`слишком длинная команда кнопки: ${button.callback_data.slice(0, 24)}…`);
     }
   }
-  return { reply_markup: JSON.stringify({ inline_keyboard: rows }) };
+  return { keyboard: JSON.stringify({ inline: true, buttons: rows.map(row => row.map(button => vkButton(button))) }) };
 };
 const botId = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const callbackNonce = () => Math.random().toString(36).slice(2, 8);
@@ -146,16 +181,9 @@ async function updateAssignedSubmission(subId, studentId, changes) {
   return updated[0] ?? null;
 }
 
-let cachedBotUsername;
-async function getBotUsername() {
-  if (cachedBotUsername) return cachedBotUsername;
-  const me = await tg('getMe', {}).catch(error => {
-    console.error('Telegram getMe failed:', error);
-    return null;
-  });
-  cachedBotUsername = me?.result?.username || '';
-  return cachedBotUsername;
-}
+const studentInviteLink = token => VK_GROUP_ID
+  ? `https://vk.com/write-${VK_GROUP_ID}?ref=${encodeURIComponent(token)}`
+  : null;
 
 // ── Reply keyboards (persistent bottom buttons) ───────────────────────────────
 
@@ -167,34 +195,87 @@ const OWNER_KBD = [
   [{ text: '👥 группы' }, { text: '➕ создать группу' }],
   [{ text: '➕ добавить ученика' }, { text: '👤 индивидуальный ученик' }],
   [{ text: '➕ создать дз' }, { text: '🕒 непроверено' }],
-  [{ text: '📋 домашние задания' }],
+  [{ text: '📋 домашние задания' }, { text: '📦 архив дз' }],
   [{ text: '❓ помощь' }],
 ];
 
 const rkbd = (rows) => ({
-  reply_markup: JSON.stringify({ keyboard: rows, resize_keyboard: true, persistent: true }),
+  keyboard: JSON.stringify({
+    one_time: false,
+    inline: false,
+    buttons: rows.map(row => row.map(button => vkButton(button, false))),
+  }),
 });
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(200).json({ ok: true });
+function attachmentRef(attachment) {
+  const object = attachment?.[attachment.type];
+  if (!object?.owner_id || !object?.id) return null;
+  return `${attachment.type}${object.owner_id}_${object.id}${object.access_key ? `_${object.access_key}` : ''}`;
+}
 
-  if (WEBHOOK_SECRET && req.headers['x-telegram-bot-api-secret-token'] !== WEBHOOK_SECRET) {
-    return res.status(401).json({ error: 'Unauthorized' });
+function normalizeVkMessage(update) {
+  const message = update?.object?.message;
+  if (!message) return null;
+  const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+  const photo = attachments.find(item => item.type === 'photo');
+  const document = attachments.find(item => item.type === 'doc');
+  return {
+    chat: { id: message.peer_id },
+    from: { id: message.from_id },
+    text: String(message.text || ''),
+    ref: message.ref || update.object?.ref || null,
+    photo: photo ? [{ file_id: attachmentRef(photo) }] : null,
+    document: document ? { file_id: attachmentRef(document) } : null,
+  };
+}
+
+function normalizeVkCallback(update) {
+  const object = update?.object || {};
+  let payload = object.payload || {};
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch { payload = {}; }
   }
+  return {
+    id: object.event_id,
+    data: payload.cmd || payload.command || '',
+    message: { chat: { id: object.peer_id } },
+    from: { id: object.user_id },
+    peer_id: object.peer_id,
+    user_id: object.user_id,
+  };
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(200).send('TutorOS VK bot');
 
   const update = req.body ?? {};
+  if (VK_GROUP_ID && String(update.group_id) !== String(VK_GROUP_ID)) {
+    return res.status(403).send('wrong group');
+  }
+  if (VK_CALLBACK_SECRET && update.secret !== VK_CALLBACK_SECRET) {
+    return res.status(403).send('wrong secret');
+  }
+  if (update.type === 'confirmation') {
+    const confirmation = await vk('groups.getCallbackConfirmationCode', { group_id: VK_GROUP_ID });
+    return confirmation?.code
+      ? res.status(200).send(confirmation.code)
+      : res.status(500).send('VK did not return a confirmation code');
+  }
+
+  const message = update.type === 'message_new' ? normalizeVkMessage(update) : null;
+  const callback = update.type === 'message_event' ? normalizeVkCallback(update) : null;
   try {
-    if (update.callback_query)                                   await handleCallback(update.callback_query);
-    else if (update.message?.photo || update.message?.document) await handleMedia(update.message);
-    else if (update.message?.text)                               await handleText(update.message);
+    if (callback?.data) await handleCallback(callback);
+    else if (message?.photo || message?.document) await handleMedia(message);
+    else if (message) await handleText(message);
   } catch (err) {
-    console.error('Bot error:', err);
-    const chatId = update.callback_query?.message?.chat?.id ?? update.message?.chat?.id;
-    const telegramId = update.callback_query?.from?.id ?? update.message?.from?.id;
+    console.error('VK bot error:', err);
+    const chatId = callback?.message?.chat?.id ?? message?.chat?.id;
+    const vkUserId = callback?.from?.id ?? message?.from?.id;
     if (chatId) {
-      const details = isOwner(telegramId)
+      const details = isOwner(vkUserId)
         ? `\n\nпричина: <code>${html(err?.message || 'неизвестная ошибка')}</code>`
         : '';
       await send(chatId,
@@ -202,7 +283,7 @@ export default async function handler(req, res) {
       ).catch(() => {});
     }
   }
-  res.status(200).json({ ok: true });
+  return res.status(200).send('ok');
 }
 
 // ── Text handler ──────────────────────────────────────────────────────────────
@@ -210,10 +291,14 @@ export default async function handler(req, res) {
 async function handleText(msg) {
   const chatId = msg.chat.id;
   const tid    = msg.from.id;
-  const text   = msg.text.trim();
+  const text   = String(msg.text || '').trim();
 
   const owner   = isOwner(tid);
-  const student = owner ? null : await sbOne('students', `telegram_id=eq.${tid}`);
+  const student = owner ? null : await sbOne('students', `vk_id=eq.${tid}`);
+
+  if (msg.ref && !owner && !student) {
+    return handleRegistration(chatId, tid, msg.ref);
+  }
 
   // ── Menu button shortcuts (checked before slash commands so they always work) ──
   if (text === '📚 мои задания'    && student)  return handleStudentListHw(chatId, student);
@@ -225,6 +310,7 @@ async function handleText(msg) {
   if (text === '➕ создать дз'         && owner) return startHwCreation(chatId, tid);
   if (text === '🕒 непроверено'        && owner) return showUncheckedSubmissions(chatId, 0);
   if (text === '📋 домашние задания'  && owner) return showOwnerAssignments(chatId, 0);
+  if (text === '📦 архив дз'            && owner) return showOwnerAssignments(chatId, 0, true);
   if (text === '❓ помощь') {
     if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт\n\nесли возникла проблема, напиши преподавателю.', rkbd(STUDENT_KBD));
     if (owner) return sendOwnerHelp(chatId);
@@ -293,6 +379,7 @@ async function handleText(msg) {
     if (text === '/newdz')      return startHwCreation(chatId, tid);
     if (text === '/unchecked')  return showUncheckedSubmissions(chatId, 0);
     if (text === '/mydz')       return showOwnerAssignments(chatId, 0);
+    if (text === '/archive')    return showOwnerAssignments(chatId, 0, true);
     const sess = await getSession(tid);
     if (sess.step === 'await_student_name') {
       return finishStudentCreation(chatId, tid, text, sess);
@@ -344,7 +431,7 @@ async function sendOwnerHome(chatId, tid) {
 
 function sendOwnerHelp(chatId) {
   return send(chatId,
-    'команды:\n/groups — группы и ученики\n/newgroup — создать группу\n/newstudent — добавить ученика в мини-группу\n/newindividual — добавить индивидуального ученика\n/newdz — создать ДЗ\n/unchecked — непроверенные работы\n/mydz — все домашние задания',
+    'команды:\n/groups — группы и ученики\n/newgroup — создать группу\n/newstudent — добавить ученика в мини-группу\n/newindividual — добавить индивидуального ученика\n/newdz — создать ДЗ\n/unchecked — непроверенные работы\n/mydz — активные домашние задания\n/archive — архив ДЗ',
     rkbd(OWNER_KBD));
 }
 
@@ -355,7 +442,7 @@ async function handleMedia(msg) {
   const tid    = msg.from.id;
 
   const owner   = isOwner(tid);
-  const student = owner ? null : await sbOne('students', `telegram_id=eq.${tid}`);
+  const student = owner ? null : await sbOne('students', `vk_id=eq.${tid}`);
 
   const fileId   = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
   const fileType = msg.photo ? 'photo' : 'document';
@@ -399,8 +486,8 @@ async function handleRegistration(chatId, tid, token) {
   const sm = await sbOne('students', `reg_token=eq.${encodeURIComponent(clean)}`);
 
   if (sm) {
-    if (sm.telegram_id) return send(chatId, 'эта ссылка уже была использована. напиши преподавателю.');
-    await sbPatch('students', `id=eq.${sm.id}`, { telegram_id: tid });
+    if (sm.vk_id) return send(chatId, 'эта ссылка уже была использована. напиши преподавателю.');
+    await sbPatch('students', `id=eq.${sm.id}`, { vk_id: tid });
     await setSession(tid, { step: 'student' });
     return send(chatId,
       `готово! ты подключен как <b>${sm.name}</b>.\n\nесли это не ты, напиши преподавателю.`,
@@ -438,7 +525,7 @@ async function showOwnerGroup(chatId, groupId) {
 
   const studentLines = students.length
     ? students.map((student, index) =>
-      `${index + 1}. ${student.telegram_id ? '✅' : '⏳'} ${html(student.name)}`
+      `${index + 1}. ${student.vk_id ? '✅' : '⏳'} ${html(student.name)}`
     ).join('\n')
     : 'учеников пока нет';
   const isIndividual = group.group_type === 'individual';
@@ -539,15 +626,13 @@ async function finishStudentCreation(chatId, tid, rawName, sess) {
   });
   const student = inserted?.[0];
   const token = student?.reg_token;
-  const username = await getBotUsername();
-  const inviteLink = username && token
-    ? `https://t.me/${username}?start=${token}`
-    : null;
+  const inviteLink = token ? studentInviteLink(token) : null;
 
   await setSession(tid, { step: 'owner' });
 
   const inviteText = inviteLink
-    ? `\n\nперешли ученику эту ссылку:\n<code>${inviteLink}</code>`
+    ? `\n\nперешли ученику ссылку:\n<code>${inviteLink}</code>` +
+      `\n\nесли VK не подключит автоматически, пусть пришлёт боту код:\n<code>${token}</code>`
     : token
       ? `\n\nрегистрационный код: <code>${token}</code>`
       : '\n\nне удалось получить ссылку. открой группу и повтори попытку.';
@@ -604,12 +689,10 @@ async function finishIndividualStudentCreation(chatId, tid, rawName, sess) {
   }
 
   const token = student?.reg_token;
-  const username = await getBotUsername();
-  const inviteLink = username && token
-    ? `https://t.me/${username}?start=${token}`
-    : null;
+  const inviteLink = token ? studentInviteLink(token) : null;
   const inviteText = inviteLink
-    ? `\n\nперешли ученику эту ссылку:\n<code>${inviteLink}</code>`
+    ? `\n\nперешли ученику ссылку:\n<code>${inviteLink}</code>` +
+      `\n\nесли VK не подключит автоматически, пусть пришлёт боту код:\n<code>${token}</code>`
     : token
       ? `\n\nрегистрационный код: <code>${token}</code>`
       : '\n\nне удалось получить ссылку. открой ученика в списке и повтори попытку.';
@@ -657,8 +740,9 @@ function toPercent(score, maxScore, taskConfig) {
 }
 
 async function showStudentStats(chatId, student) {
-  const allSubs = await sbSelect('homework_submissions',
+  const rawSubs = await sbSelect('homework_submissions',
     `student_id=eq.${student.id}&order=submitted_at.desc.nullsfirst`);
+  const allSubs = rawSubs.filter(s => s.status !== 'cancelled');
 
   const assigned  = allSubs.filter(s => s.status === 'assigned').length;
   const submitted = allSubs.filter(s => s.status === 'submitted').length;
@@ -739,12 +823,12 @@ async function handleBriefAnswerText(chatId, student, subId, text, sess) {
 
   // If this is the last question — show review page
   if (current === correct.length - 1) {
-    return showBriefReviewPage(chatId, student.telegram_id, subId, correct, given);
+    return showBriefReviewPage(chatId, student.vk_id, subId, correct, given);
   }
 
   // Otherwise move to next question
   const nextCurrent = current + 1;
-  return showBriefAnswerStep(chatId, student.telegram_id, subId, correct, given, nextCurrent);
+  return showBriefAnswerStep(chatId, student.vk_id, subId, correct, given, nextCurrent);
 }
 
 async function showBriefAnswerStep(chatId, tid, subId, correct, given, current) {
@@ -781,7 +865,7 @@ async function submitBriefAnswers(chatId, student, subId, correct, given) {
   const sub = await sbOne('homework_submissions',
     `id=eq.${encodeURIComponent(subId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
   if (!sub) {
-    await setSession(student.telegram_id, { step: 'student' });
+    await setSession(student.vk_id, { step: 'student' });
     return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
   }
   const assignment = sub
@@ -797,14 +881,14 @@ async function submitBriefAnswers(chatId, student, subId, correct, given) {
     status: 'checked', submitted_at: now, checked_at: now,
     score, max_score: maxScore,
     comment: `${numCorrect}/${correct.length} верно`,
-    student_answers: given, source: 'telegram',
+    student_answers: given, source: 'vk',
     on_time: isSubmittedOnTime(assignment, now),
   });
   if (!updated) {
-    await setSession(student.telegram_id, { step: 'student' });
+    await setSession(student.vk_id, { step: 'student' });
     return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
   }
-  await setSession(student.telegram_id, { step: 'student' });
+  await setSession(student.vk_id, { step: 'student' });
   if (assignment) {
     await notifyOwnerSubmission(subId, assignment, student, {
       score,
@@ -821,7 +905,7 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
   const sub = await sbOne('homework_submissions',
     `id=eq.${encodeURIComponent(subId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
   if (!sub) {
-    await setSession(student.telegram_id, { step: 'student' });
+    await setSession(student.vk_id, { step: 'student' });
     return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
   }
 
@@ -848,14 +932,14 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
       status: 'checked', submitted_at: now, checked_at: now,
       score, max_score: maxScore,
       comment: `${numCorrect}/${correct.length} верно`,
-      student_answers: given, source: 'telegram',
+      student_answers: given, source: 'vk',
       on_time: isSubmittedOnTime(assignment, now),
     });
     if (!updated) {
-      await setSession(student.telegram_id, { step: 'student' });
+      await setSession(student.vk_id, { step: 'student' });
       return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
     }
-    await setSession(student.telegram_id, { step: 'student' });
+    await setSession(student.vk_id, { step: 'student' });
     await notifyOwnerSubmission(subId, assignment, student, {
       score,
       maxScore,
@@ -872,14 +956,14 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
     status: 'checked', submitted_at: now, checked_at: now,
     score: isCorrect ? 100 : 0, max_score: 100,
     comment: isCorrect ? 'верно!' : `неверно. правильный ответ: ${correct || 'не указан'}`,
-    source: 'telegram',
+    source: 'vk',
     on_time: isSubmittedOnTime(assignment, now),
   });
   if (!updated) {
-    await setSession(student.telegram_id, { step: 'student' });
+    await setSession(student.vk_id, { step: 'student' });
     return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
   }
-  if (student.telegram_id) await setSession(student.telegram_id, { step: 'student' });
+  if (student.vk_id) await setSession(student.vk_id, { step: 'student' });
   await notifyOwnerSubmission(subId, assignment, student, {
     score: isCorrect ? 100 : 0,
     maxScore: 100,
@@ -895,7 +979,7 @@ async function finalizeStudentFiles(chatId, student, subId, files) {
   const sub = await sbOne('homework_submissions',
     `id=eq.${encodeURIComponent(subId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
   if (!sub) {
-    await setSession(student.telegram_id, { step: 'student' });
+    await setSession(student.vk_id, { step: 'student' });
     return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
   }
 
@@ -906,14 +990,14 @@ async function finalizeStudentFiles(chatId, student, subId, files) {
     status:          'submitted',
     submitted_at:    submittedAt,
     submitted_files: files,
-    source:          'telegram',
+    source:          'vk',
     on_time:          isSubmittedOnTime(assignment, submittedAt),
   });
   if (!updated) {
-    await setSession(student.telegram_id, { step: 'student' });
+    await setSession(student.vk_id, { step: 'student' });
     return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
   }
-  await setSession(student.telegram_id, { step: 'student' });
+  await setSession(student.vk_id, { step: 'student' });
 
   if (assignment) await notifyOwnerWithFiles(subId, assignment, student, files, submittedAt);
 
@@ -1196,10 +1280,10 @@ async function finishHwCreation(chatId, tid, data) {
 
   const due = data.due_date ? `\nдедлайн: <b>${data.due_date}</b>` : '';
   const notifyText = `📚 новое ДЗ: <b>${html(data.topic)}</b>${due}\n/dz — открыть задания`;
-  const connectedStudents = students.filter(student => student.telegram_id);
+  const connectedStudents = students.filter(student => student.vk_id);
   const notificationResults = await Promise.all(connectedStudents.map(async student => {
     try {
-      await send(student.telegram_id, notifyText);
+      await send(student.vk_id, notifyText);
       return { student, sent: true };
     } catch (error) {
       console.error(`Homework notification failed for ${student.id}:`, error);
@@ -1209,7 +1293,7 @@ async function finishHwCreation(chatId, tid, data) {
   const failedNotifications = notificationResults
     .filter(result => !result.sent)
     .map(result => result.student);
-  const disconnectedStudents = students.filter(student => !student.telegram_id);
+  const disconnectedStudents = students.filter(student => !student.vk_id);
   const sentNotifications = notificationResults.length - failedNotifications.length;
 
   await setSession(tid, { step: 'owner' });
@@ -1242,11 +1326,15 @@ async function finishHwCreation(chatId, tid, data) {
 
 // ── Owner: list assignments ───────────────────────────────────────────────────
 
-async function showOwnerAssignments(chatId, offset) {
+async function showOwnerAssignments(chatId, offset, archived = false) {
   const assignments = await sbSelect('homework_assignments',
-    `order=assigned_at.desc&limit=10&offset=${offset}`);
+    `${archived ? 'archived_at=not.is.null' : 'archived_at=is.null'}` +
+    `&order=assigned_at.desc&limit=10&offset=${offset}`);
 
-  if (!assignments.length) return send(chatId, offset === 0 ? 'дз не найдено.' : 'больше ДЗ нет :)');
+  if (!assignments.length) {
+    const empty = archived ? 'архив ДЗ пуст.' : 'активные ДЗ не найдены.';
+    return send(chatId, offset === 0 ? empty : 'больше ДЗ нет :)', rkbd(OWNER_KBD));
+  }
 
   const typeEmoji = { brief: '🔢', detailed: '📝', trial: '📋' };
   const lines   = assignments.map((a, i) =>
@@ -1255,11 +1343,17 @@ async function showOwnerAssignments(chatId, offset) {
   const buttons = assignments.map(a => [{ text: (a.topic || '—').slice(0, 40), callback_data: `dz:${a.id}` }]);
 
   const nav = [];
-  if (offset > 0) nav.push({ text: '← назад', callback_data: `dz_pg:${offset - 10}` });
-  if (assignments.length === 10) nav.push({ text: 'ещё →', callback_data: `dz_pg:${offset + 10}` });
+  const pageCommand = archived ? 'dz_arcpg' : 'dz_pg';
+  if (offset > 0) nav.push({ text: '← назад', callback_data: `${pageCommand}:${offset - 10}` });
+  if (assignments.length === 10) nav.push({ text: 'ещё →', callback_data: `${pageCommand}:${offset + 10}` });
   if (nav.length) buttons.push(nav);
+  buttons.push([{
+    text: archived ? '📋 к активным ДЗ' : '📦 открыть архив',
+    callback_data: archived ? 'dz_pg:0' : 'dz_arcpg:0',
+  }]);
 
-  return send(chatId, `домашние задания:\n\n${lines.join('\n')}\n\nвыбери для управления:`, kbd(buttons));
+  const title = archived ? 'архив ДЗ' : 'активные домашние задания';
+  return send(chatId, `${title}:\n\n${lines.join('\n')}\n\nвыбери для управления:`, kbd(buttons));
 }
 
 async function showUncheckedSubmissions(chatId, offset = 0) {
@@ -1340,12 +1434,19 @@ async function showDzDetail(chatId, hwId) {
     `дедлайн: ${a.due_date || 'не указан'}\n` +
     `сдано: ${submitted}/${subsCount.length}`;
 
-  return send(chatId, text, kbd([
-    [{ text: '✏️ изменить тему',    callback_data: `dz_et:${hwId}` },
-     { text: '📅 изменить дедлайн', callback_data: `dz_ed:${hwId}` }],
-    [{ text: '🗑️ удалить дз',      callback_data: `dz_del:${hwId}` }],
-    [{ text: '← к списку',          callback_data: 'dz_pg:0' }],
-  ]));
+  const buttons = a.archived_at
+    ? [
+        [{ text: '♻️ вернуть из архива', callback_data: `dz_restore:${hwId}` }],
+        [{ text: '← к архиву', callback_data: 'dz_arcpg:0' }],
+      ]
+    : [
+        [{ text: '✏️ изменить тему', callback_data: `dz_et:${hwId}` },
+         { text: '📅 изменить дедлайн', callback_data: `dz_ed:${hwId}` }],
+        [{ text: '📦 убрать в архив', callback_data: `dz_arc:${hwId}` }],
+        [{ text: '← к списку', callback_data: 'dz_pg:0' }],
+      ];
+
+  return send(chatId, `${text}\nстатус: ${a.archived_at ? 'в архиве' : 'активно'}`, kbd(buttons));
 }
 
 // ── Callback handler ──────────────────────────────────────────────────────────
@@ -1354,11 +1455,11 @@ async function handleCallback(cq) {
   const chatId = cq.message.chat.id;
   const tid    = cq.from.id;
   const data   = cq.data;
-  await cbq(cq.id).catch(() => {});
+  await cbq(cq.id, '', { user_id: cq.user_id, peer_id: cq.peer_id }).catch(() => {});
 
   const owner = isOwner(tid);
   const [student, sess] = await Promise.all([
-    owner ? Promise.resolve(null) : sbOne('students', `telegram_id=eq.${tid}`),
+    owner ? Promise.resolve(null) : sbOne('students', `vk_id=eq.${tid}`),
     getSession(tid),
   ]);
 
@@ -1402,6 +1503,9 @@ async function handleCallback(cq) {
   if (data.startsWith('dz_pg:') && owner) {
     return showOwnerAssignments(chatId, parseInt(data.slice(6), 10) || 0);
   }
+  if (data.startsWith('dz_arcpg:') && owner) {
+    return showOwnerAssignments(chatId, parseInt(data.slice('dz_arcpg:'.length), 10) || 0, true);
+  }
   if (data.startsWith('dz:') && owner) {
     return showDzDetail(chatId, data.slice(3));
   }
@@ -1415,29 +1519,29 @@ async function handleCallback(cq) {
     await setSession(tid, { step: `edit_hw_date:${hwId}` });
     return send(chatId, 'введи новый дедлайн (ДД.ММ.ГГГГ) или «-» чтобы убрать:');
   }
-  if (data.startsWith('dz_del:') && owner) {
-    const hwId = data.slice(7);
+  if ((data.startsWith('dz_arc:') || data.startsWith('dz_del:')) && owner) {
+    const hwId = data.slice(data.indexOf(':') + 1);
     const a    = await sbOne('homework_assignments', `id=eq.${hwId}&select=topic`);
-    return send(chatId, `удалить дз «<b>${a?.topic || hwId}</b>» и все записи учеников?`,
-      kbd([[{ text: '✅ да, удалить', callback_data: `dz_delok:${hwId}` },
+    return send(chatId, `убрать ДЗ «<b>${a?.topic || hwId}</b>» в архив?\n\nОно исчезнет у учеников, но результаты и файлы сохранятся.`,
+      kbd([[{ text: '✅ да, в архив', callback_data: `dz_arcok:${hwId}` },
              { text: '❌ отмена',     callback_data: `dz:${hwId}` }]]));
   }
-  if (data.startsWith('dz_delok:') && owner) {
-    const hwId = data.slice(9);
-    const subs = await sbSelect('homework_submissions', `assignment_id=eq.${hwId}&select=id`);
-    for (const s of subs) {
-      await fetch(`${SUPABASE_URL}/rest/v1/homework_submissions?id=eq.${s.id}`,
-        { method: 'DELETE', headers: SB });
-    }
-    await fetch(`${SUPABASE_URL}/rest/v1/homework_assignments?id=eq.${hwId}`,
-      { method: 'DELETE', headers: SB });
+  if ((data.startsWith('dz_arcok:') || data.startsWith('dz_delok:')) && owner) {
+    const hwId = data.slice(data.indexOf(':') + 1);
+    await sbRpc('set_homework_archived', { p_assignment_id: hwId, p_archived: true });
     await setSession(tid, { step: 'owner' });
-    return send(chatId, '✅ дз удалено.');
+    return send(chatId, '✅ ДЗ убрано в архив. Результаты и файлы сохранены.', rkbd(OWNER_KBD));
+  }
+  if (data.startsWith('dz_restore:') && owner) {
+    const hwId = data.slice('dz_restore:'.length);
+    await sbRpc('set_homework_archived', { p_assignment_id: hwId, p_archived: false });
+    await setSession(tid, { step: 'owner' });
+    return send(chatId, '✅ ДЗ снова активно и вернулось ученикам.', rkbd(OWNER_KBD));
   }
 
   // Unlink
   if (data === 'unlink:confirm' && student) {
-    if (student) await sbPatch('students', `id=eq.${student.id}`, { telegram_id: null });
+    if (student) await sbPatch('students', `id=eq.${student.id}`, { vk_id: null });
     await setSession(tid, {});
     return send(chatId, 'аккаунт отвязан. попроси преподавателя прислать новую ссылку.');
   }
@@ -1565,7 +1669,7 @@ async function handleCallback(cq) {
     if (!assignment) return send(chatId, 'задание не найдено.');
 
     if (assignment.file_id) {
-      await tg('sendDocument', { chat_id: chatId, document: assignment.file_id });
+      await sendAttachment(chatId, assignment.file_id);
     }
 
     const desc = assignment.description ? `\n${assignment.description}` : '';
@@ -1717,12 +1821,12 @@ async function saveOwnerReview(chatId, tid, subId, comment, review) {
   }
   await setSession(tid, { step: 'owner' });
 
-  if (student.telegram_id) {
+  if (student.vk_id) {
     const breakdown = taskScores
       ? `\n\nбаллы по заданиям: ${taskScores.join(', ')}`
       : '';
     const commentText = comment ? `\n\nкомментарий: ${html(comment)}` : '';
-    await send(student.telegram_id,
+    await send(student.vk_id,
       `✅ работа «<b>${html(assignment.topic)}</b>» проверена.\nрезультат: <b>${score}/${maxScore}</b>${breakdown}${commentText}`
     ).catch(() => {});
   }
@@ -1735,7 +1839,7 @@ async function saveOwnerReview(chatId, tid, subId, comment, review) {
 // ── Notify owner about every submitted homework ───────────────────────────────
 
 async function notifyOwnerSubmission(subId, assignment, student, options = {}) {
-  if (!OWNER_TELEGRAM_ID) return;
+  if (!OWNER_VK_ID) return;
 
   const group = assignment.group_id
     ? await sbOne('groups', `id=eq.${encodeURIComponent(assignment.group_id)}&select=name`)
@@ -1755,7 +1859,7 @@ async function notifyOwnerSubmission(subId, assignment, student, options = {}) {
     ? kbd([[{ text: '✅ проверить работу', callback_data: `review:${subId}` }]])
     : {};
 
-  await send(OWNER_TELEGRAM_ID,
+  await send(OWNER_VK_ID,
     `📥 <b>Сдано ДЗ</b>\nученик: <b>${html(student.name)}</b>` +
     `\nгруппа: <b>${html(group?.name || '—')}</b>` +
     `\nтема: <b>${html(assignment.topic)}</b>${result}${filesLine}${timing}`,
@@ -1764,7 +1868,7 @@ async function notifyOwnerSubmission(subId, assignment, student, options = {}) {
 }
 
 async function notifyOwnerWithFiles(subId, assignment, student, files, submittedAt) {
-  if (!OWNER_TELEGRAM_ID) return;
+  if (!OWNER_VK_ID) return;
   await notifyOwnerSubmission(subId, assignment, student, {
     submittedAt,
     filesCount: files.length,
@@ -1775,10 +1879,6 @@ async function notifyOwnerWithFiles(subId, assignment, student, files, submitted
 async function sendSubmissionFiles(chatId, files) {
   for (const file of Array.isArray(files) ? files : []) {
     if (!file?.file_id) continue;
-    if (file.type === 'photo') {
-      await tg('sendPhoto', { chat_id: chatId, photo: file.file_id }).catch(() => {});
-    } else {
-      await tg('sendDocument', { chat_id: chatId, document: file.file_id }).catch(() => {});
-    }
+    await sendAttachment(chatId, file.file_id).catch(() => {});
   }
 }

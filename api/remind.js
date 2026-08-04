@@ -1,12 +1,13 @@
 // api/remind.js — Vercel Cron Function (runs at 09:05 UTC daily)
-// Env vars: SUPABASE_URL, SUPABASE_SECRET_KEY, TELEGRAM_BOT_TOKEN, CRON_SECRET
+// Env vars: SUPABASE_URL, SUPABASE_SECRET_KEY, VK_GROUP_TOKEN, CRON_SECRET
 // Vercel automatically injects "Authorization: Bearer {CRON_SECRET}" for cron invocations.
 // No pg_cron needed — this function queries deadlines directly.
 
 const SUPABASE_URL        = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY
   || process.env.SUPABASE_SERVICE_ROLE_KEY;
-const BOT_TOKEN           = process.env.TELEGRAM_BOT_TOKEN;
+const VK_GROUP_TOKEN      = process.env.VK_GROUP_TOKEN;
+const VK_API_VERSION      = process.env.VK_API_VERSION || '5.199';
 
 const SB_HEADERS = {
   'Content-Type':  'application/json',
@@ -41,7 +42,7 @@ export default async function handler(req, res) {
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   const tomorrowStr = tomorrow.toISOString().slice(0, 10);
 
-  // Find all assigned submissions with a deadline tomorrow, where student has a telegram_id
+  // Find all assigned submissions with a deadline tomorrow, where student has a VK account.
   const submissions = await sbSelect(
     'homework_submissions',
     `status=eq.assigned&select=id,student_id,assignment_id`
@@ -54,9 +55,10 @@ export default async function handler(req, res) {
 
   const [assignments, students] = await Promise.all([
     sbSelect('homework_assignments',
-      `id=in.(${assignmentIds.join(',')})&due_date=eq.${tomorrowStr}&select=id,topic`),
+      `id=in.(${assignmentIds.join(',')})&due_date=eq.${tomorrowStr}` +
+      `&archived_at=is.null&select=id,topic`),
     sbSelect('students',
-      `id=in.(${studentIds.join(',')})&telegram_id=not.is.null&select=id,telegram_id,name`),
+      `id=in.(${studentIds.join(',')})&vk_id=not.is.null&select=id,vk_id,name`),
   ]);
 
   if (!assignments.length || !students.length) return res.status(200).json({ sent: 0 });
@@ -86,21 +88,21 @@ export default async function handler(req, res) {
     if (!isNew) { skipped++; continue; }
 
     try {
-      const tgRes = await fetch(
-        `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-        {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({
-            chat_id:    stu.telegram_id,
-            text:       `⏰ Напоминание: завтра дедлайн по ДЗ «${assignment.topic}». Не забудь сдать!`,
-            parse_mode: 'HTML',
-          }),
-        }
-      );
-      const tgBody = await tgRes.json();
-      if (tgBody.ok) { sent++; } else {
-        console.warn(`TG error for ${stu.id}:`, tgBody.description);
+      const vkBody = new URLSearchParams({
+        peer_id: String(stu.vk_id),
+        random_id: String(Math.floor(Math.random() * 2147483647) || 1),
+        message: `⏰ Напоминание: завтра дедлайн по ДЗ «${assignment.topic}». Не забудь сдать!`,
+        access_token: VK_GROUP_TOKEN,
+        v: VK_API_VERSION,
+      });
+      const vkResponse = await fetch('https://api.vk.com/method/messages.send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: vkBody,
+      });
+      const vkResult = await vkResponse.json();
+      if (vkResponse.ok && !vkResult.error) { sent++; } else {
+        console.warn(`VK error for ${stu.id}:`, vkResult.error?.error_msg || vkResponse.status);
         failed++;
       }
     } catch (err) {
