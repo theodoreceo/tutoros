@@ -160,15 +160,36 @@ const vkButton = (button, callback = true) => ({
     : { type: 'text', label: button.text, payload: '{}' },
   color: button.color || 'secondary',
 });
+const compactInlineRows = (rows) => {
+  const cleanRows = rows.filter(row => Array.isArray(row) && row.length);
+  if (cleanRows.length <= 6 && cleanRows.every(row => row.length <= 4)) return cleanRows;
+
+  const buttons = cleanRows.flat();
+  if (buttons.length > 24) {
+    throw new Error(`слишком много кнопок на одном экране: ${buttons.length}`);
+  }
+  const buttonsPerRow = Math.max(1, Math.ceil(buttons.length / 6));
+  const compact = [];
+  for (let index = 0; index < buttons.length; index += buttonsPerRow) {
+    compact.push(buttons.slice(index, index + buttonsPerRow));
+  }
+  return compact;
+};
 const kbd   = (rows) => {
-  for (const button of rows.flat()) {
+  const compactRows = compactInlineRows(rows);
+  for (const button of compactRows.flat()) {
     if (!button?.callback_data) continue;
     const length = new TextEncoder().encode(button.callback_data).length;
     if (length > 200) {
       throw new Error(`слишком длинная команда кнопки: ${button.callback_data.slice(0, 24)}…`);
     }
   }
-  return { keyboard: JSON.stringify({ inline: true, buttons: rows.map(row => row.map(button => vkButton(button))) }) };
+  return {
+    keyboard: JSON.stringify({
+      inline: true,
+      buttons: compactRows.map(row => row.map(button => vkButton(button))),
+    }),
+  };
 };
 const botId = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const callbackNonce = () => Math.random().toString(36).slice(2, 8);

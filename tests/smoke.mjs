@@ -15,6 +15,7 @@ const insertedGroups = [];
 const insertedStudents = [];
 const studentPatches = [];
 const rpcCalls = [];
+let returnManyGroups = false;
 let sessionState = {};
 let diagnosticState = {};
 let registeredStudent = {
@@ -66,6 +67,15 @@ globalThis.fetch = async (url, options = {}) => {
   }
   if (target.includes('/rest/v1/groups?name=eq.')) return json([]);
   if (target.includes('/rest/v1/groups?')) {
+    if (returnManyGroups) {
+      return json(Array.from({ length: 8 }, (_, index) => ({
+        id: `g${index + 1}`,
+        name: `Группа ${index + 1}`,
+        group_type: 'mini_group',
+        active: true,
+        created_at: '2026-08-02T08:00:00.000Z',
+      })));
+    }
     return json([{
       id: 'g1', name: 'Базовая А1', group_type: 'mini_group', active: true,
       created_at: '2026-08-02T08:00:00.000Z',
@@ -151,6 +161,15 @@ assert.equal(ownerHome.message, 'панель преподавателя');
 const ownerKeyboard = JSON.parse(ownerHome.keyboard);
 assert.equal(ownerKeyboard.inline, false);
 assert.equal(ownerKeyboard.buttons[0][0].action.label, '👥 группы');
+
+returnManyGroups = true;
+const groupsResponse = responseRecorder();
+await botHandler(messageUpdate(123, '👥 группы'), groupsResponse);
+returnManyGroups = false;
+const groupsMessage = vkCalls.at(-1);
+const groupsKeyboard = JSON.parse(groupsMessage.keyboard);
+assert.ok(groupsKeyboard.buttons.length <= 6);
+assert.equal(groupsKeyboard.buttons.flat().length, 10);
 
 const callbackResponse = responseRecorder();
 await botHandler(vkUpdate('message_event', {
