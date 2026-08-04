@@ -2,6 +2,7 @@ const required = [
   'VK_GROUP_TOKEN',
   'VK_GROUP_ID',
   'VK_CALLBACK_SECRET',
+  'VK_CONFIRMATION_CODE',
   'OWNER_VK_ID',
   'SUPABASE_URL',
 ];

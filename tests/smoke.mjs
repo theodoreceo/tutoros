@@ -5,6 +5,7 @@ process.env.SUPABASE_SECRET_KEY = 'test-secret';
 process.env.VK_GROUP_TOKEN = 'vk-test-token';
 process.env.VK_GROUP_ID = '777';
 process.env.VK_CALLBACK_SECRET = 'callback-secret';
+process.env.VK_CONFIRMATION_CODE = 'confirmation-code';
 process.env.VK_API_VERSION = '5.199';
 process.env.OWNER_VK_ID = '123';
 process.env.GOOGLE_SHEETS_WEBHOOK_SECRET = 'sheet-secret';

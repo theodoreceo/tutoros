@@ -24,6 +24,7 @@
 - `VK_GROUP_TOKEN` — ключ доступа сообщества VK;
 - `VK_GROUP_ID` — числовой ID сообщества;
 - `VK_CALLBACK_SECRET` — секрет проверки событий Callback API;
+- `VK_CONFIRMATION_CODE` — строка, которую VK показывает при подтверждении сервера;
 - `VK_API_VERSION` — версия VK API, по умолчанию `5.199`;
 - `OWNER_VK_ID` — числовой VK ID преподавателя;
 - `CRON_SECRET` — секрет запуска ежедневных напоминаний;
