@@ -11,7 +11,7 @@ alter table groups
   add column if not exists active boolean not null default true,
   add column if not exists updated_at timestamptz not null default now();
 
--- Groups are managed directly in Telegram. A missing sheet_key is normal.
+-- Groups are managed directly in VK. A missing sheet_key is normal.
 
 update groups
 set group_type = 'mini_group'
@@ -44,7 +44,7 @@ alter table students
   add column if not exists status text,
   add column if not exists updated_at timestamptz not null default now(),
   add column if not exists target_score numeric,
-  add column if not exists telegram_id bigint,
+  add column if not exists vk_id bigint,
   add column if not exists reg_token text default encode(gen_random_bytes(12), 'hex');
 
 update students
@@ -74,8 +74,8 @@ alter table homework_submissions
   add column if not exists on_time boolean,
   add column if not exists rno_status text not null default 'not_required';
 
-create table if not exists bot_sessions (
-  telegram_id bigint primary key,
+create table if not exists vk_sessions (
+  vk_user_id bigint primary key,
   state jsonb not null default '{}',
   updated_at timestamptz not null default now()
 );
@@ -93,7 +93,7 @@ declare table_name text;
 begin
   foreach table_name in array array[
     'groups', 'lessons', 'students', 'homework_assignments',
-    'homework_submissions', 'bot_sessions', 'sent_reminders'
+    'homework_submissions', 'vk_sessions', 'sent_reminders'
   ] loop
     execute format('alter table %I enable row level security', table_name);
     execute format('drop policy if exists "anon_all" on %I', table_name);

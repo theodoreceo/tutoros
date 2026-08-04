@@ -88,7 +88,7 @@ begin
     p_assignment_id,
     student.id,
     'assigned',
-    'telegram',
+    'vk',
     null,
     null,
     ''
@@ -110,4 +110,3 @@ revoke all on function public.create_homework_for_group(
 grant execute on function public.create_homework_for_group(
   text, text, text, text, date, text, boolean, text, jsonb, jsonb
 ) to service_role;
-

@@ -41,7 +41,7 @@ create table students (
   group_id text not null references groups(id),
   status text not null default 'active'
     check (status in ('active', 'paused', 'left')),
-  telegram_id bigint unique,
+  vk_id bigint unique,
   reg_token text not null unique default encode(gen_random_bytes(12), 'hex'),
   target_score numeric,
   created_at timestamptz not null default now(),
@@ -73,7 +73,7 @@ create table homework_submissions (
   student_id text not null references students(id) on delete cascade,
   status text not null default 'assigned'
     check (status in ('assigned', 'submitted', 'checked', 'revision', 'cancelled')),
-  source text not null default 'telegram',
+  source text not null default 'vk',
   submitted_at timestamptz,
   checked_at timestamptz,
   score numeric,
@@ -88,8 +88,8 @@ create table homework_submissions (
   unique (assignment_id, student_id)
 );
 
-create table bot_sessions (
-  telegram_id bigint primary key,
+create table vk_sessions (
+  vk_user_id bigint primary key,
   state jsonb not null default '{}',
   updated_at timestamptz not null default now()
 );
@@ -194,7 +194,7 @@ begin
     p_assignment_id,
     student.id,
     'assigned',
-    'telegram',
+    'vk',
     null,
     null,
     ''
@@ -276,5 +276,5 @@ alter table lessons enable row level security;
 alter table students enable row level security;
 alter table homework_assignments enable row level security;
 alter table homework_submissions enable row level security;
-alter table bot_sessions enable row level security;
+alter table vk_sessions enable row level security;
 alter table sent_reminders enable row level security;
