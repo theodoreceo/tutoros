@@ -254,14 +254,14 @@ export default async function handler(req, res) {
   if (VK_GROUP_ID && String(update.group_id) !== String(VK_GROUP_ID)) {
     return res.status(403).send('wrong group');
   }
-  if (VK_CALLBACK_SECRET && update.secret !== VK_CALLBACK_SECRET) {
-    return res.status(403).send('wrong secret');
-  }
   if (update.type === 'confirmation') {
     const confirmation = await vk('groups.getCallbackConfirmationCode', { group_id: VK_GROUP_ID });
     return confirmation?.code
       ? res.status(200).send(confirmation.code)
       : res.status(500).send('VK did not return a confirmation code');
+  }
+  if (VK_CALLBACK_SECRET && update.secret !== VK_CALLBACK_SECRET) {
+    return res.status(403).send('wrong secret');
   }
 
   const message = update.type === 'message_new' ? normalizeVkMessage(update) : null;

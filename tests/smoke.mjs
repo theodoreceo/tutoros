@@ -124,7 +124,7 @@ const messageUpdate = (fromId, text, extra = {}) => vkUpdate('message_new', {
 const { default: botHandler } = await import('../api/bot.js');
 
 const confirmationResponse = responseRecorder();
-await botHandler(vkUpdate('confirmation', {}), confirmationResponse);
+await botHandler(vkUpdate('confirmation', {}, { secret: undefined }), confirmationResponse);
 assert.equal(confirmationResponse.statusCode, 200);
 assert.equal(confirmationResponse.body, 'confirmation-code');
 
