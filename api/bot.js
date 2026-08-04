@@ -90,6 +90,26 @@ async function setSession(tid, state) {
   await sbUpsert('vk_sessions', { vk_user_id: tid, state, updated_at: new Date().toISOString() });
 }
 
+async function recordVkDiagnostic(update, phase, error = null) {
+  const groupMatches = !VK_GROUP_ID || String(update?.group_id) === String(VK_GROUP_ID);
+  const secretPresent = typeof update?.secret === 'string' && update.secret.length > 0;
+  const secretMatches = !VK_CALLBACK_SECRET || update?.secret === VK_CALLBACK_SECRET;
+  await sbUpsert('vk_sessions', {
+    vk_user_id: -1,
+    state: {
+      diagnostic: true,
+      received_at: new Date().toISOString(),
+      type: String(update?.type || 'unknown').slice(0, 50),
+      group_matches: groupMatches,
+      secret_present: secretPresent,
+      secret_matches: secretMatches,
+      phase,
+      error: error ? String(error).slice(0, 300) : null,
+    },
+    updated_at: new Date().toISOString(),
+  });
+}
+
 // ── VK helpers ────────────────────────────────────────────────────────────────
 
 async function vk(method, params = {}) {
@@ -252,6 +272,9 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).send('TutorOS VK bot');
 
   const update = req.body ?? {};
+  await recordVkDiagnostic(update, 'received').catch(error => {
+    console.error('VK diagnostic write failed:', error);
+  });
   if (VK_GROUP_ID && String(update.group_id) !== String(VK_GROUP_ID)) {
     return res.status(403).send('wrong group');
   }
@@ -277,8 +300,10 @@ export default async function handler(req, res) {
     if (callback?.data) await handleCallback(callback);
     else if (message?.photo || message?.document) await handleMedia(message);
     else if (message) await handleText(message);
+    await recordVkDiagnostic(update, 'processed').catch(() => {});
   } catch (err) {
     console.error('VK bot error:', err);
+    await recordVkDiagnostic(update, 'error', err?.message || 'unknown error').catch(() => {});
     const chatId = callback?.message?.chat?.id ?? message?.chat?.id;
     const vkUserId = callback?.from?.id ?? message?.from?.id;
     if (chatId) {

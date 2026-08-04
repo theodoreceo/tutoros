@@ -16,6 +16,7 @@ const insertedStudents = [];
 const studentPatches = [];
 const rpcCalls = [];
 let sessionState = {};
+let diagnosticState = {};
 let registeredStudent = {
   id: 's1', name: 'Иван Иванов', group_id: 'g1', status: 'active',
   reg_token: 'student-token', vk_id: null, created_at: '2026-08-02T08:10:00.000Z',
@@ -28,11 +29,16 @@ globalThis.fetch = async (url, options = {}) => {
   const method = options.method || 'GET';
 
   if (target.includes('/rest/v1/vk_sessions?')) {
+    if (target.includes('vk_user_id=eq.-1')) {
+      return json(Object.keys(diagnosticState).length ? [{ state: diagnosticState }] : []);
+    }
     return json(Object.keys(sessionState).length ? [{ state: sessionState }] : []);
   }
   if (target.endsWith('/rest/v1/vk_sessions') && method === 'POST') {
-    sessionState = JSON.parse(options.body).state;
-    return json([{ state: sessionState }]);
+    const session = JSON.parse(options.body);
+    if (session.vk_user_id === -1) diagnosticState = session.state;
+    else sessionState = session.state;
+    return json([{ state: session.state }]);
   }
   if (target.includes('/rest/v1/students?vk_id=eq.')) {
     const requested = target.match(/vk_id=eq\.([^&]+)/)?.[1];
@@ -128,6 +134,7 @@ const confirmationResponse = responseRecorder();
 await botHandler(vkUpdate('confirmation', {}, { secret: undefined }), confirmationResponse);
 assert.equal(confirmationResponse.statusCode, 200);
 assert.equal(confirmationResponse.body, 'confirmation-code');
+assert.equal(diagnosticState.type, 'confirmation');
 
 const wrongSecretResponse = responseRecorder();
 await botHandler(vkUpdate('message_new', {}, { secret: 'wrong' }), wrongSecretResponse);
