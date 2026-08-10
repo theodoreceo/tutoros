@@ -41,6 +41,13 @@ async function sbPatch(table, qs, body) {
   if (!r.ok) throw new Error(`sbPatch ${table}: ${await r.text()}`);
 }
 
+async function sbDelete(table, qs) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${qs}`, {
+    method: 'DELETE', headers: SB,
+  });
+  if (!r.ok) throw new Error(`sbDelete ${table}: ${await r.text()}`);
+}
+
 async function sbUpsert(table, body) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: 'POST',
@@ -88,6 +95,18 @@ const CURATOR_KBD = [
   [{ text: '➕ создать дз' }, { text: '📋 мои задания' }],
   [{ text: '❓ помощь' }],
 ];
+const OWNER_KBD = [
+  [{ text: '➕ создать дз' }, { text: '📋 мои задания' }],
+  [{ text: '👥 ученики' }, { text: '🎓 группы' }],
+  [{ text: '❓ помощь' }],
+];
+
+const isOwnerRole = (role) => Boolean(role && (role.role_type === 'owner' || role.isOwner || role['isOwner']));
+const roleKbd = (role) => rkbd(isOwnerRole(role) ? OWNER_KBD : CURATOR_KBD);
+const html = (value) => String(value ?? '')
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;');
 
 const rkbd = (rows) => ({
   reply_markup: JSON.stringify({ keyboard: rows, resize_keyboard: true, persistent: true }),
@@ -125,9 +144,11 @@ async function handleText(msg) {
   if (text === '📊 мои результаты' && student)  return showStudentStats(chatId, student);
   if (text === '➕ создать дз'    && curator)  return startHwCreation(chatId, tid, curator);
   if (text === '📋 мои задания'    && curator)  return showMyDz(chatId, tid, curator, 0);
+  if (text === '👥 ученики'       && isOwnerRole(curator)) return showStudentsAdmin(chatId, 0);
+  if (text === '🎓 группы'        && isOwnerRole(curator)) return showGroupsAdmin(chatId, 0);
   if (text === '❓ помощь') {
     if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт (не жми просто так!)\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', rkbd(STUDENT_KBD));
-    if (curator) return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ\n/unlink — отвязать аккаунт\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', rkbd(CURATOR_KBD));
+    if (curator) return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ' + (isOwnerRole(curator) ? '\n/students — управление учениками\n/groups — управление группами' : '') + '\n/unlink — отвязать аккаунт\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', roleKbd(curator));
     return send(chatId, 'введи код, который тебе скинул менеджер.\nесли он еще не скинул тебе код, попроси его в лс @teddymgmt');
   }
 
@@ -139,7 +160,7 @@ async function handleText(msg) {
     }
     if (curator) {
       await setSession(tid, { step: 'curator' });
-      return send(chatId, `привет, <b>${curator.name}</b>! \n\nиспользуй кнопки ниже или команды:\n/newdz — создать ДЗ · /mydz — мои ДЗ`, rkbd(CURATOR_KBD));
+      return send(chatId, `привет, <b>${html(curator.name)}</b>! \n\nиспользуй кнопки ниже или команды:\n/newdz — создать ДЗ · /mydz — мои ДЗ`, roleKbd(curator));
     }
     await setSession(tid, {});
     return send(chatId, `добро пожаловать в бот для твоих домашек!☺️\nвведи код, который тебе скинули! если кода нет, напиши @teddymgmt\nпо всем вопросам с ботом и проверок домашек пиши также менеджеру или в чат курса!`);
@@ -155,7 +176,7 @@ async function handleText(msg) {
   // /help
   if (text === '/help') {
     if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт (не жми просто так!)\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', rkbd(STUDENT_KBD));
-    if (curator) return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ\n/unlink — отвязать аккаунт\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', rkbd(CURATOR_KBD));
+    if (curator) return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ' + (isOwnerRole(curator) ? '\n/students — управление учениками\n/groups — управление группами' : '') + '\n/unlink — отвязать аккаунт\n\nпо вопросам с ботом пиши в чат курса либо в лс: @teddymgmt', roleKbd(curator));
     return send(chatId, 'введи код, который тебе скинул менеджер.\nесли он еще не скинул тебе код, попроси его в лс @teddymgmt');
   }
 
@@ -188,6 +209,8 @@ async function handleText(msg) {
   if (curator) {
     if (text === '/newdz') return startHwCreation(chatId, tid, curator);
     if (text === '/mydz')  return showMyDz(chatId, tid, curator, 0);
+    if (text === '/students' && isOwnerRole(curator)) return showStudentsAdmin(chatId, 0);
+    if (text === '/groups'   && isOwnerRole(curator)) return showGroupsAdmin(chatId, 0);
     if (text === '/help')  return send(chatId, 'команды:\n/newdz — создать ДЗ\n/mydz — список всех ДЗ\n/unlink — отвязать аккаунт');
     const sess = await getSession(tid);
     if (typeof sess.step === 'string' && sess.step.startsWith('edit_hw_topic:')) {
@@ -279,7 +302,7 @@ async function handleRegistration(chatId, tid, token) {
     if (rm.telegram_id) return send(chatId, 'этот код уже использован.\nотправь скриншот этого сообщения @teddymgmt');
     await sbPatch('roles', `id=eq.${rm.id}`, { telegram_id: tid });
     await setSession(tid, { step: 'curator' });
-    return send(chatId, `ты успешно подключен как <b>${rm.name}</b>!\n\nесли это не ты, напиши @teddymgmt!\nчтобы пользоваться ботом, используй кнопки ниже 👇`, rkbd(CURATOR_KBD));
+    return send(chatId, `ты успешно подключен как <b>${html(rm.name)}</b>!\n\nесли это не ты, напиши @teddymgmt!\nчтобы пользоваться ботом, используй кнопки ниже 👇`, roleKbd(rm));
   }
   return send(chatId, 'код не найден. проверь, правильно ли ты ввел свой код.\nесли код правильный, скинь скриншот этого сообщения @teddymgmt');
 }
@@ -771,6 +794,92 @@ async function showDzDetail(chatId, hwId) {
   ]));
 }
 
+// ── Owner: students and groups management ────────────────────────────────────
+
+const ADMIN_PAGE_SIZE = 10;
+
+async function showStudentsAdmin(chatId, offset = 0) {
+  const students = await sbSelect('students',
+    `select=id,name,group_id,crm_status&order=name.asc&limit=${ADMIN_PAGE_SIZE}&offset=${offset}`);
+  const groupIds = [...new Set(students.map(s => s.group_id).filter(Boolean))];
+  const groups = groupIds.length
+    ? await sbSelect('groups', `id=in.(${groupIds.map(encodeURIComponent).join(',')})&select=id,name`)
+    : [];
+  const groupNames = Object.fromEntries(groups.map(g => [g.id, g.name]));
+
+  if (!students.length && offset === 0) return send(chatId, 'учеников пока нет.', roleKbd({ isOwner: true }));
+
+  const rows = students.map(s => [{
+    text: `🗑 ${s.name.slice(0, 28)}${s.group_id ? ` · ${(groupNames[s.group_id] || 'группа').slice(0, 16)}` : ''}`,
+    callback_data: `student_delete:${s.id}`,
+  }]);
+  const nav = [];
+  if (offset > 0) nav.push({ text: '← назад', callback_data: `students_pg:${Math.max(0, offset - ADMIN_PAGE_SIZE)}` });
+  if (students.length === ADMIN_PAGE_SIZE) nav.push({ text: 'ещё →', callback_data: `students_pg:${offset + ADMIN_PAGE_SIZE}` });
+  if (nav.length) rows.push(nav);
+
+  return send(chatId, '<b>Ученики</b>\n\nНажми на ученика, которого нужно удалить:', kbd(rows));
+}
+
+async function showGroupsAdmin(chatId, offset = 0) {
+  const groups = await sbSelect('groups',
+    `select=id,name&order=name.asc&limit=${ADMIN_PAGE_SIZE}&offset=${offset}`);
+
+  if (!groups.length && offset === 0) return send(chatId, 'групп пока нет.', roleKbd({ isOwner: true }));
+
+  const rows = groups.map(g => [{
+    text: `🗑 ${g.name.slice(0, 45)}`,
+    callback_data: `group_delete:${g.id}`,
+  }]);
+  const nav = [];
+  if (offset > 0) nav.push({ text: '← назад', callback_data: `groups_pg:${Math.max(0, offset - ADMIN_PAGE_SIZE)}` });
+  if (groups.length === ADMIN_PAGE_SIZE) nav.push({ text: 'ещё →', callback_data: `groups_pg:${offset + ADMIN_PAGE_SIZE}` });
+  if (nav.length) rows.push(nav);
+
+  return send(chatId, '<b>Группы</b>\n\nНепустую группу удалить нельзя: сначала перенеси или удали учеников.', kbd(rows));
+}
+
+async function deleteStudentCascade(student) {
+  const sid = encodeURIComponent(student.id);
+  await Promise.all([
+    sbDelete('homework_submissions', `student_id=eq.${sid}`),
+    sbDelete('hw_submissions', `student_id=eq.${sid}`),
+    sbDelete('payments', `student_id=eq.${sid}`),
+    sbDelete('student_notes', `student_id=eq.${sid}`),
+    sbDelete('tasks', `student_id=eq.${sid}`),
+    sbDelete('sent_reminders', `student_id=eq.${sid}`),
+    sbDelete('events', `student_id=eq.${sid}`),
+    sbDelete('history_log', `entity_type=eq.student&entity_id=eq.${sid}`),
+    student.telegram_id ? sbDelete('bot_sessions', `telegram_id=eq.${student.telegram_id}`) : Promise.resolve(),
+  ]);
+  await sbDelete('students', `id=eq.${sid}`);
+}
+
+async function deleteEmptyGroupCascade(groupId) {
+  const gid = encodeURIComponent(groupId);
+  const assignments = await sbSelect('homework_assignments', `group_id=eq.${gid}&select=id`);
+  const assignmentIds = assignments.map(a => a.id);
+  if (assignmentIds.length) {
+    const ids = assignmentIds.map(encodeURIComponent).join(',');
+    await Promise.all([
+      sbDelete('homework_submissions', `assignment_id=in.(${ids})`),
+      sbDelete('hw_submissions', `assignment_id=in.(${ids})`),
+      sbDelete('sent_reminders', `assignment_id=in.(${ids})`),
+    ]);
+  }
+  await Promise.all([
+    sbDelete('homework_assignments', `group_id=eq.${gid}`),
+    sbDelete('hw_submissions', `group_id=eq.${gid}`),
+    sbDelete('lessons', `group_id=eq.${gid}`),
+    sbDelete('assistant_groups', `group_id=eq.${gid}`),
+    sbDelete('folders', `group_id=eq.${gid}`),
+    sbDelete('modules', `group_id=eq.${gid}`),
+    sbDelete('events', `entity_type=eq.group&entity_id=eq.${gid}`),
+    sbDelete('history_log', `entity_type=eq.group&entity_id=eq.${gid}`),
+  ]);
+  await sbDelete('groups', `id=eq.${gid}`);
+}
+
 // ── Callback handler ──────────────────────────────────────────────────────────
 
 async function handleCallback(cq) {
@@ -785,6 +894,56 @@ async function handleCallback(cq) {
     sbOne('roles',    `telegram_id=eq.${tid}`),
     getSession(tid),
   ]);
+
+  // Owner-only destructive management
+  if (data.startsWith('students_pg:') && isOwnerRole(curator)) {
+    return showStudentsAdmin(chatId, parseInt(data.slice('students_pg:'.length), 10) || 0);
+  }
+  if (data.startsWith('groups_pg:') && isOwnerRole(curator)) {
+    return showGroupsAdmin(chatId, parseInt(data.slice('groups_pg:'.length), 10) || 0);
+  }
+  if (data.startsWith('student_delete:') && isOwnerRole(curator)) {
+    const studentId = data.slice('student_delete:'.length);
+    const target = await sbOne('students', `id=eq.${encodeURIComponent(studentId)}&select=id,name,group_id,telegram_id`);
+    if (!target) return send(chatId, 'ученик уже удалён или не найден.');
+    return send(chatId,
+      `точно удалить ученика <b>${html(target.name)}</b>?\n\nБудут удалены его сдачи ДЗ, результаты, оплаты и заметки. Отменить это действие нельзя.`,
+      kbd([[{ text: '✅ удалить', callback_data: `student_delete_ok:${target.id}` }],
+           [{ text: '❌ отмена', callback_data: 'students_pg:0' }]]));
+  }
+  if (data.startsWith('student_delete_ok:') && isOwnerRole(curator)) {
+    const studentId = data.slice('student_delete_ok:'.length);
+    const target = await sbOne('students', `id=eq.${encodeURIComponent(studentId)}&select=id,name,telegram_id`);
+    if (!target) return send(chatId, 'ученик уже удалён или не найден.');
+    await deleteStudentCascade(target);
+    await setSession(tid, { step: 'curator' });
+    return send(chatId, `✅ ученик <b>${html(target.name)}</b> удалён.`, roleKbd(curator));
+  }
+  if (data.startsWith('group_delete:') && isOwnerRole(curator)) {
+    const groupId = data.slice('group_delete:'.length);
+    const target = await sbOne('groups', `id=eq.${encodeURIComponent(groupId)}&select=id,name`);
+    if (!target) return send(chatId, 'группа уже удалена или не найдена.');
+    const members = await sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&select=id,name`);
+    if (members.length) {
+      return send(chatId,
+        `группу <b>${html(target.name)}</b> удалить нельзя: в ней ${members.length} ученик(а).\n\nСначала перенеси их в другую группу или удали.`,
+        kbd([[{ text: '← к группам', callback_data: 'groups_pg:0' }]]));
+    }
+    return send(chatId,
+      `точно удалить пустую группу <b>${html(target.name)}</b>?\n\nТакже удалятся её занятия и задания. Отменить это действие нельзя.`,
+      kbd([[{ text: '✅ удалить', callback_data: `group_delete_ok:${target.id}` }],
+           [{ text: '❌ отмена', callback_data: 'groups_pg:0' }]]));
+  }
+  if (data.startsWith('group_delete_ok:') && isOwnerRole(curator)) {
+    const groupId = data.slice('group_delete_ok:'.length);
+    const target = await sbOne('groups', `id=eq.${encodeURIComponent(groupId)}&select=id,name`);
+    if (!target) return send(chatId, 'группа уже удалена или не найдена.');
+    const members = await sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&select=id`);
+    if (members.length) return send(chatId, 'удаление отменено: в группе появились ученики.');
+    await deleteEmptyGroupCascade(target.id);
+    await setSession(tid, { step: 'curator' });
+    return send(chatId, `✅ группа <b>${html(target.name)}</b> удалена.`, roleKbd(curator));
+  }
 
   // /mydz navigation and management
   if (data.startsWith('dz_pg:') && curator) {
