@@ -442,16 +442,14 @@ export default async function handler(req, res) {
     return res.status(403).send('wrong group');
   }
   if (update.type === 'confirmation') {
-    if (VK_CONFIRMATION_CODE) return res.status(200).send(VK_CONFIRMATION_CODE);
     try {
       const confirmation = await vk('groups.getCallbackConfirmationCode', { group_id: VK_GROUP_ID });
-      return confirmation?.code
-        ? res.status(200).send(confirmation.code)
-        : res.status(500).send('VK did not return a confirmation code');
+      if (confirmation?.code) return res.status(200).send(confirmation.code);
     } catch (error) {
       console.error('VK confirmation error:', error);
-      return res.status(500).send('VK_CONFIRMATION_CODE is not configured');
     }
+    if (VK_CONFIRMATION_CODE) return res.status(200).send(VK_CONFIRMATION_CODE);
+    return res.status(500).send('VK_CONFIRMATION_CODE is not configured');
   }
   if (VK_CALLBACK_SECRET && update.secret !== VK_CALLBACK_SECRET) {
     return res.status(403).send('wrong secret');
