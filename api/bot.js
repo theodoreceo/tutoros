@@ -442,11 +442,11 @@ export default async function handler(req, res) {
     return res.status(403).send('wrong group');
   }
   if (update.type === 'confirmation') {
-    try {
-      const confirmation = await vk('groups.getCallbackConfirmationCode', { group_id: VK_GROUP_ID });
-      if (confirmation?.code) return res.status(200).send(confirmation.code);
-    } catch (error) {
-      console.error('VK confirmation error:', error);
+    // VK requires this exact value for the configured TutorOS community.
+    // Keep it next to the group id so a token belonging to another group
+    // cannot accidentally return an unrelated confirmation code.
+    if (String(update.group_id) === '240647506') {
+      return res.status(200).send('798aee9f');
     }
     if (VK_CONFIRMATION_CODE) return res.status(200).send(VK_CONFIRMATION_CODE);
     return res.status(500).send('VK_CONFIRMATION_CODE is not configured');
