@@ -55,31 +55,39 @@ function syncTutorOSStatsFile() {
   writeTutorOSStatsOverview_(spreadsheet, data);
   writeTutorOSStatsTable_(spreadsheet, 'Группы', [
     'Группа', 'Формат', 'Ученики', 'Выдано ДЗ',
-    'Работ сдано', 'Средний результат', 'Сдано вовремя', 'Статус',
+    'Работ сдано', 'Выполнение', 'Просрочено', 'Ждут проверки',
+    'Средний результат', 'Сдано вовремя', 'Проверка, ч', 'Подключены', 'Статус',
   ], data.groups.map(row => [
     row.group, row.format, row.students, row.assignments,
-    row.submitted, row.average_score, row.on_time_rate, row.status,
-  ]), [190, 120, 85, 90, 100, 130, 120, 90], {
-    integers: [3, 4, 5], percentages: [6, 7],
+    row.submitted, row.completion_rate, row.overdue, row.awaiting_review,
+    row.average_score, row.on_time_rate, row.review_hours, row.connected_rate, row.status,
+  ]), [190, 120, 85, 90, 100, 105, 95, 110, 130, 120, 105, 105, 90], {
+    integers: [3, 4, 5, 7, 8], percentages: [6, 9, 10, 12], decimals: [11],
   });
   writeTutorOSStatsTable_(spreadsheet, 'Ученики', [
-    'Ученик', 'Формат', 'Группа', 'Статус', 'Выдано ДЗ',
-    'Сдано', 'Проверено', 'Средний результат', 'Сдано вовремя',
+    'Ученик', 'Формат', 'Группа', 'Статус', 'Подключён', 'Что требует внимания',
+    'Выдано ДЗ', 'Сдано', 'Проверено', 'Выполнение', 'Просрочено',
+    'Ждут проверки', 'Средний результат', 'Динамика', 'Сдано вовремя', 'Последняя сдача',
   ], data.students.map(row => [
-    row.student, row.format, row.group, row.status,
-    row.assigned, row.submitted, row.checked, row.average_score, row.on_time_rate,
-  ]), [180, 120, 190, 95, 90, 80, 95, 130, 120], {
-    integers: [5, 6, 7], percentages: [8, 9],
+    row.student, row.format, row.group, row.status, row.connected ? 'Да' : 'Нет', row.attention,
+    row.assigned, row.submitted, row.checked, row.completion_rate, row.overdue,
+    row.awaiting_review, row.average_score, row.trend, row.on_time_rate,
+    tutorOSStatsDate_(row.last_submitted_at),
+  ]), [180, 120, 190, 95, 95, 155, 90, 80, 95, 105, 95, 110, 130, 105, 120, 125], {
+    integers: [7, 8, 9, 11, 12], percentages: [10, 13, 14, 15], dateTimes: [16],
   });
   writeTutorOSStatsTable_(spreadsheet, 'ДЗ', [
     'Выдано', 'Группа', 'Урок', 'Тема', 'Тип', 'Уровень', 'Состояние', 'Дедлайн',
-    'Учеников', 'Сдано', 'Проверено', 'Средний результат',
+    'Учеников', 'Сдано', 'Проверено', 'Выполнение', 'Просрочено',
+    'Ждут проверки', 'Средний результат', 'Сдано вовремя', 'Проверка, ч',
   ], data.assignments.map(row => [
     tutorOSStatsDate_(row.assigned_at), row.group, row.lesson, row.topic,
     row.type, row.level, row.state, tutorOSStatsDate_(row.due_date, true), row.students,
-    row.submitted, row.checked, row.average_score,
-  ]), [120, 150, 80, 280, 120, 105, 95, 105, 90, 80, 95, 130], {
-    dateTimes: [1], dates: [8], integers: [9, 10, 11], percentages: [12],
+    row.submitted, row.checked, row.completion_rate, row.overdue,
+    row.awaiting_review, row.average_score, row.on_time_rate, row.review_hours,
+  ]), [120, 150, 80, 280, 120, 105, 95, 105, 90, 80, 95, 105, 95, 110, 130, 120, 105], {
+    dateTimes: [1], dates: [8], integers: [9, 10, 11, 13, 14],
+    percentages: [12, 15, 16], decimals: [17],
   });
   writeTutorOSStatsTable_(spreadsheet, 'Результаты', [
     'Выдано', 'Дедлайн', 'Группа', 'Ученик', 'Урок', 'Тема', 'Состояние ДЗ', 'Статус',
@@ -92,6 +100,15 @@ function syncTutorOSStatsFile() {
   ]), [120, 105, 150, 180, 80, 260, 105, 140, 120, 120, 75, 85, 100, 90, 280], {
     dateTimes: [1, 9, 10], dates: [2], integers: [11, 12], percentages: [13],
   });
+  writeTutorOSStatsTable_(spreadsheet, 'Темы', [
+    'Тема', 'ДЗ', 'Работ выдано', 'Выполнение', 'Просрочено',
+    'Средний результат', 'Сдано вовремя',
+  ], data.topics.map(row => [
+    row.topic, row.assignments, row.students, row.completion_rate, row.overdue,
+    row.average_score, row.on_time_rate,
+  ]), [280, 75, 110, 105, 95, 130, 120], {
+    integers: [2, 3, 5], percentages: [4, 6, 7],
+  });
   SpreadsheetApp.flush();
   return { groups: data.groups.length, students: data.students.length };
 }
@@ -102,33 +119,36 @@ function writeTutorOSStatsOverview_(spreadsheet, data) {
   sheet.getRange('A1:F20').breakApart();
   sheet.getRange('A1:F1').merge();
   sheet.getRange('A2:F2').merge();
-  sheet.getRange('A13:F13').merge();
+  sheet.getRange('A17:F17').merge();
   sheet.getRange('A1').setValue('TutorOS — учёт и статистика');
   sheet.getRange('A2').setValue('Данные обновляются из TutorOS автоматически каждые 10 минут.');
   sheet.getRange('A3:B3').setValues([[
     'Последнее обновление', tutorOSStatsDate_(data.updated_at),
   ]]);
-  sheet.getRange('A5:A11').setValues([
+  sheet.getRange('A5:A15').setValues([
     ['Активных мини-групп'], ['Индивидуальных учеников'], ['Всего активных учеников'], ['Выдано ДЗ'],
-    ['Проверено работ'], ['Средний результат'], ['Сдано вовремя'],
+    ['Проверено работ'], ['Ждут проверки'], ['Просрочено работ'], ['Выполнение ДЗ'],
+    ['Средний результат'], ['Сдано вовремя'], ['Среднее время проверки, ч'],
   ]);
-  sheet.getRange('B5:B11').setValues([
+  sheet.getRange('B5:B15').setValues([
     [data.overview.active_mini_groups], [data.overview.active_individuals], [data.overview.active_students],
-    [data.overview.assignments], [data.overview.checked],
-    [data.overview.average_score], [data.overview.on_time_rate],
+    [data.overview.assignments], [data.overview.checked], [data.overview.awaiting_review],
+    [data.overview.overdue], [data.overview.completion_rate], [data.overview.average_score],
+    [data.overview.on_time_rate], [data.overview.review_hours],
   ]);
-  sheet.getRange('A13').setValue(
+  sheet.getRange('A17').setValue(
     'Чтобы посмотреть конкретную группу или ученика, включите фильтр на соответствующем листе.'
   );
   sheet.setHiddenGridlines(true);
   sheet.setFrozenRows(3);
   sheet.getRange('A1:F1').setBackground('#e8eaed').setFontWeight('bold').setFontSize(16);
   sheet.getRange('A2').setFontColor('#5f6368').setFontStyle('italic');
-  sheet.getRange('A5:A11').setFontWeight('bold');
-  sheet.getRange('B5:B11').setFontWeight('bold').setFontSize(13);
-  sheet.getRange('B5:B9').setNumberFormat('0');
-  sheet.getRange('B10:B11').setNumberFormat('0%');
-  sheet.getRange('A13').setFontColor('#5f6368').setWrap(true);
+  sheet.getRange('A5:A15').setFontWeight('bold');
+  sheet.getRange('B5:B15').setFontWeight('bold').setFontSize(13);
+  sheet.getRange('B5:B11').setNumberFormat('0');
+  sheet.getRange('B12:B14').setNumberFormat('0%');
+  sheet.getRange('B15').setNumberFormat('0.0');
+  sheet.getRange('A17').setFontColor('#5f6368').setWrap(true);
   sheet.setColumnWidth(1, 190);
   sheet.setColumnWidth(2, 150);
   for (let column = 3; column <= 6; column++) sheet.setColumnWidth(column, 95);
@@ -164,6 +184,9 @@ function writeTutorOSStatsTable_(spreadsheet, name, headers, rows, widths, forma
   );
   (formats.percentages || []).forEach(column =>
     sheet.getRange(2, column, dataRows, 1).setNumberFormat('0%')
+  );
+  (formats.decimals || []).forEach(column =>
+    sheet.getRange(2, column, dataRows, 1).setNumberFormat('0.0')
   );
   (formats.dates || []).forEach(column =>
     sheet.getRange(2, column, dataRows, 1).setNumberFormat('dd.MM.yyyy')

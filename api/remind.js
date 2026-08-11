@@ -42,10 +42,10 @@ export default async function handler(req, res) {
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   const tomorrowStr = tomorrow.toISOString().slice(0, 10);
 
-  // Find all assigned submissions with a deadline tomorrow, where student has a VK account.
+  // Find all unfinished submissions with a deadline tomorrow.
   const submissions = await sbSelect(
     'homework_submissions',
-    `status=eq.assigned&select=id,student_id,assignment_id`
+    `status=in.(assigned,revision)&select=id,student_id,assignment_id`
   );
 
   if (!submissions.length) return res.status(200).json({ sent: 0 });
@@ -91,7 +91,18 @@ export default async function handler(req, res) {
       const vkBody = new URLSearchParams({
         peer_id: String(stu.vk_id),
         random_id: String(Math.floor(Math.random() * 2147483647) || 1),
-        message: `⏰ Напоминание: завтра дедлайн по ДЗ «${assignment.topic}». Не забудь сдать!`,
+        message: `⏰ завтра дедлайн по ДЗ «${assignment.topic}». не забудь сдать!`,
+        keyboard: JSON.stringify({
+          inline: true,
+          buttons: [[{
+            action: {
+              type: 'callback',
+              label: '📚 открыть задание',
+              payload: JSON.stringify({ cmd: `hw:${sub.id}` }),
+            },
+            color: 'primary',
+          }]],
+        }),
         access_token: VK_GROUP_TOKEN,
         v: VK_API_VERSION,
       });

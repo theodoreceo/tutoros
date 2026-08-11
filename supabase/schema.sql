@@ -246,7 +246,7 @@ begin
   if p_archived then
     update homework_submissions
     set status = 'cancelled'
-    where assignment_id = p_assignment_id and status = 'assigned';
+    where assignment_id = p_assignment_id and status in ('assigned', 'revision');
   else
     update homework_submissions
     set status = 'assigned'

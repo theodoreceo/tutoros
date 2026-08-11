@@ -62,7 +62,53 @@ const onTimeRate = rows => {
   return known.length ? known.filter(row => row.on_time).length / known.length : null;
 };
 
-const submitted = row => !['assigned', 'cancelled'].includes(row.status);
+const submitted = row => ['submitted', 'checked'].includes(row.status);
+const completionRate = rows => {
+  const eligible = rows.filter(row => row.status !== 'cancelled');
+  return eligible.length ? eligible.filter(submitted).length / eligible.length : null;
+};
+const hoursBetween = (start, end) => {
+  const value = (new Date(end) - new Date(start)) / 3600000;
+  return start && end && Number.isFinite(value) && value >= 0 ? value : null;
+};
+const reviewTurnaround = rows => average(rows.map(row =>
+  hoursBetween(row.submitted_at, row.checked_at)
+));
+const todayIso = () => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
+const overdue = (row, assignmentMap) =>
+  ['assigned', 'revision'].includes(row.status)
+  && assignmentMap.get(row.assignment_id)?.due_date < todayIso();
+const scoreTrend = (rows, assignmentMap) => {
+  const scores = rows
+    .filter(row => row.status === 'checked')
+    .sort((a, b) => String(b.checked_at).localeCompare(String(a.checked_at)))
+    .map(row => ratio(row.score, row.max_score))
+    .filter(Number.isFinite);
+  if (scores.length < 4) return null;
+  const recent = scores.slice(0, 3);
+  const previous = scores.slice(3, 6);
+  return previous.length >= 2 ? average(recent) - average(previous) : null;
+};
+const attentionLabel = ({ rows, overdueCount, trend }) => {
+  const recentScores = rows
+    .filter(row => row.status === 'checked')
+    .sort((a, b) => String(b.checked_at).localeCompare(String(a.checked_at)))
+    .map(row => ratio(row.score, row.max_score))
+    .filter(Number.isFinite);
+  if (overdueCount >= 2) return `Напомнить: просрочено ${overdueCount} ДЗ`;
+  if (recentScores.length >= 2 && recentScores.slice(0, 2).every(score => score < 0.5)) {
+    return 'Повторить тему: два результата ниже 50%';
+  }
+  if (trend !== null && trend <= -0.1) return 'Разобрать падение результата';
+  if (overdueCount === 1) return 'Напомнить об одном просроченном ДЗ';
+  return rows.length ? 'Ничего — всё стабильно' : 'Мало данных';
+};
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -73,10 +119,10 @@ export default async function handler(req, res) {
   try {
     const [rawGroups, rawStudents, rawLessons, rawAssignments, rawSubmissions] = await Promise.all([
       sbAll('groups', 'select=id,name,group_type,active,created_at'),
-      sbAll('students', 'select=id,name,group_id,status,created_at'),
+      sbAll('students', 'select=id,name,group_id,status,vk_id,created_at'),
       sbAll('lessons', 'select=id,group_id,lesson_number,topic,event_type'),
       sbAll('homework_assignments', 'select=id,group_id,lesson_id,topic,due_date,hw_type,is_advanced,assigned_at,archived_at'),
-      sbAll('homework_submissions', 'select=id,assignment_id,student_id,status,submitted_at,checked_at,score,max_score,on_time,comment'),
+      sbAll('homework_submissions', 'select=id,assignment_id,student_id,status,submitted_at,checked_at,score,max_score,on_time,comment,task_scores'),
     ]);
 
     const groups = rawGroups;
@@ -103,22 +149,37 @@ export default async function handler(req, res) {
       const groupSubmissions = groupAssignments.flatMap(assignment =>
         submissionsFor('assignment_id', assignment.id)
       );
+      const overdueCount = groupSubmissions.filter(row => overdue(row, assignmentMap)).length;
       return {
         group: group.name,
         format: groupTypeLabel(group.group_type),
         students: groupStudents.length,
         assignments: groupAssignments.length,
         submitted: groupSubmissions.filter(submitted).length,
+        completion_rate: completionRate(groupSubmissions),
+        overdue: overdueCount,
+        awaiting_review: groupSubmissions.filter(row => row.status === 'submitted').length,
         average_score: average(groupSubmissions.map(row => ratio(row.score, row.max_score))),
         on_time_rate: onTimeRate(groupSubmissions),
+        review_hours: reviewTurnaround(groupSubmissions),
+        connected_rate: groupStudents.length
+          ? groupStudents.filter(student => student.vk_id).length / groupStudents.length
+          : null,
         status: groupStatusLabel(group.active),
       };
     }).sort((a, b) => a.group.localeCompare(b.group, 'ru'));
 
     const studentRows = students.map(student => {
       const group = groupMap.get(student.group_id);
-      const studentSubmissions = submissionsFor('student_id', student.id)
+      const allStudentSubmissions = submissionsFor('student_id', student.id);
+      const studentSubmissions = allStudentSubmissions
         .filter(row => !assignmentMap.get(row.assignment_id)?.archived_at);
+      const overdueCount = studentSubmissions.filter(row => overdue(row, assignmentMap)).length;
+      const trend = scoreTrend(allStudentSubmissions, assignmentMap);
+      const lastSubmittedAt = allStudentSubmissions
+        .map(row => row.submitted_at)
+        .filter(Boolean)
+        .sort((a, b) => String(b).localeCompare(String(a)))[0] || null;
       return {
         student: student.name,
         group: group?.name || '—',
@@ -127,8 +188,15 @@ export default async function handler(req, res) {
         assigned: studentSubmissions.length,
         submitted: studentSubmissions.filter(submitted).length,
         checked: studentSubmissions.filter(row => row.status === 'checked').length,
+        completion_rate: completionRate(studentSubmissions),
+        overdue: overdueCount,
+        awaiting_review: studentSubmissions.filter(row => row.status === 'submitted').length,
         average_score: average(studentSubmissions.map(row => ratio(row.score, row.max_score))),
+        trend,
         on_time_rate: onTimeRate(studentSubmissions),
+        last_submitted_at: lastSubmittedAt,
+        connected: Boolean(student.vk_id),
+        attention: attentionLabel({ rows: studentSubmissions, overdueCount, trend }),
       };
     }).sort((a, b) =>
       a.group.localeCompare(b.group, 'ru') || a.student.localeCompare(b.student, 'ru')
@@ -150,7 +218,12 @@ export default async function handler(req, res) {
         students: assignmentSubmissions.length,
         submitted: assignmentSubmissions.filter(submitted).length,
         checked: assignmentSubmissions.filter(row => row.status === 'checked').length,
+        completion_rate: completionRate(assignmentSubmissions),
+        overdue: assignmentSubmissions.filter(row => overdue(row, assignmentMap)).length,
+        awaiting_review: assignmentSubmissions.filter(row => row.status === 'submitted').length,
         average_score: average(assignmentSubmissions.map(row => ratio(row.score, row.max_score))),
+        on_time_rate: onTimeRate(assignmentSubmissions),
+        review_hours: reviewTurnaround(assignmentSubmissions),
       };
     }).sort((a, b) => String(b.assigned_at).localeCompare(String(a.assigned_at)));
 
@@ -182,6 +255,28 @@ export default async function handler(req, res) {
       a.student.localeCompare(b.student, 'ru')
     );
 
+    const topicBuckets = new Map();
+    for (const assignment of assignments) {
+      const key = String(assignment.topic || 'Без темы').trim().toLocaleLowerCase('ru');
+      const bucket = topicBuckets.get(key) || {
+        topic: assignment.topic || 'Без темы', assignments: [], submissions: [],
+      };
+      bucket.assignments.push(assignment);
+      bucket.submissions.push(...submissionsFor('assignment_id', assignment.id));
+      topicBuckets.set(key, bucket);
+    }
+    const topics = [...topicBuckets.values()].map(bucket => ({
+      topic: bucket.topic,
+      assignments: bucket.assignments.length,
+      students: bucket.submissions.length,
+      completion_rate: completionRate(bucket.submissions),
+      overdue: bucket.submissions.filter(row => overdue(row, assignmentMap)).length,
+      average_score: average(bucket.submissions.map(row => ratio(row.score, row.max_score))),
+      on_time_rate: onTimeRate(bucket.submissions),
+    })).sort((a, b) =>
+      (b.assignments - a.assignments) || a.topic.localeCompare(b.topic, 'ru')
+    );
+
     return res.status(200).json({
       ok: true,
       updated_at: new Date().toISOString(),
@@ -189,18 +284,31 @@ export default async function handler(req, res) {
         active_groups: groups.filter(group => group.active).length,
         active_mini_groups: groups.filter(group => group.active && group.group_type !== 'individual').length,
         active_individuals: groups.filter(group => group.active && group.group_type === 'individual').length,
-        active_students: students.filter(student => student.status === 'active').length,
+        active_students: students.filter(student =>
+          student.status === 'active' && groupMap.get(student.group_id)?.active
+        ).length,
         assignments: activeAssignments.length,
         checked: submissions.filter(row => row.status === 'checked' && !assignmentMap.get(row.assignment_id)?.archived_at).length,
+        completion_rate: completionRate(submissions.filter(row => !assignmentMap.get(row.assignment_id)?.archived_at)),
+        overdue: submissions.filter(row =>
+          !assignmentMap.get(row.assignment_id)?.archived_at && overdue(row, assignmentMap)
+        ).length,
+        awaiting_review: submissions.filter(row =>
+          row.status === 'submitted' && !assignmentMap.get(row.assignment_id)?.archived_at
+        ).length,
         average_score: average(submissions
           .filter(row => !assignmentMap.get(row.assignment_id)?.archived_at)
           .map(row => ratio(row.score, row.max_score))),
         on_time_rate: onTimeRate(submissions.filter(row => !assignmentMap.get(row.assignment_id)?.archived_at)),
+        review_hours: reviewTurnaround(submissions.filter(row =>
+          !assignmentMap.get(row.assignment_id)?.archived_at
+        )),
       },
       groups: groupRows,
       students: studentRows,
       assignments: assignmentRows,
       results: resultRows,
+      topics,
     });
   } catch (error) {
     console.error(`Stats export failed: ${error.message}`);

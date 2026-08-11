@@ -213,11 +213,156 @@ const moscowDateTime = (isoDate) => isoDate
 const isSubmittedOnTime = (assignment, submittedAt) =>
   assignment?.due_date ? moscowDate(submittedAt) <= assignment.due_date : null;
 
+const todayMoscow = () => moscowDate(new Date().toISOString());
+const dateDiffDays = (fromDate, toDate) => {
+  if (!fromDate || !toDate) return null;
+  const from = new Date(`${fromDate}T12:00:00Z`);
+  const to = new Date(`${toDate}T12:00:00Z`);
+  return Math.round((to - from) / 86400000);
+};
+const humanDueDate = dueDate => {
+  if (!dueDate) return 'без срока';
+  const days = dateDiffDays(todayMoscow(), dueDate);
+  if (days < 0) return `просрочено на ${Math.abs(days)} дн.`;
+  if (days === 0) return 'сегодня';
+  if (days === 1) return 'до завтра';
+  if (days <= 7) return `через ${days} дн.`;
+  return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
+    .format(new Date(`${dueDate}T12:00:00Z`));
+};
+const dueDateAfter = days => {
+  const date = new Date(`${todayMoscow()}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+const averageNumber = values => {
+  const clean = values.filter(Number.isFinite);
+  return clean.length ? clean.reduce((sum, value) => sum + value, 0) / clean.length : null;
+};
+
+const submissionPercent = (submission, assignment) => {
+  if (submission?.score === null || submission?.score === undefined) return null;
+  const maxScore = Number(submission.max_score)
+    || (Array.isArray(assignment?.task_config)
+      ? assignment.task_config.reduce((sum, value) => sum + Number(value || 0), 0)
+      : 0);
+  if (maxScore > 0) return Number(submission.score) / maxScore * 100;
+  return Number(submission.score);
+};
+
+function buildStudentMetrics(submissions, assignmentMap) {
+  const relevant = submissions.filter(row => row.status !== 'cancelled');
+  const completed = relevant.filter(row => ['submitted', 'checked'].includes(row.status));
+  const overdue = relevant.filter(row => {
+    const assignment = assignmentMap.get(row.assignment_id);
+    return ['assigned', 'revision'].includes(row.status)
+      && assignment?.due_date
+      && assignment.due_date < todayMoscow();
+  });
+  const scored = relevant
+    .filter(row => row.status === 'checked')
+    .sort((left, right) => String(right.checked_at || '').localeCompare(String(left.checked_at || '')))
+    .map(row => ({
+      percent: submissionPercent(row, assignmentMap.get(row.assignment_id)),
+      assignment: assignmentMap.get(row.assignment_id),
+      score: Number(row.score),
+      maxScore: Number(row.max_score),
+    }))
+    .filter(item => Number.isFinite(item.percent));
+  const recent = scored.slice(0, 3).map(item => item.percent);
+  const previous = scored.slice(3, 6).map(item => item.percent);
+  const trend = recent.length >= 2 && previous.length >= 2
+    ? Math.round(averageNumber(recent) - averageNumber(previous))
+    : null;
+  const lastTrial = scored.find(item => item.assignment?.hw_type === 'trial') || null;
+
+  let attention = 'всё стабильно — ничего менять не нужно.';
+  if (overdue.length >= 2) {
+    attention = `не сдано ${overdue.length} ДЗ — напомнить ученику и обсудить регулярность.`;
+  } else if (scored.length >= 2 && scored.slice(0, 2).every(item => item.percent < 50)) {
+    attention = 'два последних результата ниже 50% — повторить текущую тему на занятии.';
+  } else if (trend !== null && trend <= -10) {
+    attention = `результат снизился на ${Math.abs(trend)} п.п. — разобрать причины на ближайшем занятии.`;
+  } else if (overdue.length === 1) {
+    attention = 'одно ДЗ просрочено — напомнить ученику.';
+  }
+
+  return {
+    total: relevant.length,
+    completed: completed.length,
+    overdue: overdue.length,
+    recentAverage: recent.length ? Math.round(averageNumber(recent)) : null,
+    trend,
+    lastTrialPercent: lastTrial ? Math.round(lastTrial.percent) : null,
+    lastTrialScore: lastTrial && Number.isFinite(lastTrial.score) ? lastTrial.score : null,
+    lastTrialMaxScore: lastTrial && Number.isFinite(lastTrial.maxScore) && lastTrial.maxScore > 0
+      ? lastTrial.maxScore
+      : null,
+    attention,
+    needsAttention: attention !== 'всё стабильно — ничего менять не нужно.',
+  };
+}
+
+const deadlineKeyboard = (prefix = 'hw_due') => kbd([
+  [{ text: 'завтра', callback_data: `${prefix}:1` }, { text: 'через 3 дня', callback_data: `${prefix}:3` }],
+  [{ text: 'через неделю', callback_data: `${prefix}:7` }, { text: 'без срока', callback_data: `${prefix}:none` }],
+  [{ text: '❌ отменить создание', callback_data: 'hw_cancel' }],
+]);
+
+async function showHomeworkTypeSelection(chatId, tid, sess, dueDate) {
+  await setSession(tid, { step: 'await_hwtype', data: { ...sess.data, due_date: dueDate } });
+  return send(chatId, `дедлайн: <b>${dueDate || 'не указан'}</b>\n\nвыбери тип задания:`,
+    kbd([
+      [{ text: '🔢 краткий ответ', callback_data: 'hwtype:brief' }],
+      [{ text: '📝 подробный — несложное', callback_data: 'hwtype:detailed_easy' }],
+      [{ text: '📝 подробный — сложное', callback_data: 'hwtype:detailed_hard' }],
+      [{ text: '📋 пробник', callback_data: 'hwtype:trial' }],
+      [{ text: '❌ отменить создание', callback_data: 'hw_cancel' }],
+    ]));
+}
+
+const homeworkTypeLabel = type => type === 'brief' ? 'краткий ответ'
+  : type === 'trial' ? 'пробник'
+  : type === 'detailed_hard' ? 'подробный — сложное'
+  : 'подробный — несложное';
+
+async function showHomeworkPreview(chatId, tid, data) {
+  await setSession(tid, { step: 'confirm_hw', data });
+  const taskCount = data.hw_type === 'brief'
+    ? data.answers?.length || 0
+    : data.task_config?.length || 0;
+  return send(chatId,
+    `проверь ДЗ перед отправкой:\n\n` +
+    `группа: <b>${html(data.group_name)}</b>\n` +
+    `тема: <b>${html(data.topic)}</b>\n` +
+    `дедлайн: <b>${humanDueDate(data.due_date)}</b>\n` +
+    `тип: <b>${homeworkTypeLabel(data.hw_type)}</b>\n` +
+    `файл: <b>${data.file_id ? 'прикреплён' : 'без файла'}</b>\n` +
+    `заданий: <b>${taskCount || 'без разбивки'}</b>`,
+    kbd([
+      [{ text: '✅ отправить ученикам', callback_data: 'hw_confirm', color: 'positive' }],
+      [{ text: '❌ отменить создание', callback_data: 'hw_cancel' }],
+    ]));
+}
+
+async function requestHomeworkConfig(chatId, tid, data) {
+  const step = data.hw_type === 'brief' ? 'await_answers_bulk' : 'await_scores_bulk';
+  await setSession(tid, { step, data });
+  if (data.hw_type === 'brief') {
+    return send(chatId,
+      'введи все правильные ответы одной строкой через точку с запятой.\n\nнапример: <code>12; 0,5; -3</code>',
+      kbd([[{ text: '❌ отменить создание', callback_data: 'hw_cancel' }]]));
+  }
+  return send(chatId,
+    'введи максимальные баллы за задания одной строкой через точку с запятой.\n\nнапример: <code>1; 1; 2; 2</code>\nили отправь «-», если нужна только итоговая оценка.',
+    kbd([[{ text: '❌ отменить создание', callback_data: 'hw_cancel' }]]));
+}
+
 async function updateAssignedSubmission(subId, studentId, changes) {
   const updated = await sbPatch(
     'homework_submissions',
     `id=eq.${encodeURIComponent(subId)}` +
-      `&student_id=eq.${encodeURIComponent(studentId)}&status=eq.assigned`,
+      `&student_id=eq.${encodeURIComponent(studentId)}&status=in.(assigned,revision)`,
     changes
   );
   return updated[0] ?? null;
@@ -344,7 +489,7 @@ async function handleText(msg) {
   const text   = String(msg.text || '').trim();
 
   const owner   = isOwner(tid);
-  const student = owner ? null : await sbOne('students', `vk_id=eq.${tid}`);
+  const student = owner ? null : await sbOne('students', `vk_id=eq.${tid}&status=eq.active`);
 
   if (msg.ref && !owner && !student) {
     return handleRegistration(chatId, tid, msg.ref);
@@ -431,6 +576,10 @@ async function handleText(msg) {
     if (text === '/mydz')       return showOwnerAssignments(chatId, 0);
     if (text === '/archive')    return showOwnerAssignments(chatId, 0, true);
     const sess = await getSession(tid);
+    if (text === '/cancel' || text.toLowerCase() === 'отмена') {
+      await setSession(tid, { step: 'owner' });
+      return send(chatId, 'создание отменено.', rkbd(OWNER_KBD));
+    }
     if (sess.step === 'await_student_name') {
       return finishStudentCreation(chatId, tid, text, sess);
     }
@@ -497,7 +646,7 @@ async function handleMedia(msg) {
   const tid    = msg.from.id;
 
   const owner   = isOwner(tid);
-  const student = owner ? null : await sbOne('students', `vk_id=eq.${tid}`);
+  const student = owner ? null : await sbOne('students', `vk_id=eq.${tid}&status=eq.active`);
 
   const fileId   = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
   const fileType = msg.photo ? 'photo' : 'document';
@@ -507,11 +656,8 @@ async function handleMedia(msg) {
     const sess = await getSession(tid);
     if (sess.step === 'await_pdf') {
       const newData = { ...sess.data, file_id: fileId };
-      await setSession(tid, { step: 'await_count', data: newData });
-      const hwType = newData.hw_type;
-      return send(chatId, 'файл получен!\n\n' + (hwType === 'brief'
-        ? 'сколько заданий (ответов) в этой работе?'
-        : 'сколько заданий в этой работе?'));
+      await send(chatId, 'файл получен!');
+      return requestHomeworkConfig(chatId, tid, newData);
     }
   }
 
@@ -524,6 +670,7 @@ async function handleMedia(msg) {
       await setSession(tid, { step: `await_files:${subId}`, data: { ...sess.data, files } });
       return send(chatId, `📎 файл получен (всего: ${files.length})`,
         kbd([[{ text: '✅ отправить работу', callback_data: `submit_files:${subId}` }],
+             [{ text: '↩️ удалить последний файл', callback_data: `remove_last_file:${subId}` }],
              [{ text: '❌ отменить',         callback_data: 'cancel_files' }]]));
     }
     return send(chatId, 'сначала открой задание через /dz.');
@@ -538,7 +685,7 @@ async function handleMedia(msg) {
 
 async function handleRegistration(chatId, tid, token) {
   const clean = token.replace(/^\/start\s+/i, '').toLowerCase().trim();
-  const sm = await sbOne('students', `reg_token=eq.${encodeURIComponent(clean)}`);
+  const sm = await sbOne('students', `reg_token=eq.${encodeURIComponent(clean)}&status=eq.active`);
 
   if (sm) {
     if (sm.vk_id) return send(chatId, 'эта ссылка уже была использована. напиши преподавателю.');
@@ -553,29 +700,63 @@ async function handleRegistration(chatId, tid, token) {
 
 // ── Owner: groups and students ───────────────────────────────────────────────
 
-async function showOwnerGroups(chatId) {
-  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
+async function showOwnerGroups(chatId, archived = false) {
+  const groups = await sbSelect('groups', `active=eq.${archived ? 'false' : 'true'}&order=name.asc`);
   if (!groups.length) {
-    return send(chatId, 'групп пока нет.', kbd([
-      [{ text: '➕ создать первую группу', callback_data: 'new_group' }],
-    ]));
+    return send(chatId, archived ? 'архив групп пуст.' : 'групп пока нет.', kbd(archived
+      ? [[{ text: '← к активным группам', callback_data: 'owner_groups' }]]
+      : [[{ text: '➕ создать первую группу', callback_data: 'new_group' }]]));
   }
 
   const buttons = groups.map(group => [{
     text: `${group.group_type === 'individual' ? '👤' : '👥'} ${group.name || 'Без названия'}`,
     callback_data: `owner_group:${group.id}`,
   }]);
-  buttons.push([{ text: '➕ создать группу', callback_data: 'new_group' }]);
-  buttons.push([{ text: '➕ добавить ученика в группу', callback_data: 'add_student' }]);
-  return send(chatId, 'выбери группу или индивидуального ученика:', kbd(buttons));
+  if (archived) {
+    buttons.push([{ text: '← к активным группам', callback_data: 'owner_groups' }]);
+  } else {
+    buttons.push([{ text: '➕ создать группу', callback_data: 'new_group' }]);
+    buttons.push([{ text: '➕ добавить ученика в группу', callback_data: 'add_student' }]);
+    buttons.push([{ text: '📦 архив групп', callback_data: 'owner_groups_archived' }]);
+  }
+  return send(chatId, archived ? 'архив групп:' : 'выбери группу или индивидуального ученика:', kbd(buttons));
 }
 
 async function showOwnerGroup(chatId, groupId) {
-  const [group, students] = await Promise.all([
+  const [group, students, assignments] = await Promise.all([
     sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`),
-    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&order=name.asc`),
+    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&status=eq.active&order=name.asc`),
+    sbSelect('homework_assignments',
+      `group_id=eq.${encodeURIComponent(groupId)}&archived_at=is.null&select=id,topic,due_date,hw_type,task_config`),
   ]);
   if (!group) return send(chatId, 'группа не найдена.');
+
+  const assignmentIds = assignments.map(assignment => assignment.id);
+  const submissions = assignmentIds.length
+    ? await sbSelect('homework_submissions',
+      `assignment_id=in.(${assignmentIds.join(',')})&select=assignment_id,student_id,status,score,max_score,checked_at,on_time`)
+    : [];
+  const assignmentMap = new Map(assignments.map(assignment => [assignment.id, assignment]));
+  const pending = submissions.filter(row => row.status === 'submitted').length;
+  const overdue = submissions.filter(row =>
+    ['assigned', 'revision'].includes(row.status) &&
+    assignmentMap.get(row.assignment_id)?.due_date &&
+    assignmentMap.get(row.assignment_id).due_date < todayMoscow()
+  ).length;
+  const checkedRatios = submissions
+    .filter(row => row.status === 'checked')
+    .sort((left, right) => String(right.checked_at || '').localeCompare(String(left.checked_at || '')))
+    .slice(0, Math.max(3, students.length * 3))
+    .map(row => submissionPercent(row, assignmentMap.get(row.assignment_id)))
+    .filter(Number.isFinite);
+  const averageScore = averageNumber(checkedRatios);
+  const attentionCount = students.filter(student => {
+    const metrics = buildStudentMetrics(
+      submissions.filter(row => row.student_id === student.id),
+      assignmentMap
+    );
+    return metrics.needsAttention;
+  }).length;
 
   const studentLines = students.length
     ? students.map((student, index) =>
@@ -583,6 +764,14 @@ async function showOwnerGroup(chatId, groupId) {
     ).join('\n')
     : 'учеников пока нет';
   const isIndividual = group.group_type === 'individual';
+  const connected = students.filter(student => student.vk_id).length;
+  const summary = [
+    `учеников: <b>${students.length}</b> · подключены: <b>${connected}/${students.length}</b>`,
+    `активных ДЗ: <b>${assignments.length}</b> · ждут проверки: <b>${pending}</b>`,
+    `последние результаты: <b>${averageScore === null ? '—' : `${Math.round(averageScore)}%`}</b>`,
+  ];
+  if (overdue) summary.push(`🔴 просроченных работ: <b>${overdue}</b>`);
+  if (attentionCount) summary.push(`⚠️ требуют внимания: <b>${attentionCount}</b>`);
   const buttons = [[{
     text: '➕ создать ДЗ',
     callback_data: `hw_for_group:${group.id}`,
@@ -591,29 +780,34 @@ async function showOwnerGroup(chatId, groupId) {
   if (!isIndividual) {
     buttons.push([{ text: '➕ добавить ученика', callback_data: `student_group:${group.id}` }]);
   }
+  if (assignments.length) {
+    buttons.push([{ text: `📚 активные ДЗ (${assignments.length})`, callback_data: `group_hw:${group.id}:0` }]);
+  }
   if (students.length) {
     buttons.push([{
-      text: isIndividual ? '🗑 удалить ученика' : '🗑 удалить ученика из группы',
+      text: isIndividual ? '👤 ученик и ссылка' : '👥 ученики и ссылки',
       callback_data: `group_students:${group.id}:0`,
-      color: 'negative',
     }]);
   }
+  buttons.push([group.active
+    ? { text: '📦 архивировать группу', callback_data: `group_delete:${group.id}` }
+    : { text: '♻️ восстановить группу', callback_data: `group_restore:${group.id}` }
+  ]);
   buttons.push([{
-    text: '🗑 удалить группу',
-    callback_data: `group_delete:${group.id}`,
-    color: 'negative',
+    text: group.active ? '← ко всем группам' : '← к архиву групп',
+    callback_data: group.active ? 'owner_groups' : 'owner_groups_archived',
   }]);
-  buttons.push([{ text: '← ко всем группам', callback_data: 'owner_groups' }]);
 
   return send(chatId,
-    `<b>${html(group.name)}</b>\nформат: <b>${isIndividual ? 'индивидуально' : 'мини-группа'}</b>\n\n${studentLines}\n\n✅ подключён к боту · ⏳ ещё не открыл ссылку`,
+    `<b>${html(group.name)}</b>\nформат: <b>${isIndividual ? 'индивидуально' : 'мини-группа'}</b>\n` +
+    `${summary.join('\n')}\n\n${studentLines}\n\n✅ подключён к боту · ⏳ ждёт подключения`,
     kbd(buttons));
 }
 
 async function showGroupStudentsForDeletion(chatId, groupId, offset = 0) {
   const [group, students] = await Promise.all([
     sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`),
-    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&order=name.asc`),
+    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&status=eq.active&order=name.asc`),
   ]);
   if (!group) return send(chatId, 'группа не найдена.');
   if (!students.length) return showOwnerGroup(chatId, groupId);
@@ -622,9 +816,8 @@ async function showGroupStudentsForDeletion(chatId, groupId, offset = 0) {
   const safeOffset = Math.max(0, Math.min(offset, Math.floor((students.length - 1) / pageSize) * pageSize));
   const page = students.slice(safeOffset, safeOffset + pageSize);
   const buttons = page.map(student => [{
-    text: `🗑 ${student.name || 'Без имени'}`,
-    callback_data: `student_delete:${student.id}`,
-    color: 'negative',
+    text: `${student.vk_id ? '✅' : '⏳'} ${student.name || 'Без имени'}`,
+    callback_data: `owner_student:${student.id}`,
   }]);
   const navigation = [];
   if (safeOffset > 0) {
@@ -637,39 +830,128 @@ async function showGroupStudentsForDeletion(chatId, groupId, offset = 0) {
   buttons.push([{ text: '← назад к группе', callback_data: `owner_group:${group.id}` }]);
 
   return send(chatId,
-    `группа: <b>${html(group.name)}</b>\n\nвыбери ученика, которого нужно удалить:`,
+    `группа: <b>${html(group.name)}</b>\n\nвыбери ученика, чтобы посмотреть статус и ссылку:`,
+    kbd(buttons));
+}
+
+async function showOwnerStudent(chatId, studentId) {
+  const student = await sbOne('students', `id=eq.${encodeURIComponent(studentId)}`);
+  if (!student) return send(chatId, 'ученик не найден.');
+  const [group, assignments] = await Promise.all([
+    sbOne('groups', `id=eq.${encodeURIComponent(student.group_id)}&select=id,name,group_type`),
+    sbSelect('homework_assignments',
+      `group_id=eq.${encodeURIComponent(student.group_id)}&select=id,topic,due_date,hw_type,task_config`),
+  ]);
+  const assignmentMap = new Map(assignments.map(assignment => [assignment.id, assignment]));
+  const submissions = assignments.length
+    ? await sbSelect('homework_submissions',
+      `student_id=eq.${encodeURIComponent(student.id)}&select=assignment_id,status,score,max_score,checked_at`)
+    : [];
+  const metrics = buildStudentMetrics(submissions, assignmentMap);
+  const inviteLink = !student.vk_id ? studentInviteLink(student.reg_token) : null;
+  const connection = student.vk_id
+    ? '✅ подключён к боту'
+    : `⏳ ждёт подключения\n\nссылка:\n<code>${inviteLink || '—'}</code>\n\nкод:\n<code>${student.reg_token}</code>`;
+  const buttons = [];
+  if (!student.vk_id && inviteLink) {
+    buttons.push([{ text: '🔗 показать ссылку ещё раз', callback_data: `owner_student:${student.id}` }]);
+  }
+  buttons.push([{
+    text: '📦 архивировать ученика',
+    callback_data: `student_delete:${student.id}`,
+  }]);
+  buttons.push([{ text: '← к ученикам', callback_data: `group_students:${student.group_id}:0` }]);
+  const trialResult = metrics.lastTrialScore !== null && metrics.lastTrialMaxScore
+    ? `${metrics.lastTrialScore}/${metrics.lastTrialMaxScore}`
+    : metrics.lastTrialPercent !== null ? `${metrics.lastTrialPercent}%` : 'ещё не проводился';
+  const trial = `${trialResult}${student.target_score ? ` · цель ${student.target_score}` : ''}`;
+  return send(chatId,
+    `<b>${html(student.name)}</b>\nгруппа: <b>${html(group?.name || '—')}</b>\n\n${connection}\n\n` +
+    `<b>показатели</b>\n` +
+    `выполнение: <b>${metrics.completed}/${metrics.total}</b>\n` +
+    `последние 3 ДЗ: <b>${metrics.recentAverage === null ? '—' : `${metrics.recentAverage}%`}</b>\n` +
+    `динамика: <b>${metrics.trend === null ? 'мало данных' : `${metrics.trend >= 0 ? '+' : ''}${metrics.trend} п.п.`}</b>\n` +
+    `последний пробник: <b>${trial}</b>\n\n` +
+    `<b>что делать:</b> ${metrics.attention}`,
+    kbd(buttons));
+}
+
+async function showGroupAssignments(chatId, groupId, offset = 0) {
+  const pageSize = 8;
+  const [group, assignments] = await Promise.all([
+    sbOne('groups', `id=eq.${encodeURIComponent(groupId)}&select=id,name`),
+    sbSelect('homework_assignments',
+      `group_id=eq.${encodeURIComponent(groupId)}&archived_at=is.null` +
+      `&order=assigned_at.desc&limit=${pageSize}&offset=${Math.max(0, offset)}`),
+  ]);
+  if (!group) return send(chatId, 'группа не найдена.');
+  if (!assignments.length) return send(chatId, 'в этой группе нет активных ДЗ.', kbd([
+    [{ text: '← назад к группе', callback_data: `owner_group:${group.id}` }],
+  ]));
+
+  const assignmentIds = assignments.map(assignment => assignment.id);
+  const submissions = await sbSelect('homework_submissions',
+    `assignment_id=in.(${assignmentIds.join(',')})&select=assignment_id,status`);
+  const lines = assignments.map((assignment, index) => {
+    const rows = submissions.filter(row => row.assignment_id === assignment.id);
+    const submitted = rows.filter(row => ['submitted', 'checked'].includes(row.status)).length;
+    const overdue = rows.filter(row => ['assigned', 'revision'].includes(row.status))
+      .filter(() => assignment.due_date && assignment.due_date < todayMoscow()).length;
+    return `${offset + index + 1}. <b>${html(assignment.topic)}</b> · ${humanDueDate(assignment.due_date)}\n` +
+      `   сдали ${submitted}/${rows.length}${overdue ? ` · 🔴 просрочили ${overdue}` : ''}`;
+  });
+  const buttons = assignments.map(assignment => [{
+    text: (assignment.topic || 'Без темы').slice(0, 40),
+    callback_data: `dz:${assignment.id}`,
+  }]);
+  const nav = [];
+  if (offset > 0) nav.push({ text: '←', callback_data: `group_hw:${group.id}:${Math.max(0, offset - pageSize)}` });
+  if (assignments.length === pageSize) nav.push({ text: '→', callback_data: `group_hw:${group.id}:${offset + pageSize}` });
+  if (nav.length) buttons.push(nav);
+  buttons.push([{ text: '← назад к группе', callback_data: `owner_group:${group.id}` }]);
+  return send(chatId,
+    `<b>${html(group.name)}</b> · активные ДЗ\n\n${lines.join('\n\n')}`,
     kbd(buttons));
 }
 
 async function confirmStudentDeletion(chatId, studentId) {
   const student = await sbOne('students', `id=eq.${encodeURIComponent(studentId)}`);
-  if (!student) return send(chatId, 'ученик уже удалён или не найден.');
+  if (!student) return send(chatId, 'ученик уже архивирован или не найден.');
   return send(chatId,
-    `точно удалить ученика <b>${html(student.name)}</b>?\n\nего сдачи и результаты тоже будут удалены.`,
+    `архивировать ученика <b>${html(student.name)}</b>?\n\nОн исчезнет из активной группы, но все сдачи и результаты сохранятся.`,
     kbd([
-      [{ text: '✅ да, удалить', callback_data: `student_delete_ok:${student.id}`, color: 'negative' }],
-      [{ text: '❌ отмена', callback_data: `owner_group:${student.group_id}` }],
+      [{ text: '✅ да, в архив', callback_data: `student_delete_ok:${student.id}` }],
+      [{ text: '❌ отмена', callback_data: `owner_student:${student.id}` }],
     ]));
 }
 
 async function deleteStudent(chatId, studentId) {
   const student = await sbOne('students', `id=eq.${encodeURIComponent(studentId)}`);
-  if (!student) return send(chatId, 'ученик уже удалён или не найден.');
+  if (!student) return send(chatId, 'ученик уже архивирован или не найден.');
   const group = await sbOne('groups', `id=eq.${encodeURIComponent(student.group_id)}`);
 
-  await sbDelete('students', `id=eq.${encodeURIComponent(student.id)}`);
+  await sbPatch('students', `id=eq.${encodeURIComponent(student.id)}`, {
+    status: 'left',
+    updated_at: new Date().toISOString(),
+  });
+  await sbPatch('homework_submissions',
+    `student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,revision)`,
+    { status: 'cancelled' });
   if (student.vk_id) {
     await sbDelete('vk_sessions', `vk_user_id=eq.${encodeURIComponent(student.vk_id)}`).catch(() => {});
   }
 
   if (group?.group_type === 'individual') {
-    await sbDelete('groups', `id=eq.${encodeURIComponent(group.id)}`);
-    return send(chatId, `✅ ${html(student.name)} и его индивидуальная группа удалены.`, kbd([
+    await sbPatch('groups', `id=eq.${encodeURIComponent(group.id)}`, {
+      active: false,
+      updated_at: new Date().toISOString(),
+    });
+    return send(chatId, `✅ ${html(student.name)} и его индивидуальная группа архивированы.`, kbd([
       [{ text: '← ко всем группам', callback_data: 'owner_groups' }],
     ]));
   }
 
-  return send(chatId, `✅ ученик ${html(student.name)} удалён.`, kbd([
+  return send(chatId, `✅ ученик ${html(student.name)} архивирован. История сохранена.`, kbd([
     [{ text: '← назад к группе', callback_data: `owner_group:${student.group_id}` }],
   ]));
 }
@@ -677,37 +959,54 @@ async function deleteStudent(chatId, studentId) {
 async function confirmGroupDeletion(chatId, groupId) {
   const [group, students] = await Promise.all([
     sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`),
-    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&order=name.asc`),
+    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&status=eq.active&order=name.asc`),
   ]);
-  if (!group) return send(chatId, 'группа уже удалена или не найдена.');
-  const studentsWarning = students.length
-    ? ` Вместе с ней удалятся все ученики (${students.length}), их сдачи и результаты.`
-    : '';
+  if (!group) return send(chatId, 'группа уже архивирована или не найдена.');
   return send(chatId,
-    `точно удалить группу <b>${html(group.name)}</b>?${studentsWarning}`,
+    `архивировать группу <b>${html(group.name)}</b>?\n\n${students.length} ученик(ов) исчезнут из активных списков, но вся история и результаты сохранятся.`,
     kbd([
-      [{ text: '✅ да, удалить всё', callback_data: `group_delete_ok:${group.id}`, color: 'negative' }],
+      [{ text: '✅ да, в архив', callback_data: `group_delete_ok:${group.id}` }],
       [{ text: '❌ отмена', callback_data: `owner_group:${group.id}` }],
     ]));
 }
 
 async function deleteGroup(chatId, groupId) {
-  const [group, students] = await Promise.all([
+  const [group, students, assignments] = await Promise.all([
     sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`),
-    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&order=name.asc`),
+    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&status=eq.active&order=name.asc`),
+    sbSelect('homework_assignments',
+      `group_id=eq.${encodeURIComponent(groupId)}&archived_at=is.null&select=id`),
   ]);
-  if (!group) return send(chatId, 'группа уже удалена или не найдена.');
+  if (!group) return send(chatId, 'группа уже архивирована или не найдена.');
 
-  await sbDelete('students', `group_id=eq.${encodeURIComponent(group.id)}`);
-  await sbDelete('groups', `id=eq.${encodeURIComponent(group.id)}`);
-  const vkIds = students.map(student => student.vk_id).filter(Boolean);
-  if (vkIds.length) {
-    await sbDelete('vk_sessions', `vk_user_id=in.(${vkIds.map(encodeURIComponent).join(',')})`).catch(() => {});
-  }
-
+  await sbPatch('groups', `id=eq.${encodeURIComponent(group.id)}`, {
+    active: false,
+    updated_at: new Date().toISOString(),
+  });
+  await Promise.all(assignments.map(assignment =>
+    sbRpc('set_homework_archived', { p_assignment_id: assignment.id, p_archived: true })
+  ));
   return send(chatId,
-    `✅ группа ${html(group.name)} удалена${students.length ? ` вместе с ${students.length} учениками` : ''}.`,
+    `✅ группа ${html(group.name)} архивирована. Ученики и результаты сохранены.`,
     kbd([[{ text: '← ко всем группам', callback_data: 'owner_groups' }]]));
+}
+
+async function restoreGroup(chatId, groupId) {
+  const group = await sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`);
+  if (!group) return send(chatId, 'группа не найдена.');
+  await sbPatch('groups', `id=eq.${encodeURIComponent(group.id)}`, {
+    active: true,
+    updated_at: new Date().toISOString(),
+  });
+  if (group.group_type === 'individual') {
+    await sbPatch('students', `group_id=eq.${encodeURIComponent(group.id)}&status=eq.left`, {
+      status: 'active',
+      updated_at: new Date().toISOString(),
+    });
+  }
+  return send(chatId,
+    `✅ группа ${html(group.name)} восстановлена. Старые ДЗ остались в архиве.`,
+    kbd([[{ text: 'открыть группу', callback_data: `owner_group:${group.id}` }]]));
 }
 
 async function startGroupCreation(chatId, tid) {
@@ -883,7 +1182,8 @@ async function finishIndividualStudentCreation(chatId, tid, rawName, sess) {
 // ── Student: list HW ──────────────────────────────────────────────────────────
 
 async function handleStudentListHw(chatId, student) {
-  const subs = await sbSelect('homework_submissions', `student_id=eq.${student.id}&status=eq.assigned`);
+  const subs = await sbSelect('homework_submissions',
+    `student_id=eq.${student.id}&status=in.(assigned,revision)`);
   if (!subs.length) return send(chatId, 'все задания сданы, молодец:)');
 
   const aIds      = [...new Set(subs.map(s => s.assignment_id))];
@@ -893,14 +1193,25 @@ async function handleStudentListHw(chatId, student) {
 
   const buttons = [];
   const lines   = [];
-  subs.forEach((sub, i) => {
-    const a = aMap[sub.assignment_id];
-    if (!a) return;
-    const due    = a.due_date ? ` · срок: ${a.due_date}` : '';
-    const dueBtn = a.due_date ? ` · ${a.due_date.slice(8)}.${a.due_date.slice(5, 7)}` : '';
+  const pending = subs
+    .map(sub => ({ sub, assignment: aMap[sub.assignment_id] }))
+    .filter(item => item.assignment)
+    .sort((left, right) => {
+      const leftDue = left.assignment.due_date || '9999-12-31';
+      const rightDue = right.assignment.due_date || '9999-12-31';
+      return leftDue.localeCompare(rightDue);
+    });
+  pending.forEach(({ sub, assignment: a }, i) => {
+    const dueLabel = humanDueDate(a.due_date);
+    const overdue = a.due_date && a.due_date < todayMoscow();
+    const due = ` · ${overdue ? '🔴 ' : ''}${dueLabel}`;
     const type   = a.hw_type === 'brief' ? ' [краткий]' : a.hw_type === 'trial' ? ' [пробник]' : '';
-    lines.push(`${i + 1}. <b>${a.topic || 'без темы'}</b>${type}${due}`);
-    buttons.push([{ text: `${i + 1}. ${(a.topic || 'домашки').slice(0, 28)}${dueBtn}`, callback_data: `hw:${sub.id}` }]);
+    const revision = sub.status === 'revision' ? ' · 🔁 доработка' : '';
+    lines.push(`${i + 1}. <b>${a.topic || 'без темы'}</b>${type}${revision}${due}`);
+    buttons.push([{
+      text: `${overdue ? '🔴' : sub.status === 'revision' ? '🔁' : '📚'} ${(a.topic || 'домашки').slice(0, 28)} · ${dueLabel}`,
+      callback_data: `hw:${sub.id}`,
+    }]);
   });
 
   if (!lines.length) return send(chatId, 'нет активных заданий!');
@@ -922,33 +1233,24 @@ async function showStudentStats(chatId, student) {
     `student_id=eq.${student.id}&order=submitted_at.desc.nullsfirst`);
   const allSubs = rawSubs.filter(s => s.status !== 'cancelled');
 
-  const assigned  = allSubs.filter(s => s.status === 'assigned').length;
-  const submitted = allSubs.filter(s => s.status === 'submitted').length;
-  const checked   = allSubs.filter(s => s.status === 'checked');
-
-  const done = allSubs.filter(s => s.status !== 'assigned');
-  const aIds = done.length ? [...new Set(done.map(s => s.assignment_id))] : [];
+  const done = allSubs.filter(s => ['submitted', 'checked'].includes(s.status));
+  const aIds = allSubs.length ? [...new Set(allSubs.map(s => s.assignment_id))] : [];
   const assignments = aIds.length
     ? await sbSelect('homework_assignments', `id=in.(${aIds.join(',')})&select=id,topic,due_date,hw_type,task_config`)
     : [];
   const aMap = Object.fromEntries(assignments.map(a => [a.id, a]));
-
-  const checkedWithScore = checked.filter(s => s.score !== null);
-  const avgPct = checkedWithScore.length
-    ? Math.round(checkedWithScore.reduce((sum, s) => {
-        return sum + (toPercent(s.score, s.max_score, aMap[s.assignment_id]?.task_config) ?? 0);
-      }, 0) / checkedWithScore.length)
-    : null;
-
-  const scoreBar = avgPct !== null
-    ? (avgPct >= 80 ? '🟢' : avgPct >= 50 ? '🟡' : '🔴') + ` ${avgPct}%`
-    : '—';
-
+  const assignmentMap = new Map(assignments.map(assignment => [assignment.id, assignment]));
+  const metrics = buildStudentMetrics(allSubs, assignmentMap);
+  const trial = metrics.lastTrialScore !== null && metrics.lastTrialMaxScore
+    ? `${metrics.lastTrialScore}/${metrics.lastTrialMaxScore}`
+    : metrics.lastTrialPercent !== null ? `${metrics.lastTrialPercent}%` : 'ещё не проводился';
+  const target = student.target_score ? ` · цель ${student.target_score}` : '';
   const header = `📊 <b>мои результаты</b> · ${student.name}\n\n` +
-    `⏳ ждут сдачи: <b>${assigned}</b>\n` +
-    `📤 на проверке: <b>${submitted}</b>\n` +
-    `✅ проверено: <b>${checked.length}</b>\n` +
-    `⭐ средний балл: <b>${scoreBar}</b>`;
+    `выполнение: <b>${metrics.completed}/${metrics.total}</b>\n` +
+    `последние 3 ДЗ: <b>${metrics.recentAverage === null ? '—' : `${metrics.recentAverage}%`}</b>\n` +
+    `динамика: <b>${metrics.trend === null ? 'мало данных' : `${metrics.trend >= 0 ? '+' : ''}${metrics.trend} п.п.`}</b>\n` +
+    `последний пробник: <b>${trial}${target}</b>\n\n` +
+    `<b>что делать:</b> ${metrics.attention}`;
 
   if (!done.length) return send(chatId, header + '\n\nпока нет сданных работ:(');
 
@@ -1041,7 +1343,7 @@ async function showBriefReviewPage(chatId, tid, subId, correct, given) {
 async function submitBriefAnswers(chatId, student, subId, correct, given) {
   const now = new Date().toISOString();
   const sub = await sbOne('homework_submissions',
-    `id=eq.${encodeURIComponent(subId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
+    `id=eq.${encodeURIComponent(subId)}&student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,revision)`);
   if (!sub) {
     await setSession(student.vk_id, { step: 'student' });
     return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
@@ -1059,7 +1361,7 @@ async function submitBriefAnswers(chatId, student, subId, correct, given) {
     status: 'checked', submitted_at: now, checked_at: now,
     score, max_score: maxScore,
     comment: `${numCorrect}/${correct.length} верно`,
-    student_answers: given, source: 'vk',
+    student_answers: given, task_scores: results.map(ok => ok ? 1 : 0), source: 'vk',
     on_time: isSubmittedOnTime(assignment, now),
   });
   if (!updated) {
@@ -1081,7 +1383,7 @@ async function submitBriefAnswers(chatId, student, subId, correct, given) {
 
 async function handleStudentAnswer(chatId, student, subId, text, sess) {
   const sub = await sbOne('homework_submissions',
-    `id=eq.${encodeURIComponent(subId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
+    `id=eq.${encodeURIComponent(subId)}&student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,revision)`);
   if (!sub) {
     await setSession(student.vk_id, { step: 'student' });
     return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
@@ -1110,7 +1412,7 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
       status: 'checked', submitted_at: now, checked_at: now,
       score, max_score: maxScore,
       comment: `${numCorrect}/${correct.length} верно`,
-      student_answers: given, source: 'vk',
+      student_answers: given, task_scores: results.map(ok => ok ? 1 : 0), source: 'vk',
       on_time: isSubmittedOnTime(assignment, now),
     });
     if (!updated) {
@@ -1134,7 +1436,7 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
     status: 'checked', submitted_at: now, checked_at: now,
     score: isCorrect ? 100 : 0, max_score: 100,
     comment: isCorrect ? 'верно!' : `неверно. правильный ответ: ${correct || 'не указан'}`,
-    source: 'vk',
+    task_scores: [isCorrect ? 1 : 0], source: 'vk',
     on_time: isSubmittedOnTime(assignment, now),
   });
   if (!updated) {
@@ -1155,7 +1457,7 @@ async function handleStudentAnswer(chatId, student, subId, text, sess) {
 
 async function finalizeStudentFiles(chatId, student, subId, files) {
   const sub = await sbOne('homework_submissions',
-    `id=eq.${encodeURIComponent(subId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
+    `id=eq.${encodeURIComponent(subId)}&student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,revision)`);
   if (!sub) {
     await setSession(student.vk_id, { step: 'student' });
     return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
@@ -1261,25 +1563,6 @@ async function createLessonForHomework(chatId, tid, rawTopic, sess) {
     `group_id=eq.${encodeURIComponent(groupId)}&sheet_lesson_key=like.manual:*&order=sequence.desc&limit=1`);
   const sequence = Math.max(0, Number(latest[0]?.sequence) || 0) + 1;
   const lessonId = botId();
-  const now = new Date().toISOString();
-  try {
-    await sbInsert('lessons', {
-      id: lessonId,
-      group_id: groupId,
-      sheet_lesson_key: `manual:${lessonId}`,
-      lesson_number: String(sequence),
-      sequence,
-      topic,
-      event_type: 'lesson',
-      scheduled_date: null,
-      active: true,
-      created_at: now,
-      updated_at: now,
-    });
-  } catch (error) {
-    await setSession(tid, { step: 'owner' });
-    return send(chatId, `❌ не удалось создать урок:\n<code>${html(error.message)}</code>`);
-  }
 
   await setSession(tid, {
     step: 'await_date',
@@ -1290,15 +1573,32 @@ async function createLessonForHomework(chatId, tid, rawTopic, sess) {
       lesson_number: String(sequence),
       topic,
       assignment_id: botId(),
+      pending_lesson: {
+        id: lessonId,
+        group_id: groupId,
+        sheet_lesson_key: `manual:${lessonId}`,
+        lesson_number: String(sequence),
+        sequence,
+        topic,
+        event_type: 'lesson',
+        scheduled_date: null,
+        active: true,
+      },
     },
   });
   return send(chatId,
-    `урок <b>${sequence}. ${html(topic)}</b> создан.\n\nвведи дедлайн ДЗ (ДД.ММ.ГГГГ) или «-»:`);
+    `тема: <b>${html(topic)}</b>\n\nвыбери дедлайн или введи дату в формате ДД.ММ.ГГГГ:`,
+    deadlineKeyboard());
 }
 
 // ── Owner: step-by-step text input ───────────────────────────────────────────
 
 async function handleOwnerStep(chatId, tid, sess, text) {
+  if (typeof sess.step === 'string' && sess.step.startsWith('revision_comment:')) {
+    const subId = sess.step.slice('revision_comment:'.length);
+    if (text.trim().length < 2) return send(chatId, 'напиши коротко, что ученику нужно исправить:');
+    return saveRevisionRequest(chatId, tid, subId, text.trim());
+  }
   if (typeof sess.step === 'string' && sess.step.startsWith('review_task:')) {
     const subId = sess.step.slice('review_task:'.length);
     const taskConfig = sess.data?.task_config || [];
@@ -1351,23 +1651,31 @@ async function handleOwnerStep(chatId, tid, sess, text) {
         return send(chatId, 'неверный формат. введи ДД.ММ.ГГГГ или «-»:');
       }
       const dueFmt = due ? due.split('.').reverse().join('-') : '';
-      await setSession(tid, { step: 'await_hwtype', data: { ...sess.data, due_date: dueFmt } });
-      return send(chatId, 'выбери тип задания:',
-        kbd([
-          [{ text: '🔢 краткий ответ',         callback_data: 'hwtype:brief'         }],
-          [{ text: '📝 подробный — несложное',  callback_data: 'hwtype:detailed_easy' }],
-          [{ text: '📝 подробный — сложное',    callback_data: 'hwtype:detailed_hard' }],
-          [{ text: '📋 пробник',                callback_data: 'hwtype:trial'         }],
-        ]));
+      return showHomeworkTypeSelection(chatId, tid, sess, dueFmt);
     }
 
     case 'await_pdf': {
       if (text !== '-') return send(chatId, 'отправь PDF-файл с заданием (или напиши «-» чтобы пропустить):');
-      const newData = { ...sess.data, file_id: null };
-      await setSession(tid, { step: 'await_count', data: newData });
-      return send(chatId, newData.hw_type === 'brief'
-        ? 'сколько заданий (ответов) в этой работе?'
-        : 'сколько заданий в этой работе?');
+      return requestHomeworkConfig(chatId, tid, { ...sess.data, file_id: null });
+    }
+
+    case 'await_answers_bulk': {
+      const answers = text.split(';').map(value => value.trim()).filter(Boolean);
+      if (!answers.length || answers.length > 50) {
+        return send(chatId, 'введи от 1 до 50 ответов через точку с запятой.');
+      }
+      return showHomeworkPreview(chatId, tid, { ...sess.data, answers });
+    }
+
+    case 'await_scores_bulk': {
+      if (text === '-') {
+        return showHomeworkPreview(chatId, tid, { ...sess.data, task_config: null });
+      }
+      const scores = text.split(';').map(value => Number(value.trim().replace(',', '.')));
+      if (!scores.length || scores.length > 50 || scores.some(value => !Number.isFinite(value) || value <= 0)) {
+        return send(chatId, 'введи от 1 до 50 положительных чисел через точку с запятой.');
+      }
+      return showHomeworkPreview(chatId, tid, { ...sess.data, task_config: scores });
     }
 
     case 'await_count': {
@@ -1419,7 +1727,14 @@ async function finishHwCreation(chatId, tid, data) {
 
   const assignmentId = data.assignment_id || botId();
   let students;
+  let createdLessonId = null;
   try {
+    if (data.pending_lesson) {
+      const now = new Date().toISOString();
+      await sbInsert('lessons', { ...data.pending_lesson, created_at: now, updated_at: now });
+      createdLessonId = data.pending_lesson.id;
+      data = { ...data, lesson_id: createdLessonId };
+    }
     students = await sbSelect('students',
       `group_id=eq.${encodeURIComponent(data.group_id)}&status=eq.active`);
     if (!students.length) {
@@ -1444,17 +1759,26 @@ async function finishHwCreation(chatId, tid, data) {
       throw new Error(`ожидалось учеников: ${students.length}, создано записей: ${assignedCount}`);
     }
   } catch (err) {
+    if (createdLessonId) {
+      await sbDelete('lessons', `id=eq.${encodeURIComponent(createdLessonId)}`).catch(() => {});
+    }
     await setSession(tid, { step: 'owner' });
     return send(chatId,
       `❌ ДЗ не создано и никому не отправлено.\n\n<code>${html(err.message)}</code>`);
   }
 
   const due = data.due_date ? `\nдедлайн: <b>${data.due_date}</b>` : '';
-  const notifyText = `📚 новое ДЗ: <b>${html(data.topic)}</b>${due}\n/dz — открыть задания`;
+  const createdSubmissions = await sbSelect('homework_submissions',
+    `assignment_id=eq.${encodeURIComponent(assignmentId)}&select=id,student_id`);
+  const submissionByStudent = new Map(createdSubmissions.map(row => [row.student_id, row]));
+  const notifyText = `📚 новое ДЗ: <b>${html(data.topic)}</b>${due}`;
   const connectedStudents = students.filter(student => student.vk_id);
   const notificationResults = await Promise.all(connectedStudents.map(async student => {
     try {
-      await send(student.vk_id, notifyText);
+      const submission = submissionByStudent.get(student.id);
+      await send(student.vk_id, notifyText, submission ? kbd([[
+        { text: '📚 открыть задание', callback_data: `hw:${submission.id}`, color: 'primary' },
+      ]]) : {});
       return { student, sent: true };
     } catch (error) {
       console.error(`Homework notification failed for ${student.id}:`, error);
@@ -1613,11 +1937,77 @@ async function showDzDetail(chatId, hwId) {
     : [
         [{ text: '✏️ изменить тему', callback_data: `dz_et:${hwId}` },
          { text: '📅 изменить дедлайн', callback_data: `dz_ed:${hwId}` }],
+        [{ text: '🔔 напомнить несдавшим', callback_data: `dz_remind:${hwId}` }],
+        [{ text: '🔁 повторить ДЗ', callback_data: `dz_repeat:${hwId}` }],
         [{ text: '📦 убрать в архив', callback_data: `dz_arc:${hwId}` }],
         [{ text: '← к списку', callback_data: 'dz_pg:0' }],
       ];
 
   return send(chatId, `${text}\nстатус: ${a.archived_at ? 'в архиве' : 'активно'}`, kbd(buttons));
+}
+
+async function remindMissingStudents(chatId, hwId) {
+  const assignment = await sbOne('homework_assignments',
+    `id=eq.${encodeURIComponent(hwId)}&archived_at=is.null`);
+  if (!assignment) return send(chatId, 'ДЗ не найдено или уже в архиве.');
+  const submissions = await sbSelect('homework_submissions',
+    `assignment_id=eq.${encodeURIComponent(hwId)}&status=in.(assigned,revision)` +
+    `&select=id,student_id,status`);
+  if (!submissions.length) return send(chatId, 'все ученики уже сдали это ДЗ.', kbd([
+    [{ text: '← назад к ДЗ', callback_data: `dz:${hwId}` }],
+  ]));
+  const studentIds = [...new Set(submissions.map(row => row.student_id))];
+  const students = await sbSelect('students',
+    `id=in.(${studentIds.join(',')})&status=eq.active&select=id,name,vk_id`);
+  const studentMap = new Map(students.map(student => [student.id, student]));
+  const results = await Promise.all(submissions.map(async submission => {
+    const student = studentMap.get(submission.student_id);
+    if (!student?.vk_id) return { student, sent: false, disconnected: true };
+    try {
+      const prefix = submission.status === 'revision' ? '🔁 ждём исправленную работу' : '⏰ напоминание о ДЗ';
+      await send(student.vk_id,
+        `${prefix}: <b>${html(assignment.topic)}</b>\nсрок: <b>${humanDueDate(assignment.due_date)}</b>`,
+        kbd([[{ text: '📚 открыть задание', callback_data: `hw:${submission.id}`, color: 'primary' }]])
+      );
+      return { student, sent: true };
+    } catch {
+      return { student, sent: false, disconnected: false };
+    }
+  }));
+  const sentCount = results.filter(result => result.sent).length;
+  const unavailable = results.filter(result => !result.sent).map(result => result.student?.name).filter(Boolean);
+  return send(chatId,
+    `🔔 напоминание отправлено: <b>${sentCount}/${submissions.length}</b>` +
+    (unavailable.length ? `\nне удалось отправить: ${unavailable.map(html).join(', ')}` : ''),
+    kbd([[{ text: '← назад к ДЗ', callback_data: `dz:${hwId}` }]]));
+}
+
+async function startHomeworkRepeat(chatId, tid, hwId) {
+  const assignment = await sbOne('homework_assignments', `id=eq.${encodeURIComponent(hwId)}`);
+  if (!assignment) return send(chatId, 'ДЗ не найдено.');
+  const group = await sbOne('groups',
+    `id=eq.${encodeURIComponent(assignment.group_id)}&active=eq.true`);
+  if (!group) return send(chatId, 'группа не найдена или находится в архиве.');
+  await setSession(tid, {
+    step: 'repeat_due',
+    data: {
+      assignment_id: botId(),
+      group_id: group.id,
+      group_name: group.name,
+      lesson_id: assignment.lesson_id,
+      lesson_number: '',
+      topic: assignment.topic,
+      hw_type: assignment.hw_type === 'detailed'
+        ? assignment.is_advanced ? 'detailed_hard' : 'detailed_easy'
+        : assignment.hw_type,
+      file_id: assignment.file_id || null,
+      answers: assignment.answers || null,
+      task_config: assignment.task_config || null,
+    },
+  });
+  return send(chatId,
+    `повторяем ДЗ «<b>${html(assignment.topic)}</b>». выбери новый дедлайн:`,
+    deadlineKeyboard('repeat_due'));
 }
 
 // ── Callback handler ──────────────────────────────────────────────────────────
@@ -1630,13 +2020,16 @@ async function handleCallback(cq) {
 
   const owner = isOwner(tid);
   const [student, sess] = await Promise.all([
-    owner ? Promise.resolve(null) : sbOne('students', `vk_id=eq.${tid}`),
+    owner ? Promise.resolve(null) : sbOne('students', `vk_id=eq.${tid}&status=eq.active`),
     getSession(tid),
   ]);
 
   // Owner: groups and adding students
   if (data === 'owner_groups' && owner) {
     return showOwnerGroups(chatId);
+  }
+  if (data === 'owner_groups_archived' && owner) {
+    return showOwnerGroups(chatId, true);
   }
   if (data === 'new_group' && owner) {
     return showGroupCreationMenu(chatId);
@@ -1659,6 +2052,16 @@ async function handleCallback(cq) {
   if (data.startsWith('owner_group:') && owner) {
     return showOwnerGroup(chatId, data.slice('owner_group:'.length));
   }
+  if (data.startsWith('owner_student:') && owner) {
+    return showOwnerStudent(chatId, data.slice('owner_student:'.length));
+  }
+  if (data.startsWith('group_hw:') && owner) {
+    const value = data.slice('group_hw:'.length);
+    const separator = value.lastIndexOf(':');
+    const groupId = value.slice(0, separator);
+    const offset = Number(value.slice(separator + 1)) || 0;
+    return showGroupAssignments(chatId, groupId, offset);
+  }
   if (data.startsWith('group_students:') && owner) {
     const value = data.slice('group_students:'.length);
     const separator = value.lastIndexOf(':');
@@ -1678,6 +2081,9 @@ async function handleCallback(cq) {
   if (data.startsWith('group_delete:') && owner) {
     return confirmGroupDeletion(chatId, data.slice('group_delete:'.length));
   }
+  if (data.startsWith('group_restore:') && owner) {
+    return restoreGroup(chatId, data.slice('group_restore:'.length));
+  }
   if (data.startsWith('student_group:') && owner) {
     const groupId = data.slice('student_group:'.length);
     const group = await sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`);
@@ -1689,10 +2095,27 @@ async function handleCallback(cq) {
     return send(chatId, `группа: <b>${html(group.name)}</b>\n\nвведи имя ученика:`);
   }
   if (data.startsWith('hw_for_group:') && owner) {
-    return showLessonsForHomework(chatId, tid, data.slice('hw_for_group:'.length), 0);
+    const groupId = data.slice('hw_for_group:'.length);
+    const group = await sbOne('groups', `id=eq.${encodeURIComponent(groupId)}&active=eq.true`);
+    if (!group) return send(chatId, 'группа не найдена.');
+    await setSession(tid, {
+      step: 'await_lesson_topic',
+      data: { group_id: group.id, group_name: group.name },
+    });
+    return send(chatId,
+      `группа: <b>${html(group.name)}</b>\n\nвведи тему нового ДЗ:`,
+      kbd([[{ text: '❌ отменить создание', callback_data: 'hw_cancel' }]]));
   }
   if (data.startsWith('review:') && owner) {
     return startOwnerReview(chatId, tid, data.slice('review:'.length));
+  }
+  if (data.startsWith('review_revision:') && owner) {
+    const subId = data.slice('review_revision:'.length);
+    const sub = await sbOne('homework_submissions',
+      `id=eq.${encodeURIComponent(subId)}&status=eq.submitted`);
+    if (!sub) return send(chatId, 'эта работа уже обработана.');
+    await setSession(tid, { step: `revision_comment:${subId}`, data: {} });
+    return send(chatId, 'напиши коротко, что ученику нужно исправить:');
   }
   if (data.startsWith('unchecked_pg:') && owner) {
     return showUncheckedSubmissions(chatId, parseInt(data.slice('unchecked_pg:'.length), 10) || 0);
@@ -1707,6 +2130,12 @@ async function handleCallback(cq) {
   }
   if (data.startsWith('dz:') && owner) {
     return showDzDetail(chatId, data.slice(3));
+  }
+  if (data.startsWith('dz_remind:') && owner) {
+    return remindMissingStudents(chatId, data.slice('dz_remind:'.length));
+  }
+  if (data.startsWith('dz_repeat:') && owner) {
+    return startHomeworkRepeat(chatId, tid, data.slice('dz_repeat:'.length));
   }
   if (data.startsWith('dz_et:') && owner) {
     const hwId = data.slice(6);
@@ -1803,7 +2232,8 @@ async function handleCallback(cq) {
       },
     });
     return send(chatId,
-      `урок: <b>${html(lesson.lesson_number || '—')}. ${html(lesson.topic)}</b>\n\nвведи дедлайн ДЗ (ДД.ММ.ГГГГ) или «-»:`);
+      `урок: <b>${html(lesson.lesson_number || '—')}. ${html(lesson.topic)}</b>\n\nвыбери дедлайн или введи дату в формате ДД.ММ.ГГГГ:`,
+      deadlineKeyboard());
   }
 
   // Compatibility with buttons sent by the previous version.
@@ -1847,21 +2277,52 @@ async function handleCallback(cq) {
       },
     });
     return send(chatId,
-      `урок: <b>${html(lesson.lesson_number || '—')}. ${html(lesson.topic)}</b>\n\nвведи дедлайн ДЗ (ДД.ММ.ГГГГ) или «-»:`);
+      `урок: <b>${html(lesson.lesson_number || '—')}. ${html(lesson.topic)}</b>\n\nвыбери дедлайн или введи дату в формате ДД.ММ.ГГГГ:`,
+      deadlineKeyboard());
+  }
+
+  if (data.startsWith('hw_due:') && owner && sess.step === 'await_date') {
+    const value = data.slice('hw_due:'.length);
+    const dueDate = value === 'none' ? '' : dueDateAfter(Number(value));
+    if (value !== 'none' && !['1', '3', '7'].includes(value)) {
+      return send(chatId, 'эта кнопка дедлайна устарела. введи дату вручную.');
+    }
+    return showHomeworkTypeSelection(chatId, tid, sess, dueDate);
+  }
+  if (data.startsWith('repeat_due:') && owner && sess.step === 'repeat_due') {
+    const value = data.slice('repeat_due:'.length);
+    if (value !== 'none' && !['1', '3', '7'].includes(value)) {
+      return send(chatId, 'эта кнопка дедлайна устарела. повтори действие.');
+    }
+    const dueDate = value === 'none' ? '' : dueDateAfter(Number(value));
+    return showHomeworkPreview(chatId, tid, { ...sess.data, due_date: dueDate });
   }
 
   // Owner: HW type selection
   if (data.startsWith('hwtype:') && owner && sess.step === 'await_hwtype') {
     const hwType = data.slice(7);
     await setSession(tid, { step: 'await_pdf', data: { ...sess.data, hw_type: hwType } });
-    return send(chatId, 'отправь PDF-файл с заданием (или напиши «-» чтобы пропустить):');
+    return send(chatId, 'отправь PDF-файл с заданием или нажми «без файла»:', kbd([
+      [{ text: 'без файла', callback_data: 'hw_no_file' }],
+      [{ text: '❌ отменить создание', callback_data: 'hw_cancel' }],
+    ]));
+  }
+  if (data === 'hw_no_file' && owner && sess.step === 'await_pdf') {
+    return requestHomeworkConfig(chatId, tid, { ...sess.data, file_id: null });
+  }
+  if (data === 'hw_confirm' && owner && sess.step === 'confirm_hw') {
+    return finishHwCreation(chatId, tid, sess.data || {});
+  }
+  if (data === 'hw_cancel' && owner) {
+    await setSession(tid, { step: 'owner' });
+    return send(chatId, 'создание ДЗ отменено.', rkbd(OWNER_KBD));
   }
 
   // Student taps HW
   if (data.startsWith('hw:') && student) {
     const subId = data.slice(3);
     const sub   = await sbOne('homework_submissions',
-      `id=eq.${subId}&student_id=eq.${student.id}&status=eq.assigned`);
+      `id=eq.${subId}&student_id=eq.${student.id}&status=in.(assigned,revision)`);
     if (!sub) return send(chatId, 'задание уже сдано или не найдено.');
 
     const assignment = await sbOne('homework_assignments', `id=eq.${sub.assignment_id}`);
@@ -1872,21 +2333,25 @@ async function handleCallback(cq) {
     }
 
     const desc = assignment.description ? `\n${assignment.description}` : '';
+    const revisionNote = sub.status === 'revision' && sub.comment
+      ? `\n\n🔁 <b>что исправить:</b>\n${html(sub.comment)}`
+      : '';
 
     if (assignment.hw_type === 'brief') {
       const answers = assignment.answers;
       if (answers && Array.isArray(answers) && answers.length > 0) {
+        if (revisionNote) await send(chatId, `<b>${assignment.topic}</b>${revisionNote}`);
         const given = new Array(answers.length).fill('');
         return showBriefAnswerStep(chatId, tid, subId, answers, given, 0);
       }
       await setSession(tid, { step: `await_answer:${subId}` });
-      return send(chatId, `<b>${assignment.topic}</b>${desc}\n\nвведи ответ:`);
+      return send(chatId, `<b>${assignment.topic}</b>${desc}${revisionNote}\n\nвведи ответ:`);
     }
 
     // detailed / trial → collect files from student
     await setSession(tid, { step: `await_files:${subId}`, data: { files: [] } });
     return send(chatId,
-      `<b>${assignment.topic}</b>${desc}\n\nотправь выполненное задание фото или .pdf-файлом.\nможно несколько файлов — нажми «отправить работу», когда пришлёшь всё.`,
+      `<b>${assignment.topic}</b>${desc}${revisionNote}\n\nотправь выполненное задание фото или .pdf-файлом.\nможно несколько файлов — нажми «отправить работу», когда пришлёшь всё.`,
       kbd([[{ text: '✅ отправить работу', callback_data: `submit_files:${subId}` }],
            [{ text: '❌ отменить',         callback_data: 'cancel_files' }]]));
   }
@@ -1896,7 +2361,7 @@ async function handleCallback(cq) {
     const subId = data.slice('submit_files:'.length);
     const activeSubmission = await sbOne('homework_submissions',
       `id=eq.${encodeURIComponent(subId)}` +
-      `&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
+      `&student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,revision)`);
     if (!activeSubmission) {
       await setSession(tid, { step: 'student' });
       return send(chatId, 'эта работа уже была отправлена. повторно сдавать её не нужно.');
@@ -1907,6 +2372,24 @@ async function handleCallback(cq) {
     const files = sess.data?.files || [];
     if (!files.length) return send(chatId, 'пришли хотя бы один файл с выполненным заданием!');
     return finalizeStudentFiles(chatId, student, subId, files);
+  }
+
+  if (data.startsWith('remove_last_file:') && student) {
+    const subId = data.slice('remove_last_file:'.length);
+    if (sess.step !== `await_files:${subId}`) {
+      return send(chatId, 'эта кнопка устарела. снова открой задание.');
+    }
+    const files = [...(sess.data?.files || [])];
+    if (!files.length) return send(chatId, 'пока нет загруженных файлов.');
+    files.pop();
+    await setSession(tid, { step: `await_files:${subId}`, data: { ...sess.data, files } });
+    return send(chatId,
+      files.length ? `последний файл удалён. осталось: ${files.length}` : 'последний файл удалён. список пуст.',
+      kbd([
+        [{ text: '✅ отправить работу', callback_data: `submit_files:${subId}` }],
+        ...(files.length ? [[{ text: '↩️ удалить последний файл', callback_data: `remove_last_file:${subId}` }]] : []),
+        [{ text: '❌ отменить', callback_data: 'cancel_files' }],
+      ]));
   }
 
   // Student cancels file submission
@@ -1931,7 +2414,7 @@ async function handleCallback(cq) {
     if (sess.step !== `brief_review:${subId}`) {
       const activeSubmission = await sbOne('homework_submissions',
         `id=eq.${encodeURIComponent(subId)}` +
-        `&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
+        `&student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,revision)`);
       return send(chatId, activeSubmission
         ? 'эта кнопка устарела. снова открой задание через /dz.'
         : 'эта работа уже была отправлена. повторно сдавать её не нужно.');
@@ -1977,12 +2460,43 @@ async function startOwnerReview(chatId, tid, subId) {
       data: { task_config: taskConfig, task_scores: [], current: 0 },
     });
     return send(chatId,
-      `<b>${html(student.name)}</b> · ${html(assignment.topic)}\n\nзадание 1 из ${taskConfig.length}: сколько баллов из ${taskConfig[0]}?`);
+      `<b>${html(student.name)}</b> · ${html(assignment.topic)}\n\nзадание 1 из ${taskConfig.length}: сколько баллов из ${taskConfig[0]}?`,
+      kbd([[{ text: '🔁 вернуть на доработку', callback_data: `review_revision:${subId}` }]]));
   }
 
   await setSession(tid, { step: `review_total:${subId}`, data: {} });
   return send(chatId,
-    `<b>${html(student.name)}</b> · ${html(assignment.topic)}\n\nвведи итоговый результат от 0 до 100:`);
+    `<b>${html(student.name)}</b> · ${html(assignment.topic)}\n\nвведи итоговый результат от 0 до 100:`,
+    kbd([[{ text: '🔁 вернуть на доработку', callback_data: `review_revision:${subId}` }]]));
+}
+
+async function saveRevisionRequest(chatId, tid, subId, comment) {
+  const sub = await sbOne('homework_submissions',
+    `id=eq.${encodeURIComponent(subId)}&status=eq.submitted`);
+  if (!sub) return send(chatId, 'эта работа уже обработана.');
+  const [assignment, student] = await Promise.all([
+    sbOne('homework_assignments', `id=eq.${encodeURIComponent(sub.assignment_id)}`),
+    sbOne('students', `id=eq.${encodeURIComponent(sub.student_id)}`),
+  ]);
+  if (!assignment || !student) return send(chatId, 'не удалось загрузить данные работы.');
+  const updated = await sbPatch('homework_submissions',
+    `id=eq.${encodeURIComponent(subId)}&status=eq.submitted`, {
+      status: 'revision',
+      comment,
+      checked_at: new Date().toISOString(),
+    });
+  if (!updated.length) return send(chatId, 'эта работа уже обработана.');
+  await setSession(tid, { step: 'owner' });
+  if (student.vk_id) {
+    await send(student.vk_id,
+      `🔁 работа «<b>${html(assignment.topic)}</b>» возвращена на доработку.\n\n` +
+      `<b>что исправить:</b> ${html(comment)}`,
+      kbd([[{ text: '📚 открыть и пересдать', callback_data: `hw:${sub.id}`, color: 'primary' }]])
+    ).catch(() => {});
+  }
+  return send(chatId,
+    `🔁 работа <b>${html(student.name)}</b> возвращена на доработку.`,
+    kbd([[{ text: '🕒 к непроверенным', callback_data: 'unchecked_pg:0' }]]));
 }
 
 async function saveOwnerReview(chatId, tid, subId, comment, review) {

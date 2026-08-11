@@ -14,11 +14,16 @@ const vkCalls = [];
 const insertedGroups = [];
 const insertedStudents = [];
 const studentPatches = [];
+const groupPatches = [];
 const deletedRequests = [];
 const rpcCalls = [];
+const homeworkRpcCalls = [];
+const insertedLessons = [];
 let returnManyGroups = false;
 let sessionState = {};
 let diagnosticState = {};
+let submissionRows = [];
+let assignmentRows = [];
 let registeredStudent = {
   id: 's1', name: 'Иван Иванов', group_id: 'g1', status: 'active',
   reg_token: 'student-token', vk_id: null, created_at: '2026-08-02T08:10:00.000Z',
@@ -57,6 +62,9 @@ globalThis.fetch = async (url, options = {}) => {
   if (target.includes('/rest/v1/students?id=eq.') && method === 'GET') {
     return json([registeredStudent]);
   }
+  if (target.includes('/rest/v1/students?id=in.(') && method === 'GET') {
+    return json([registeredStudent]);
+  }
   if (target.includes('/rest/v1/students?group_id=eq.g1') && method === 'GET') {
     return json([registeredStudent]);
   }
@@ -70,14 +78,35 @@ globalThis.fetch = async (url, options = {}) => {
     return json([]);
   }
   if (target.includes('/rest/v1/homework_submissions?')) {
-    return json([]);
+    if (method === 'PATCH') {
+      const changes = JSON.parse(options.body);
+      const id = decodeURIComponent(target.match(/id=eq\.([^&]+)/)?.[1] || '');
+      const row = submissionRows.find(item => item.id === id);
+      if (!row) return json([]);
+      Object.assign(row, changes);
+      return json([row]);
+    }
+    return json(submissionRows);
+  }
+  if (target.includes('/rest/v1/homework_assignments?')) {
+    return json(assignmentRows);
   }
   if (target.includes('/rest/v1/rpc/set_homework_archived')) {
     const body = JSON.parse(options.body);
     rpcCalls.push(body);
     return json({ assignment_id: body.p_assignment_id, archived: body.p_archived });
   }
+  if (target.includes('/rest/v1/rpc/create_homework_for_group')) {
+    const body = JSON.parse(options.body);
+    homeworkRpcCalls.push(body);
+    return json({ assignment_id: body.p_assignment_id, students_count: 1 });
+  }
   if (target.includes('/rest/v1/groups?name=eq.')) return json([]);
+  if (target.includes('/rest/v1/groups?') && method === 'PATCH') {
+    const changes = JSON.parse(options.body);
+    groupPatches.push(changes);
+    return json([{ id: 'g1', name: 'Базовая А1', ...changes }]);
+  }
   if (target.includes('/rest/v1/groups?')) {
     if (returnManyGroups) {
       return json(Array.from({ length: 8 }, (_, index) => ({
@@ -104,6 +133,11 @@ globalThis.fetch = async (url, options = {}) => {
     return json([student]);
   }
   if (target.includes('/rest/v1/lessons?')) return json([]);
+  if (target.endsWith('/rest/v1/lessons') && method === 'POST') {
+    const lesson = JSON.parse(options.body);
+    insertedLessons.push(lesson);
+    return json([lesson]);
+  }
 
   if (target.includes('api.vk.com/method/')) {
     const params = Object.fromEntries(new URLSearchParams(String(options.body || '')));
@@ -184,7 +218,7 @@ returnManyGroups = false;
 const groupsMessage = vkCalls.at(-1);
 const groupsKeyboard = JSON.parse(groupsMessage.keyboard);
 assert.ok(groupsKeyboard.buttons.length <= 6);
-assert.equal(groupsKeyboard.buttons.flat().length, 10);
+assert.equal(groupsKeyboard.buttons.flat().length, 11);
 assert.ok(groupsKeyboard.buttons.flat().some(button =>
   button.action.label === '👥 Группа 1'
 ));
@@ -217,10 +251,10 @@ assert.ok(ownerGroupKeyboard.buttons.flat().some(button =>
   button.action.label === '➕ создать ДЗ'
 ));
 assert.ok(ownerGroupKeyboard.buttons.flat().some(button =>
-  button.action.label === '🗑 удалить ученика из группы'
+  button.action.label === '👥 ученики и ссылки'
 ));
 assert.ok(ownerGroupKeyboard.buttons.flat().some(button =>
-  button.action.label === '🗑 удалить группу'
+  button.action.label === '📦 архивировать группу'
 ));
 
 const groupHomeworkResponse = responseRecorder();
@@ -228,24 +262,63 @@ await botHandler(vkUpdate('message_event', {
   event_id: 'event-group-homework', peer_id: 123, user_id: 123,
   payload: { cmd: 'hw_for_group:g1' },
 }), groupHomeworkResponse);
-assert.equal(sessionState.step, 'choose_hw_lesson');
+assert.equal(sessionState.step, 'await_lesson_topic');
 assert.equal(sessionState.data.group_id, 'g1');
 const groupHomeworkMessage = vkCalls.at(-1);
 assert.match(groupHomeworkMessage.message, /группа: Базовая А1/);
 const groupHomeworkKeyboard = JSON.parse(groupHomeworkMessage.keyboard);
 assert.ok(groupHomeworkKeyboard.buttons.flat().some(button =>
-  button.action.label === '➕ создать новый урок'
+  button.action.label === '❌ отменить создание'
 ));
-assert.ok(groupHomeworkKeyboard.buttons.flat().some(button =>
-  button.action.label === '← назад к группе'
-));
+
+const topicResponse = responseRecorder();
+await botHandler(messageUpdate(123, 'Квадратные уравнения'), topicResponse);
+assert.equal(sessionState.step, 'await_date');
+assert.equal(insertedLessons.length, 0);
+
+const dueResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-due', peer_id: 123, user_id: 123,
+  payload: { cmd: 'hw_due:3' },
+}), dueResponse);
+assert.equal(sessionState.step, 'await_hwtype');
+
+const typeResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-type', peer_id: 123, user_id: 123,
+  payload: { cmd: 'hwtype:detailed_easy' },
+}), typeResponse);
+assert.equal(sessionState.step, 'await_pdf');
+
+const noFileResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-no-file', peer_id: 123, user_id: 123,
+  payload: { cmd: 'hw_no_file' },
+}), noFileResponse);
+assert.equal(sessionState.step, 'await_scores_bulk');
+
+const scoresResponse = responseRecorder();
+await botHandler(messageUpdate(123, '1; 1; 2'), scoresResponse);
+assert.equal(sessionState.step, 'confirm_hw');
+assert.equal(insertedLessons.length, 0);
+assert.match(vkCalls.at(-1).message, /проверь ДЗ перед отправкой/);
+
+const confirmHomeworkResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-confirm-homework', peer_id: 123, user_id: 123,
+  payload: { cmd: 'hw_confirm' },
+}), confirmHomeworkResponse);
+assert.equal(insertedLessons.length, 1);
+assert.equal(homeworkRpcCalls.length, 1);
+assert.deepEqual(homeworkRpcCalls[0].p_task_config, [1, 1, 2]);
+assert.equal(sessionState.step, 'owner');
 
 const studentDeleteConfirmResponse = responseRecorder();
 await botHandler(vkUpdate('message_event', {
   event_id: 'event-student-delete', peer_id: 123, user_id: 123,
   payload: { cmd: 'student_delete:s1' },
 }), studentDeleteConfirmResponse);
-assert.match(vkCalls.at(-1).message, /точно удалить ученика Иван Иванов/);
+assert.match(vkCalls.at(-1).message, /архивировать ученика Иван Иванов/);
 assert.equal(deletedRequests.length, 0);
 
 const studentDeleteResponse = responseRecorder();
@@ -253,8 +326,8 @@ await botHandler(vkUpdate('message_event', {
   event_id: 'event-student-delete-ok', peer_id: 123, user_id: 123,
   payload: { cmd: 'student_delete_ok:s1' },
 }), studentDeleteResponse);
-assert.ok(deletedRequests.some(target => target.includes('/rest/v1/students?id=eq.s1')));
-assert.match(vkCalls.at(-1).message, /ученик Иван Иванов удалён/);
+assert.ok(studentPatches.some(changes => changes.status === 'left'));
+assert.match(vkCalls.at(-1).message, /ученик Иван Иванов архивирован/);
 
 const beforeUnauthorizedDelete = deletedRequests.length;
 const unauthorizedDeleteResponse = responseRecorder();
@@ -269,16 +342,16 @@ await botHandler(vkUpdate('message_event', {
   event_id: 'event-group-delete', peer_id: 123, user_id: 123,
   payload: { cmd: 'group_delete:g1' },
 }), groupDeleteConfirmResponse);
-assert.match(vkCalls.at(-1).message, /точно удалить группу Базовая А1/);
+assert.match(vkCalls.at(-1).message, /архивировать группу Базовая А1/);
 
 const groupDeleteResponse = responseRecorder();
 await botHandler(vkUpdate('message_event', {
   event_id: 'event-group-delete-ok', peer_id: 123, user_id: 123,
   payload: { cmd: 'group_delete_ok:g1' },
 }), groupDeleteResponse);
-assert.ok(deletedRequests.some(target => target.includes('/rest/v1/students?group_id=eq.g1')));
-assert.ok(deletedRequests.some(target => target.includes('/rest/v1/groups?id=eq.g1')));
-assert.match(vkCalls.at(-1).message, /группа Базовая А1 удалена/);
+assert.ok(studentPatches.some(changes => changes.status === 'left'));
+assert.ok(groupPatches.some(changes => changes.active === false));
+assert.match(vkCalls.at(-1).message, /группа Базовая А1 архивирована/);
 
 const callbackResponse = responseRecorder();
 await botHandler(vkUpdate('message_event', {
@@ -345,6 +418,75 @@ const photoAck = vkCalls.at(-1);
 assert.equal(photoAck.method, 'messages.send');
 assert.match(photoAck.message, /файл получен/);
 assert.equal(JSON.parse(photoAck.keyboard).inline, true);
+
+registeredStudent = {
+  ...registeredStudent, id: 's1', status: 'active', vk_id: 456,
+};
+assignmentRows = [{
+  id: 'a-revision', group_id: 'g1', lesson_id: 'l1', topic: 'Геометрия',
+  due_date: '2026-09-01', hw_type: 'detailed', task_config: null,
+  archived_at: null,
+}];
+submissionRows = [{
+  id: 'sub-revision', assignment_id: 'a-revision', student_id: 's1', status: 'submitted',
+  submitted_files: [], submitted_at: '2026-08-11T10:00:00.000Z', checked_at: null,
+  score: null, max_score: null, comment: '',
+}];
+
+const reviewResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-review', peer_id: 123, user_id: 123,
+  payload: { cmd: 'review:sub-revision' },
+}), reviewResponse);
+assert.equal(sessionState.step, 'review_total:sub-revision');
+assert.ok(JSON.parse(vkCalls.at(-1).keyboard).buttons.flat().some(button =>
+  button.action.label === '🔁 вернуть на доработку'
+));
+
+const revisionResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-revision', peer_id: 123, user_id: 123,
+  payload: { cmd: 'review_revision:sub-revision' },
+}), revisionResponse);
+assert.equal(sessionState.step, 'revision_comment:sub-revision');
+
+const revisionCommentResponse = responseRecorder();
+await botHandler(messageUpdate(123, 'Исправь оформление второго задания'), revisionCommentResponse);
+assert.equal(submissionRows[0].status, 'revision');
+assert.equal(submissionRows[0].comment, 'Исправь оформление второго задания');
+assert.equal(sessionState.step, 'owner');
+
+const reopenRevisionResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-reopen-revision', peer_id: 456, user_id: 456,
+  payload: { cmd: 'hw:sub-revision' },
+}), reopenRevisionResponse);
+assert.equal(sessionState.step, 'await_files:sub-revision');
+assert.match(vkCalls.at(-1).message, /что исправить/);
+
+const reminderResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-reminder', peer_id: 123, user_id: 123,
+  payload: { cmd: 'dz_remind:a-revision' },
+}), reminderResponse);
+assert.ok(vkCalls.some(call =>
+  call.method === 'messages.send' && call.peer_id === '456' && /ждём исправленную работу/.test(call.message)
+));
+
+const repeatResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-repeat', peer_id: 123, user_id: 123,
+  payload: { cmd: 'dz_repeat:a-revision' },
+}), repeatResponse);
+assert.equal(sessionState.step, 'repeat_due');
+
+const repeatDueResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-repeat-due', peer_id: 123, user_id: 123,
+  payload: { cmd: 'repeat_due:1' },
+}), repeatDueResponse);
+assert.equal(sessionState.step, 'confirm_hw');
+assert.match(vkCalls.at(-1).message, /проверь ДЗ перед отправкой/);
 
 for (const call of vkCalls) {
   if (call.method !== 'messages.send') continue;
