@@ -234,11 +234,8 @@ const STUDENT_KBD = [
   [{ text: '❓ помощь' }],
 ];
 const OWNER_KBD = [
-  [{ text: '👥 группы' }, { text: '➕ создать группу' }],
-  [{ text: '➕ добавить ученика' }, { text: '👤 индивидуальный ученик' }],
-  [{ text: '➕ создать дз' }, { text: '🕒 непроверено' }],
-  [{ text: '📋 домашние задания' }, { text: '📦 архив дз' }],
-  [{ text: '❓ помощь' }],
+  [{ text: '👥 группы' }, { text: '🕒 непроверено' }],
+  [{ text: '📦 архив дз' }, { text: '❓ помощь' }],
 ];
 
 const rkbd = (rows) => ({
@@ -484,7 +481,12 @@ async function sendOwnerHome(chatId, tid) {
 
 function sendOwnerHelp(chatId) {
   return send(chatId,
-    'команды:\n/groups — группы и ученики\n/newgroup — создать группу\n/newstudent — добавить ученика в мини-группу\n/newindividual — добавить индивидуального ученика\n/newdz — создать ДЗ\n/unchecked — непроверенные работы\n/mydz — активные домашние задания\n/archive — архив ДЗ',
+    'как работать с ботом:\n\n' +
+    '👥 группы — все мини-группы и индивидуальные ученики. открой нужную группу, чтобы создать для неё ДЗ или управлять учениками.\n\n' +
+    '🕒 непроверено — работы учеников, которые ждут проверки.\n\n' +
+    '📦 архив дз — завершённые домашние задания и сохранённые результаты.\n\n' +
+    'создание ДЗ: «группы» → нужная группа → «создать ДЗ».\n' +
+    'новый индивидуальный ученик: «группы» → «создать группу» → «индивидуальный ученик».',
     rkbd(OWNER_KBD));
 }
 
@@ -556,7 +558,6 @@ async function showOwnerGroups(chatId) {
   if (!groups.length) {
     return send(chatId, 'групп пока нет.', kbd([
       [{ text: '➕ создать первую группу', callback_data: 'new_group' }],
-      [{ text: '👤 добавить индивидуального ученика', callback_data: 'new_individual' }],
     ]));
   }
 
@@ -565,8 +566,8 @@ async function showOwnerGroups(chatId) {
     callback_data: `owner_group:${group.id}`,
   }]);
   buttons.push([{ text: '➕ создать группу', callback_data: 'new_group' }]);
-  buttons.push([{ text: '👤 индивидуальный ученик', callback_data: 'new_individual' }]);
-  return send(chatId, 'выбери группу:', kbd(buttons));
+  buttons.push([{ text: '➕ добавить ученика в группу', callback_data: 'add_student' }]);
+  return send(chatId, 'выбери группу или индивидуального ученика:', kbd(buttons));
 }
 
 async function showOwnerGroup(chatId, groupId) {
@@ -582,7 +583,11 @@ async function showOwnerGroup(chatId, groupId) {
     ).join('\n')
     : 'учеников пока нет';
   const isIndividual = group.group_type === 'individual';
-  const buttons = [];
+  const buttons = [[{
+    text: '➕ создать ДЗ',
+    callback_data: `hw_for_group:${group.id}`,
+    color: 'primary',
+  }]];
   if (!isIndividual) {
     buttons.push([{ text: '➕ добавить ученика', callback_data: `student_group:${group.id}` }]);
   }
@@ -708,6 +713,14 @@ async function deleteGroup(chatId, groupId) {
 async function startGroupCreation(chatId, tid) {
   await setSession(tid, { step: 'await_group_name' });
   return send(chatId, 'введи название группы, например «Базовая А1» или «Продвинутая Б1»:');
+}
+
+function showGroupCreationMenu(chatId) {
+  return send(chatId, 'что создать?', kbd([
+    [{ text: '👥 мини-группу', callback_data: 'new_mini_group' }],
+    [{ text: '👤 индивидуального ученика', callback_data: 'new_individual' }],
+    [{ text: '← ко всем группам', callback_data: 'owner_groups' }],
+  ]));
 }
 
 async function finishGroupCreation(chatId, tid, rawName, sess) {
@@ -1173,21 +1186,10 @@ async function finalizeStudentFiles(chatId, student, subId, files) {
 // ── Owner: start HW creation for a concrete lesson ────────────────────────────
 
 async function startHwCreation(chatId, tid) {
-  const groups = await sbSelect('groups', 'active=eq.true&order=name.asc');
-
-  if (!groups.length) return send(chatId, 'группы не найдены.');
-
-  const nonce = callbackNonce();
-  await setSession(tid, {
-    step: 'choose_hw_group',
-    data: { nonce, group_ids: groups.map(group => group.id) },
-  });
-  return send(chatId, 'для какой группы создать ДЗ?', kbd(
-    groups.map((group, index) => [{
-      text: group.name || 'Без названия',
-      callback_data: `hwg:${nonce}:${index}`,
-    }])
-  ));
+  await setSession(tid, { step: 'owner' });
+  return send(chatId,
+    'сначала открой группу, для которой нужно создать ДЗ:',
+    kbd([[{ text: '👥 открыть группы', callback_data: 'owner_groups' }]]));
 }
 
 async function showLessonsForHomework(chatId, tid, groupId, offset = 0) {
@@ -1227,6 +1229,10 @@ async function showLessonsForHomework(chatId, tid, groupId, offset = 0) {
     callback_data: `hwp:${nonce}:${offset + pageSize}`,
   });
   if (nav.length) buttons.push(nav);
+  buttons.push([{
+    text: '← назад к группе',
+    callback_data: `owner_group:${group.id}`,
+  }]);
 
   const hint = lessons.length
     ? 'выбери существующий урок или создай новый:'
@@ -1633,10 +1639,16 @@ async function handleCallback(cq) {
     return showOwnerGroups(chatId);
   }
   if (data === 'new_group' && owner) {
+    return showGroupCreationMenu(chatId);
+  }
+  if (data === 'new_mini_group' && owner) {
     return startGroupCreation(chatId, tid);
   }
   if (data === 'new_individual' && owner) {
     return startIndividualStudentCreation(chatId, tid);
+  }
+  if (data === 'add_student' && owner) {
+    return startStudentCreation(chatId, tid);
   }
   if (data.startsWith('ngp:') && owner) {
     return startGroupCreation(chatId, tid);
@@ -1675,6 +1687,9 @@ async function handleCallback(cq) {
     }
     await setSession(tid, { step: 'await_student_name', data: { group_id: groupId } });
     return send(chatId, `группа: <b>${html(group.name)}</b>\n\nвведи имя ученика:`);
+  }
+  if (data.startsWith('hw_for_group:') && owner) {
+    return showLessonsForHomework(chatId, tid, data.slice('hw_for_group:'.length), 0);
   }
   if (data.startsWith('review:') && owner) {
     return startOwnerReview(chatId, tid, data.slice('review:'.length));

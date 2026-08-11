@@ -83,7 +83,7 @@ globalThis.fetch = async (url, options = {}) => {
       return json(Array.from({ length: 8 }, (_, index) => ({
         id: `g${index + 1}`,
         name: `Группа ${index + 1}`,
-        group_type: 'mini_group',
+        group_type: index === 1 ? 'individual' : 'mini_group',
         active: true,
         created_at: '2026-08-02T08:00:00.000Z',
       })));
@@ -172,7 +172,10 @@ assert.ok(ownerHome);
 assert.equal(ownerHome.message, 'панель преподавателя');
 const ownerKeyboard = JSON.parse(ownerHome.keyboard);
 assert.equal(ownerKeyboard.inline, false);
-assert.equal(ownerKeyboard.buttons[0][0].action.label, '👥 группы');
+assert.deepEqual(
+  ownerKeyboard.buttons.flat().map(button => button.action.label),
+  ['👥 группы', '🕒 непроверено', '📦 архив дз', '❓ помощь']
+);
 
 returnManyGroups = true;
 const groupsResponse = responseRecorder();
@@ -182,6 +185,26 @@ const groupsMessage = vkCalls.at(-1);
 const groupsKeyboard = JSON.parse(groupsMessage.keyboard);
 assert.ok(groupsKeyboard.buttons.length <= 6);
 assert.equal(groupsKeyboard.buttons.flat().length, 10);
+assert.ok(groupsKeyboard.buttons.flat().some(button =>
+  button.action.label === '👥 Группа 1'
+));
+assert.ok(groupsKeyboard.buttons.flat().some(button =>
+  button.action.label === '👤 Группа 2'
+));
+assert.ok(groupsKeyboard.buttons.flat().some(button =>
+  button.action.label === '➕ создать группу'
+));
+assert.ok(groupsKeyboard.buttons.flat().some(button =>
+  button.action.label === '➕ добавить ученика в группу'
+));
+
+const addStudentResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-add-student', peer_id: 123, user_id: 123,
+  payload: { cmd: 'add_student' },
+}), addStudentResponse);
+assert.equal(sessionState.step, 'choose_student_group');
+assert.match(vkCalls.at(-1).message, /в какую группу добавить ученика/);
 
 const ownerGroupResponse = responseRecorder();
 await botHandler(vkUpdate('message_event', {
@@ -191,10 +214,30 @@ await botHandler(vkUpdate('message_event', {
 const ownerGroupMessage = vkCalls.at(-1);
 const ownerGroupKeyboard = JSON.parse(ownerGroupMessage.keyboard);
 assert.ok(ownerGroupKeyboard.buttons.flat().some(button =>
+  button.action.label === '➕ создать ДЗ'
+));
+assert.ok(ownerGroupKeyboard.buttons.flat().some(button =>
   button.action.label === '🗑 удалить ученика из группы'
 ));
 assert.ok(ownerGroupKeyboard.buttons.flat().some(button =>
   button.action.label === '🗑 удалить группу'
+));
+
+const groupHomeworkResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-group-homework', peer_id: 123, user_id: 123,
+  payload: { cmd: 'hw_for_group:g1' },
+}), groupHomeworkResponse);
+assert.equal(sessionState.step, 'choose_hw_lesson');
+assert.equal(sessionState.data.group_id, 'g1');
+const groupHomeworkMessage = vkCalls.at(-1);
+assert.match(groupHomeworkMessage.message, /группа: Базовая А1/);
+const groupHomeworkKeyboard = JSON.parse(groupHomeworkMessage.keyboard);
+assert.ok(groupHomeworkKeyboard.buttons.flat().some(button =>
+  button.action.label === '➕ создать новый урок'
+));
+assert.ok(groupHomeworkKeyboard.buttons.flat().some(button =>
+  button.action.label === '← назад к группе'
 ));
 
 const studentDeleteConfirmResponse = responseRecorder();
@@ -242,9 +285,23 @@ await botHandler(vkUpdate('message_event', {
   event_id: 'event-1', peer_id: 123, user_id: 123,
   payload: { cmd: 'new_group' },
 }), callbackResponse);
-assert.equal(sessionState.step, 'await_group_name');
+const groupCreationMenu = JSON.parse(vkCalls.at(-1).keyboard);
+assert.deepEqual(
+  groupCreationMenu.buttons.flat().map(button => button.action.label),
+  ['👥 мини-группу', '👤 индивидуального ученика', '← ко всем группам']
+);
 assert.ok(vkCalls.some(call =>
   call.method === 'messages.sendMessageEventAnswer' && call.event_id === 'event-1'
+));
+
+const miniGroupResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-mini-group', peer_id: 123, user_id: 123,
+  payload: { cmd: 'new_mini_group' },
+}), miniGroupResponse);
+assert.equal(sessionState.step, 'await_group_name');
+assert.ok(vkCalls.some(call =>
+  call.method === 'messages.sendMessageEventAnswer' && call.event_id === 'event-mini-group'
 ));
 
 const groupNameResponse = responseRecorder();
