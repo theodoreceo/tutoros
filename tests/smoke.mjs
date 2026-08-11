@@ -14,6 +14,7 @@ const vkCalls = [];
 const insertedGroups = [];
 const insertedStudents = [];
 const studentPatches = [];
+const deletedRequests = [];
 const rpcCalls = [];
 let returnManyGroups = false;
 let sessionState = {};
@@ -28,6 +29,11 @@ const json = body => Response.json(body);
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url);
   const method = options.method || 'GET';
+
+  if (target.includes('/rest/v1/') && method === 'DELETE') {
+    deletedRequests.push(target);
+    return json([]);
+  }
 
   if (target.includes('/rest/v1/vk_sessions?')) {
     if (target.includes('vk_user_id=eq.-1')) {
@@ -46,6 +52,12 @@ globalThis.fetch = async (url, options = {}) => {
     return json(String(registeredStudent.vk_id) === requested ? [registeredStudent] : []);
   }
   if (target.includes('/rest/v1/students?reg_token=eq.student-token')) {
+    return json([registeredStudent]);
+  }
+  if (target.includes('/rest/v1/students?id=eq.') && method === 'GET') {
+    return json([registeredStudent]);
+  }
+  if (target.includes('/rest/v1/students?group_id=eq.g1') && method === 'GET') {
     return json([registeredStudent]);
   }
   if (target.includes('/rest/v1/students?') && method === 'PATCH') {
@@ -170,6 +182,60 @@ const groupsMessage = vkCalls.at(-1);
 const groupsKeyboard = JSON.parse(groupsMessage.keyboard);
 assert.ok(groupsKeyboard.buttons.length <= 6);
 assert.equal(groupsKeyboard.buttons.flat().length, 10);
+
+const ownerGroupResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-owner-group', peer_id: 123, user_id: 123,
+  payload: { cmd: 'owner_group:g1' },
+}), ownerGroupResponse);
+const ownerGroupMessage = vkCalls.at(-1);
+const ownerGroupKeyboard = JSON.parse(ownerGroupMessage.keyboard);
+assert.ok(ownerGroupKeyboard.buttons.flat().some(button =>
+  button.action.label === '🗑 удалить ученика из группы'
+));
+assert.ok(ownerGroupKeyboard.buttons.flat().some(button =>
+  button.action.label === '🗑 удалить группу'
+));
+
+const studentDeleteConfirmResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-student-delete', peer_id: 123, user_id: 123,
+  payload: { cmd: 'student_delete:s1' },
+}), studentDeleteConfirmResponse);
+assert.match(vkCalls.at(-1).message, /точно удалить ученика Иван Иванов/);
+assert.equal(deletedRequests.length, 0);
+
+const studentDeleteResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-student-delete-ok', peer_id: 123, user_id: 123,
+  payload: { cmd: 'student_delete_ok:s1' },
+}), studentDeleteResponse);
+assert.ok(deletedRequests.some(target => target.includes('/rest/v1/students?id=eq.s1')));
+assert.match(vkCalls.at(-1).message, /ученик Иван Иванов удалён/);
+
+const beforeUnauthorizedDelete = deletedRequests.length;
+const unauthorizedDeleteResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-unauthorized-delete', peer_id: 999, user_id: 999,
+  payload: { cmd: 'group_delete_ok:g1' },
+}), unauthorizedDeleteResponse);
+assert.equal(deletedRequests.length, beforeUnauthorizedDelete);
+
+const groupDeleteConfirmResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-group-delete', peer_id: 123, user_id: 123,
+  payload: { cmd: 'group_delete:g1' },
+}), groupDeleteConfirmResponse);
+assert.match(vkCalls.at(-1).message, /точно удалить группу Базовая А1/);
+
+const groupDeleteResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-group-delete-ok', peer_id: 123, user_id: 123,
+  payload: { cmd: 'group_delete_ok:g1' },
+}), groupDeleteResponse);
+assert.ok(deletedRequests.some(target => target.includes('/rest/v1/students?group_id=eq.g1')));
+assert.ok(deletedRequests.some(target => target.includes('/rest/v1/groups?id=eq.g1')));
+assert.match(vkCalls.at(-1).message, /группа Базовая А1 удалена/);
 
 const callbackResponse = responseRecorder();
 await botHandler(vkUpdate('message_event', {

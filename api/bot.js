@@ -572,7 +572,7 @@ async function showOwnerGroups(chatId) {
 async function showOwnerGroup(chatId, groupId) {
   const [group, students] = await Promise.all([
     sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`),
-    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&status=eq.active&order=name.asc`),
+    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&order=name.asc`),
   ]);
   if (!group) return send(chatId, 'группа не найдена.');
 
@@ -586,11 +586,123 @@ async function showOwnerGroup(chatId, groupId) {
   if (!isIndividual) {
     buttons.push([{ text: '➕ добавить ученика', callback_data: `student_group:${group.id}` }]);
   }
+  if (students.length) {
+    buttons.push([{
+      text: isIndividual ? '🗑 удалить ученика' : '🗑 удалить ученика из группы',
+      callback_data: `group_students:${group.id}:0`,
+      color: 'negative',
+    }]);
+  }
+  buttons.push([{
+    text: '🗑 удалить группу',
+    callback_data: `group_delete:${group.id}`,
+    color: 'negative',
+  }]);
   buttons.push([{ text: '← ко всем группам', callback_data: 'owner_groups' }]);
 
   return send(chatId,
     `<b>${html(group.name)}</b>\nформат: <b>${isIndividual ? 'индивидуально' : 'мини-группа'}</b>\n\n${studentLines}\n\n✅ подключён к боту · ⏳ ещё не открыл ссылку`,
     kbd(buttons));
+}
+
+async function showGroupStudentsForDeletion(chatId, groupId, offset = 0) {
+  const [group, students] = await Promise.all([
+    sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`),
+    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&order=name.asc`),
+  ]);
+  if (!group) return send(chatId, 'группа не найдена.');
+  if (!students.length) return showOwnerGroup(chatId, groupId);
+
+  const pageSize = 6;
+  const safeOffset = Math.max(0, Math.min(offset, Math.floor((students.length - 1) / pageSize) * pageSize));
+  const page = students.slice(safeOffset, safeOffset + pageSize);
+  const buttons = page.map(student => [{
+    text: `🗑 ${student.name || 'Без имени'}`,
+    callback_data: `student_delete:${student.id}`,
+    color: 'negative',
+  }]);
+  const navigation = [];
+  if (safeOffset > 0) {
+    navigation.push({ text: '←', callback_data: `group_students:${group.id}:${safeOffset - pageSize}` });
+  }
+  if (safeOffset + pageSize < students.length) {
+    navigation.push({ text: '→', callback_data: `group_students:${group.id}:${safeOffset + pageSize}` });
+  }
+  if (navigation.length) buttons.push(navigation);
+  buttons.push([{ text: '← назад к группе', callback_data: `owner_group:${group.id}` }]);
+
+  return send(chatId,
+    `группа: <b>${html(group.name)}</b>\n\nвыбери ученика, которого нужно удалить:`,
+    kbd(buttons));
+}
+
+async function confirmStudentDeletion(chatId, studentId) {
+  const student = await sbOne('students', `id=eq.${encodeURIComponent(studentId)}`);
+  if (!student) return send(chatId, 'ученик уже удалён или не найден.');
+  return send(chatId,
+    `точно удалить ученика <b>${html(student.name)}</b>?\n\nего сдачи и результаты тоже будут удалены.`,
+    kbd([
+      [{ text: '✅ да, удалить', callback_data: `student_delete_ok:${student.id}`, color: 'negative' }],
+      [{ text: '❌ отмена', callback_data: `owner_group:${student.group_id}` }],
+    ]));
+}
+
+async function deleteStudent(chatId, studentId) {
+  const student = await sbOne('students', `id=eq.${encodeURIComponent(studentId)}`);
+  if (!student) return send(chatId, 'ученик уже удалён или не найден.');
+  const group = await sbOne('groups', `id=eq.${encodeURIComponent(student.group_id)}`);
+
+  await sbDelete('students', `id=eq.${encodeURIComponent(student.id)}`);
+  if (student.vk_id) {
+    await sbDelete('vk_sessions', `vk_user_id=eq.${encodeURIComponent(student.vk_id)}`).catch(() => {});
+  }
+
+  if (group?.group_type === 'individual') {
+    await sbDelete('groups', `id=eq.${encodeURIComponent(group.id)}`);
+    return send(chatId, `✅ ${html(student.name)} и его индивидуальная группа удалены.`, kbd([
+      [{ text: '← ко всем группам', callback_data: 'owner_groups' }],
+    ]));
+  }
+
+  return send(chatId, `✅ ученик ${html(student.name)} удалён.`, kbd([
+    [{ text: '← назад к группе', callback_data: `owner_group:${student.group_id}` }],
+  ]));
+}
+
+async function confirmGroupDeletion(chatId, groupId) {
+  const [group, students] = await Promise.all([
+    sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`),
+    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&order=name.asc`),
+  ]);
+  if (!group) return send(chatId, 'группа уже удалена или не найдена.');
+  const studentsWarning = students.length
+    ? ` Вместе с ней удалятся все ученики (${students.length}), их сдачи и результаты.`
+    : '';
+  return send(chatId,
+    `точно удалить группу <b>${html(group.name)}</b>?${studentsWarning}`,
+    kbd([
+      [{ text: '✅ да, удалить всё', callback_data: `group_delete_ok:${group.id}`, color: 'negative' }],
+      [{ text: '❌ отмена', callback_data: `owner_group:${group.id}` }],
+    ]));
+}
+
+async function deleteGroup(chatId, groupId) {
+  const [group, students] = await Promise.all([
+    sbOne('groups', `id=eq.${encodeURIComponent(groupId)}`),
+    sbSelect('students', `group_id=eq.${encodeURIComponent(groupId)}&order=name.asc`),
+  ]);
+  if (!group) return send(chatId, 'группа уже удалена или не найдена.');
+
+  await sbDelete('students', `group_id=eq.${encodeURIComponent(group.id)}`);
+  await sbDelete('groups', `id=eq.${encodeURIComponent(group.id)}`);
+  const vkIds = students.map(student => student.vk_id).filter(Boolean);
+  if (vkIds.length) {
+    await sbDelete('vk_sessions', `vk_user_id=in.(${vkIds.map(encodeURIComponent).join(',')})`).catch(() => {});
+  }
+
+  return send(chatId,
+    `✅ группа ${html(group.name)} удалена${students.length ? ` вместе с ${students.length} учениками` : ''}.`,
+    kbd([[{ text: '← ко всем группам', callback_data: 'owner_groups' }]]));
 }
 
 async function startGroupCreation(chatId, tid) {
@@ -1534,6 +1646,25 @@ async function handleCallback(cq) {
   }
   if (data.startsWith('owner_group:') && owner) {
     return showOwnerGroup(chatId, data.slice('owner_group:'.length));
+  }
+  if (data.startsWith('group_students:') && owner) {
+    const value = data.slice('group_students:'.length);
+    const separator = value.lastIndexOf(':');
+    const groupId = value.slice(0, separator);
+    const offset = parseInt(value.slice(separator + 1), 10) || 0;
+    return showGroupStudentsForDeletion(chatId, groupId, offset);
+  }
+  if (data.startsWith('student_delete_ok:') && owner) {
+    return deleteStudent(chatId, data.slice('student_delete_ok:'.length));
+  }
+  if (data.startsWith('student_delete:') && owner) {
+    return confirmStudentDeletion(chatId, data.slice('student_delete:'.length));
+  }
+  if (data.startsWith('group_delete_ok:') && owner) {
+    return deleteGroup(chatId, data.slice('group_delete_ok:'.length));
+  }
+  if (data.startsWith('group_delete:') && owner) {
+    return confirmGroupDeletion(chatId, data.slice('group_delete:'.length));
   }
   if (data.startsWith('student_group:') && owner) {
     const groupId = data.slice('student_group:'.length);
