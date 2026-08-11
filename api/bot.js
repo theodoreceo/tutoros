@@ -2,6 +2,8 @@
 // Env vars: SUPABASE_URL, SUPABASE_SECRET_KEY, VK_GROUP_TOKEN,
 // VK_GROUP_ID, VK_CALLBACK_SECRET, OWNER_VK_ID
 
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 const SUPABASE_URL       = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY
   || process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -11,6 +13,8 @@ const VK_CALLBACK_SECRET = process.env.VK_CALLBACK_SECRET;
 const VK_CONFIRMATION_CODE = process.env.VK_CONFIRMATION_CODE;
 const VK_API_VERSION     = process.env.VK_API_VERSION || '5.199';
 const OWNER_VK_ID        = process.env.OWNER_VK_ID;
+const UI_MESSAGE_IDS_KEY = '_ui_message_ids';
+const uiMessageStorage   = new AsyncLocalStorage();
 
 const isOwner = (vkUserId) =>
   Boolean(OWNER_VK_ID) && String(vkUserId) === String(OWNER_VK_ID);
@@ -137,17 +141,75 @@ const plainText = value => String(value ?? '')
   .replaceAll('&lt;', '<')
   .replaceAll('&gt;', '>')
   .replaceAll('&amp;', '&');
-const send = (peerId, message, extra = {}) => vk('messages.send', {
-  peer_id: peerId,
-  random_id: randomId(),
-  message: plainText(message),
-  ...extra,
-});
-const sendAttachment = (peerId, attachment) => vk('messages.send', {
-  peer_id: peerId,
-  random_id: randomId(),
-  attachment,
-});
+async function prepareUiPeer(peerId) {
+  const context = uiMessageStorage.getStore();
+  if (!context) return null;
+
+  const key = String(peerId);
+  if (context.peers.has(key)) return context.peers.get(key);
+
+  const peer = { peerId, messageIds: [] };
+  context.peers.set(key, peer);
+
+  const session = await getSession(peerId).catch(() => ({}));
+  const previousIds = Array.isArray(session?.[UI_MESSAGE_IDS_KEY])
+    ? session[UI_MESSAGE_IDS_KEY].filter(id => Number.isInteger(Number(id)))
+    : [];
+  if (previousIds.length) {
+    await vk('messages.delete', {
+      message_ids: previousIds.join(','),
+      delete_for_all: 1,
+    }).catch(error => {
+      // VK can reject deletion of an old/already deleted message. A stale screen
+      // must never block the next bot action.
+      console.warn('VK previous screen cleanup failed:', error?.message || error);
+    });
+  }
+  return peer;
+}
+
+async function rememberUiMessage(peerId, messageId) {
+  if (!Number.isInteger(Number(messageId))) return;
+  const peer = await prepareUiPeer(peerId);
+  if (peer) peer.messageIds.push(Number(messageId));
+}
+
+async function persistUiMessages() {
+  const context = uiMessageStorage.getStore();
+  if (!context) return;
+
+  for (const peer of context.peers.values()) {
+    const session = await getSession(peer.peerId).catch(() => ({}));
+    await setSession(peer.peerId, {
+      ...session,
+      [UI_MESSAGE_IDS_KEY]: peer.messageIds,
+    }).catch(error => {
+      console.warn('VK current screen state save failed:', error?.message || error);
+    });
+  }
+}
+
+const send = async (peerId, message, extra = {}) => {
+  await prepareUiPeer(peerId);
+  const messageId = await vk('messages.send', {
+    peer_id: peerId,
+    random_id: randomId(),
+    message: plainText(message),
+    ...extra,
+  });
+  await rememberUiMessage(peerId, messageId);
+  return messageId;
+};
+const sendAttachment = async (peerId, attachment) => {
+  await prepareUiPeer(peerId);
+  const messageId = await vk('messages.send', {
+    peer_id: peerId,
+    random_id: randomId(),
+    attachment,
+  });
+  await rememberUiMessage(peerId, messageId);
+  return messageId;
+};
 const cbq = (eventId, text = '', context = {}) => vk('messages.sendMessageEventAnswer', {
   event_id: eventId,
   user_id: context.user_id,
@@ -457,25 +519,31 @@ export default async function handler(req, res) {
 
   const message = update.type === 'message_new' ? normalizeVkMessage(update) : null;
   const callback = update.type === 'message_event' ? normalizeVkCallback(update) : null;
-  try {
-    if (callback?.data) await handleCallback(callback);
-    else if (message?.photo || message?.document) await handleMedia(message);
-    else if (message) await handleText(message);
-    await recordVkDiagnostic(update, 'processed').catch(() => {});
-  } catch (err) {
-    console.error('VK bot error:', err);
-    await recordVkDiagnostic(update, 'error', err?.message || 'unknown error').catch(() => {});
+  await uiMessageStorage.run({ peers: new Map() }, async () => {
     const chatId = callback?.message?.chat?.id ?? message?.chat?.id;
-    const vkUserId = callback?.from?.id ?? message?.from?.id;
-    if (chatId) {
-      const details = isOwner(vkUserId)
-        ? `\n\nпричина: <code>${html(err?.message || 'неизвестная ошибка')}</code>`
-        : '';
-      await send(chatId,
-        `⚠️ не удалось выполнить действие из-за временной ошибки. данные не потеряны — попробуй ещё раз.${details}`
-      ).catch(() => {});
+    if (chatId) await prepareUiPeer(chatId);
+
+    try {
+      if (callback?.data) await handleCallback(callback);
+      else if (message?.photo || message?.document) await handleMedia(message);
+      else if (message) await handleText(message);
+      await recordVkDiagnostic(update, 'processed').catch(() => {});
+    } catch (err) {
+      console.error('VK bot error:', err);
+      await recordVkDiagnostic(update, 'error', err?.message || 'unknown error').catch(() => {});
+      const vkUserId = callback?.from?.id ?? message?.from?.id;
+      if (chatId) {
+        const details = isOwner(vkUserId)
+          ? `\n\nпричина: <code>${html(err?.message || 'неизвестная ошибка')}</code>`
+          : '';
+        await send(chatId,
+          `⚠️ не удалось выполнить действие из-за временной ошибки. данные не потеряны — попробуй ещё раз.${details}`
+        ).catch(() => {});
+      }
+    } finally {
+      await persistUiMessages();
     }
-  }
+  });
   return res.status(200).send('ok');
 }
 

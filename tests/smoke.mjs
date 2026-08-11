@@ -215,6 +215,11 @@ returnManyGroups = true;
 const groupsResponse = responseRecorder();
 await botHandler(messageUpdate(123, '👥 группы'), groupsResponse);
 returnManyGroups = false;
+const previousScreenDelete = vkCalls.find(call =>
+  call.method === 'messages.delete' && call.message_ids === '1'
+);
+assert.ok(previousScreenDelete);
+assert.equal(previousScreenDelete.delete_for_all, '1');
 const groupsMessage = vkCalls.at(-1);
 const groupsKeyboard = JSON.parse(groupsMessage.keyboard);
 assert.ok(groupsKeyboard.buttons.length <= 6);
@@ -425,7 +430,7 @@ registeredStudent = {
 assignmentRows = [{
   id: 'a-revision', group_id: 'g1', lesson_id: 'l1', topic: 'Геометрия',
   due_date: '2026-09-01', hw_type: 'detailed', task_config: null,
-  archived_at: null,
+  archived_at: null, file_id: 'doc-geometry',
 }];
 submissionRows = [{
   id: 'sub-revision', assignment_id: 'a-revision', student_id: 's1', status: 'submitted',
@@ -457,12 +462,22 @@ assert.equal(submissionRows[0].comment, 'Исправь оформление в�
 assert.equal(sessionState.step, 'owner');
 
 const reopenRevisionResponse = responseRecorder();
+const reopenCallsStart = vkCalls.length;
 await botHandler(vkUpdate('message_event', {
   event_id: 'event-reopen-revision', peer_id: 456, user_id: 456,
   payload: { cmd: 'hw:sub-revision' },
 }), reopenRevisionResponse);
 assert.equal(sessionState.step, 'await_files:sub-revision');
 assert.match(vkCalls.at(-1).message, /что исправить/);
+const reopenCalls = vkCalls.slice(reopenCallsStart);
+assert.equal(reopenCalls.filter(call => call.method === 'messages.delete').length, 1);
+assert.equal(reopenCalls.filter(call => call.method === 'messages.send').length, 2);
+assert.equal(
+  reopenCalls.findIndex(call => call.method === 'messages.delete')
+    < reopenCalls.findIndex(call => call.method === 'messages.send'),
+  true
+);
+assert.deepEqual(sessionState._ui_message_ids, [1, 1]);
 
 const reminderResponse = responseRecorder();
 await botHandler(vkUpdate('message_event', {
