@@ -1,123 +1,280 @@
--- TutorOS Database Schema
--- Run this in Supabase SQL Editor (Dashboard → SQL Editor → New query)
+-- TutorOS minimal schema for a fresh Supabase project.
+-- The bot is the only writer. Google Sheets will be a synchronized view.
 
-drop table if exists history_log, hw_submissions, atasks, tasks, student_notes,
-  homework_submissions, assistant_groups, events, payments, homework_assignments,
-  lessons, students, expenses, modules, folders, groups, roles cascade;
+create extension if not exists pgcrypto;
 
 create table groups (
-  id text primary key, name text, schedule text,
-  price_per_student numeric default 0, capacity integer,
-  type text, created_at text
-);
-
-create table roles (
-  id text primary key, name text, pin text,
-  pages jsonb default '[]', can_edit boolean default false,
-  "canEdit" boolean default false, "isOwner" boolean default false,
-  role_type text, group_ids jsonb default '[]', created_at text
-);
-
-create table students (
-  id text primary key, name text, contact text, grade text,
-  group_id text, format text, crm_status text,
-  price_per_hour numeric default 0, lessons_per_month numeric default 0,
-  paid boolean default false, trial_score numeric, target_score numeric,
-  source text, notes text, created_at text, first_contact_at text,
-  left_at text, status_history jsonb default '[]', risk_reset_at text
-);
-
-create table payments (
-  id text primary key, student_id text, date text,
-  amount numeric default 0, method text, period text,
-  sub_end text, note text, created_at text
-);
-
-create table expenses (
-  id text primary key, date text, category text,
-  amount numeric default 0, note text, channel text, created_at text
+  id text primary key,
+  name text not null,
+  program text check (program in ('base', 'advanced')),
+  group_type text not null default 'mini_group'
+    check (group_type in ('mini_group', 'individual')),
+  target_score numeric,
+  sheet_key text unique,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table lessons (
-  id text primary key, group_id text, date text, time text,
-  topic text, hw_text text, hw text, hw_link text, materials_link text,
-  student_attendance jsonb default '[]', led_by text,
-  notes text, absent_ids jsonb default '[]', task_ids jsonb default '[]',
-  difficulty text, mood text, created_at text
+  id text primary key,
+  group_id text not null references groups(id) on delete cascade,
+  sheet_lesson_key text not null,
+  course_month text,
+  course_week text,
+  lesson_number text,
+  sequence integer not null,
+  topic text not null,
+  block text,
+  event_type text not null default 'lesson'
+    check (event_type in ('lesson', 'webinar', 'test', 'half_mock', 'mock')),
+  scheduled_date date,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (group_id, sheet_lesson_key)
+);
+
+create table students (
+  id text primary key,
+  name text not null,
+  group_id text not null references groups(id),
+  status text not null default 'active'
+    check (status in ('active', 'paused', 'left')),
+  vk_id bigint unique,
+  reg_token text not null unique default encode(gen_random_bytes(12), 'hex'),
+  target_score numeric,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table homework_assignments (
-  id text primary key, group_id text, lesson_id text,
-  title text, topic text, description text, due_date text,
-  assigned_at text, hw_type text default 'detailed',
-  is_advanced boolean default false, correct_answer text
+  id text primary key,
+  group_id text not null references groups(id) on delete cascade,
+  lesson_id text references lessons(id) on delete set null,
+  topic text not null,
+  description text not null default '',
+  due_date date,
+  hw_type text not null default 'detailed'
+    check (hw_type in ('brief', 'detailed', 'trial')),
+  is_advanced boolean not null default false,
+  file_id text,
+  correct_answer text,
+  answers jsonb,
+  task_numbers jsonb,
+  task_config jsonb,
+  assigned_at timestamptz not null default now(),
+  archived_at timestamptz
 );
 
 create table homework_submissions (
-  id text primary key, assignment_id text, student_id text,
-  submission_url text, source text default 'manual',
-  submitted_at text, status text default 'assigned',
-  score numeric, comment text, errors jsonb default '[]',
-  checked_by text, checked_at text
+  id text primary key,
+  assignment_id text not null references homework_assignments(id) on delete cascade,
+  student_id text not null references students(id) on delete cascade,
+  status text not null default 'assigned'
+    check (status in ('assigned', 'submitted', 'checked', 'revision', 'cancelled')),
+  source text not null default 'vk',
+  submitted_at timestamptz,
+  checked_at timestamptz,
+  score numeric,
+  max_score numeric,
+  student_answers jsonb,
+  task_scores jsonb,
+  submitted_files jsonb,
+  comment text not null default '',
+  on_time boolean,
+  rno_status text not null default 'not_required'
+    check (rno_status in ('not_required', 'required', 'completed')),
+  unique (assignment_id, student_id)
 );
 
-create table assistant_groups (
-  id text primary key, role_id text, assistant_id text, group_id text
+create table vk_sessions (
+  vk_user_id bigint primary key,
+  state jsonb not null default '{}',
+  updated_at timestamptz not null default now()
 );
 
-create table events (
-  id text primary key, student_id text, date text, type text, text text,
-  entity_type text, entity_id text, payload jsonb
+create table sent_reminders (
+  student_id text not null references students(id) on delete cascade,
+  assignment_id text not null references homework_assignments(id) on delete cascade,
+  sent_date date not null default current_date,
+  primary key (student_id, assignment_id, sent_date)
 );
 
-create table student_notes (
-  id text primary key, student_id text, date text, text text, author text
-);
+create index lessons_group_order_idx on lessons(group_id, sequence);
+create index students_group_status_idx on students(group_id, status);
+create index assignments_group_lesson_idx on homework_assignments(group_id, lesson_id);
+create index submissions_student_status_idx on homework_submissions(student_id, status);
 
-create table tasks (
-  id text primary key, title text, description text, student_id text,
-  type text, due_date text, done boolean default false,
-  status text, created_at text
-);
-
-create table atasks (
-  id text primary key, role_id text, title text, description text,
-  assignee text, comment text, deadline text,
-  status text default 'assigned', created_at text
-);
-
-create table hw_submissions (
-  id text primary key, assignment_id text, student_id text,
-  group_id text, assigned_at text, status text,
-  submitted_at text, reviewed_at text
-);
-
-create table history_log (
-  id text primary key, action text, description text,
-  entity_type text, entity_id text, actor text,
-  timestamp text, undo_data jsonb
-);
-
-create table modules (
-  id text primary key, group_id text, title text, order_num numeric
-);
-
-create table folders (
-  id text primary key, group_id text, module_id text, title text, color text
-);
-
--- RLS: разрешить всё для anon
-do $$
-declare t text;
+-- Assignment and submission rows must be created in one transaction.
+create or replace function public.create_homework_for_group(
+  p_assignment_id text,
+  p_group_id text,
+  p_lesson_id text,
+  p_topic text,
+  p_due_date date,
+  p_hw_type text,
+  p_is_advanced boolean,
+  p_file_id text,
+  p_answers jsonb,
+  p_task_config jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_student_count integer;
+  v_assignment_inserted integer;
+  v_existing_group_id text;
+  v_existing_count integer;
 begin
-  foreach t in array array[
-    'groups','students','payments','expenses','modules','tasks','roles',
-    'folders','lessons','atasks','events','student_notes','hw_submissions',
-    'history_log','homework_assignments','homework_submissions','assistant_groups'
-  ] loop
-    execute format('alter table %I enable row level security', t);
-    execute format(
-      'create policy "anon_all" on %I for all to anon using (true) with check (true)', t
+  if not exists (
+    select 1 from groups where id = p_group_id and active = true
+  ) then
+    raise exception 'group_not_found_or_inactive';
+  end if;
+
+  if p_lesson_id is not null and not exists (
+    select 1 from lessons
+    where id = p_lesson_id and group_id = p_group_id and active = true
+  ) then
+    raise exception 'lesson_not_found_for_group';
+  end if;
+
+  select count(*)::integer
+  into v_student_count
+  from students
+  where group_id = p_group_id and status = 'active';
+
+  if v_student_count = 0 then
+    raise exception 'group_has_no_active_students';
+  end if;
+
+  insert into homework_assignments (
+    id, group_id, lesson_id, topic, description, due_date, hw_type,
+    is_advanced, file_id, answers, task_config, assigned_at
+  ) values (
+    p_assignment_id, p_group_id, p_lesson_id, p_topic, '', p_due_date, p_hw_type,
+    p_is_advanced, p_file_id, p_answers, p_task_config, now()
+  )
+  on conflict (id) do nothing;
+
+  get diagnostics v_assignment_inserted = row_count;
+
+  if v_assignment_inserted = 0 then
+    select group_id
+    into v_existing_group_id
+    from homework_assignments
+    where id = p_assignment_id;
+
+    if v_existing_group_id is distinct from p_group_id then
+      raise exception 'assignment_id_conflict';
+    end if;
+
+    select count(*)::integer
+    into v_existing_count
+    from homework_submissions
+    where assignment_id = p_assignment_id;
+
+    return jsonb_build_object(
+      'assignment_id', p_assignment_id,
+      'students_count', v_existing_count,
+      'already_created', true
     );
-  end loop;
-end $$;
+  end if;
+
+  insert into homework_submissions (
+    id, assignment_id, student_id, status, source, submitted_at,
+    score, comment
+  )
+  select
+    'b' || replace(gen_random_uuid()::text, '-', ''),
+    p_assignment_id,
+    student.id,
+    'assigned',
+    'vk',
+    null,
+    null,
+    ''
+  from students as student
+  where student.group_id = p_group_id and student.status = 'active';
+
+  return jsonb_build_object(
+    'assignment_id', p_assignment_id,
+    'students_count', v_student_count,
+    'already_created', false
+  );
+end;
+$$;
+
+revoke all on function public.create_homework_for_group(
+  text, text, text, text, date, text, boolean, text, jsonb, jsonb
+) from public, anon, authenticated;
+
+grant execute on function public.create_homework_for_group(
+  text, text, text, text, date, text, boolean, text, jsonb, jsonb
+) to service_role;
+
+-- Archiving is reversible and keeps submitted and checked work intact.
+create or replace function public.set_homework_archived(
+  p_assignment_id text,
+  p_archived boolean
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_changed integer;
+  v_pending_changed integer;
+begin
+  update homework_assignments
+  set archived_at = case
+    when p_archived then coalesce(archived_at, now())
+    else null
+  end
+  where id = p_assignment_id;
+
+  get diagnostics v_changed = row_count;
+  if v_changed = 0 then
+    raise exception 'homework_not_found';
+  end if;
+
+  if p_archived then
+    update homework_submissions
+    set status = 'cancelled'
+    where assignment_id = p_assignment_id and status in ('assigned', 'revision');
+  else
+    update homework_submissions
+    set status = 'assigned'
+    where assignment_id = p_assignment_id and status = 'cancelled';
+  end if;
+
+  get diagnostics v_pending_changed = row_count;
+
+  return jsonb_build_object(
+    'assignment_id', p_assignment_id,
+    'archived', p_archived,
+    'pending_changed', v_pending_changed
+  );
+end;
+$$;
+
+revoke all on function public.set_homework_archived(text, boolean)
+from public, anon, authenticated;
+
+grant execute on function public.set_homework_archived(text, boolean)
+to service_role;
+
+-- No browser or client connects directly to these tables. RLS remains enabled
+-- without anon/authenticated policies; the server-side Supabase secret bypasses it.
+alter table groups enable row level security;
+alter table lessons enable row level security;
+alter table students enable row level security;
+alter table homework_assignments enable row level security;
+alter table homework_submissions enable row level security;
+alter table vk_sessions enable row level security;
+alter table sent_reminders enable row level security;

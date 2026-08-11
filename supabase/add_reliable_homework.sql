@@ -1,0 +1,112 @@
+-- Makes homework creation atomic: the assignment and every active student's
+-- submission row are committed together or rolled back together.
+
+create or replace function public.create_homework_for_group(
+  p_assignment_id text,
+  p_group_id text,
+  p_lesson_id text,
+  p_topic text,
+  p_due_date date,
+  p_hw_type text,
+  p_is_advanced boolean,
+  p_file_id text,
+  p_answers jsonb,
+  p_task_config jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_student_count integer;
+  v_assignment_inserted integer;
+  v_existing_group_id text;
+  v_existing_count integer;
+begin
+  if not exists (
+    select 1 from groups where id = p_group_id and active = true
+  ) then
+    raise exception 'group_not_found_or_inactive';
+  end if;
+
+  if p_lesson_id is not null and not exists (
+    select 1 from lessons
+    where id = p_lesson_id and group_id = p_group_id and active = true
+  ) then
+    raise exception 'lesson_not_found_for_group';
+  end if;
+
+  select count(*)::integer
+  into v_student_count
+  from students
+  where group_id = p_group_id and status = 'active';
+
+  if v_student_count = 0 then
+    raise exception 'group_has_no_active_students';
+  end if;
+
+  insert into homework_assignments (
+    id, group_id, lesson_id, topic, description, due_date, hw_type,
+    is_advanced, file_id, answers, task_config, assigned_at
+  ) values (
+    p_assignment_id, p_group_id, p_lesson_id, p_topic, '', p_due_date, p_hw_type,
+    p_is_advanced, p_file_id, p_answers, p_task_config, now()
+  )
+  on conflict (id) do nothing;
+
+  get diagnostics v_assignment_inserted = row_count;
+
+  if v_assignment_inserted = 0 then
+    select group_id
+    into v_existing_group_id
+    from homework_assignments
+    where id = p_assignment_id;
+
+    if v_existing_group_id is distinct from p_group_id then
+      raise exception 'assignment_id_conflict';
+    end if;
+
+    select count(*)::integer
+    into v_existing_count
+    from homework_submissions
+    where assignment_id = p_assignment_id;
+
+    return jsonb_build_object(
+      'assignment_id', p_assignment_id,
+      'students_count', v_existing_count,
+      'already_created', true
+    );
+  end if;
+
+  insert into homework_submissions (
+    id, assignment_id, student_id, status, source, submitted_at,
+    score, comment
+  )
+  select
+    'b' || replace(gen_random_uuid()::text, '-', ''),
+    p_assignment_id,
+    student.id,
+    'assigned',
+    'vk',
+    null,
+    null,
+    ''
+  from students as student
+  where student.group_id = p_group_id and student.status = 'active';
+
+  return jsonb_build_object(
+    'assignment_id', p_assignment_id,
+    'students_count', v_student_count,
+    'already_created', false
+  );
+end;
+$$;
+
+revoke all on function public.create_homework_for_group(
+  text, text, text, text, date, text, boolean, text, jsonb, jsonb
+) from public, anon, authenticated;
+
+grant execute on function public.create_homework_for_group(
+  text, text, text, text, date, text, boolean, text, jsonb, jsonb
+) to service_role;
