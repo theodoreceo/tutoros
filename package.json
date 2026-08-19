@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/smoke.mjs && node tests/stats-export.mjs"
+    "test": "node tests/smoke.mjs && node tests/stats-export.mjs && node tests/archive.mjs"
   },
   "engines": {
     "node": ">=18"
