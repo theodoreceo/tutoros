@@ -23,11 +23,17 @@ jobs:
         run: |
           if ! grep -q "async function showStudentArchive" api/bot.js; then
             git show origin/main:scripts/apply-readable-archive-fix.py > /tmp/apply-fix.py
-            sed -i 's/re.subn(pattern, replacement, text, count=1, flags=re.S)/re.subn(pattern, lambda _match: replacement, text, count=1, flags=re.S)/' /tmp/apply-fix.py
             set +e
             python /tmp/apply-fix.py
             patch_status=$?
             set -e
+            python - <<'PY'
+          from pathlib import Path
+          path = Path('api/bot.js')
+          text = path.read_text()
+          text = text.replace("lines.join('\n')", "lines.join('\\n')")
+          path.write_text(text)
+          PY
             if ! grep -q "async function showStudentArchive" api/bot.js; then
               exit "$patch_status"
             fi
