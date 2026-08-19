@@ -273,7 +273,9 @@ const moscowDateTime = (isoDate) => isoDate
     }).format(new Date(isoDate))
   : '—';
 const isSubmittedOnTime = (assignment, submittedAt) =>
-  assignment?.due_date ? moscowDate(submittedAt) <= assignment.due_date : null;
+  assignment?.due_date && !assignment?.archived_at
+    ? moscowDate(submittedAt) <= assignment.due_date
+    : null;
 
 const todayMoscow = () => moscowDate(new Date().toISOString());
 const dateDiffDays = (fromDate, toDate) => {
@@ -313,7 +315,11 @@ const submissionPercent = (submission, assignment) => {
 };
 
 function buildStudentMetrics(submissions, assignmentMap) {
-  const relevant = submissions.filter(row => row.status !== 'cancelled');
+  const relevant = submissions.filter(row => {
+    if (row.status === 'cancelled') return false;
+    if (['submitted', 'checked'].includes(row.status)) return true;
+    return !assignmentMap.get(row.assignment_id)?.archived_at;
+  });
   const completed = relevant.filter(row => ['submitted', 'checked'].includes(row.status));
   const overdue = relevant.filter(row => {
     const assignment = assignmentMap.get(row.assignment_id);
@@ -428,6 +434,91 @@ async function updateAssignedSubmission(subId, studentId, changes) {
     changes
   );
   return updated[0] ?? null;
+}
+
+async function assignCurrentHomeworkToStudent(student) {
+  if (!student?.id || !student?.group_id) return [];
+  const assignments = await sbSelect('homework_assignments',
+    `group_id=eq.${encodeURIComponent(student.group_id)}&archived_at=is.null&select=id`);
+  if (!assignments.length) return [];
+
+  const assignmentIds = assignments.map(assignment => assignment.id);
+  const existing = await sbSelect('homework_submissions',
+    `student_id=eq.${encodeURIComponent(student.id)}` +
+    `&assignment_id=in.(${assignmentIds.join(',')})&select=id,assignment_id,status`);
+  const byAssignment = new Map(existing.map(row => [row.assignment_id, row]));
+  const result = [];
+
+  for (const assignment of assignments) {
+    let submission = byAssignment.get(assignment.id) || null;
+    if (!submission) {
+      const inserted = await sbInsert('homework_submissions', {
+        id: botId(),
+        assignment_id: assignment.id,
+        student_id: student.id,
+        status: 'assigned',
+        source: 'vk',
+        submitted_at: null,
+        score: null,
+        comment: '',
+      });
+      submission = inserted?.[0] ?? null;
+    } else if (submission.status === 'cancelled') {
+      const restored = await sbPatch('homework_submissions',
+        `id=eq.${encodeURIComponent(submission.id)}` +
+        `&student_id=eq.${encodeURIComponent(student.id)}&status=eq.cancelled`,
+        { status: 'assigned', comment: '' });
+      submission = restored?.[0] ?? submission;
+    }
+    if (submission) result.push(submission);
+  }
+  return result;
+}
+
+async function ensureArchivedSubmission(student, assignmentId) {
+  const assignment = await sbOne('homework_assignments',
+    `id=eq.${encodeURIComponent(assignmentId)}` +
+    `&group_id=eq.${encodeURIComponent(student.group_id)}&archived_at=not.is.null`);
+  if (!assignment) return { assignment: null, submission: null };
+
+  let submission = await sbOne('homework_submissions',
+    `assignment_id=eq.${encodeURIComponent(assignment.id)}` +
+    `&student_id=eq.${encodeURIComponent(student.id)}`);
+  if (!submission) {
+    const inserted = await sbInsert('homework_submissions', {
+      id: botId(),
+      assignment_id: assignment.id,
+      student_id: student.id,
+      status: 'assigned',
+      source: 'vk',
+      submitted_at: null,
+      score: null,
+      comment: '',
+    });
+    submission = inserted?.[0] ?? null;
+  } else if (submission.status === 'cancelled') {
+    const restored = await sbPatch('homework_submissions',
+      `id=eq.${encodeURIComponent(submission.id)}` +
+      `&student_id=eq.${encodeURIComponent(student.id)}&status=eq.cancelled`,
+      { status: 'assigned', comment: '' });
+    submission = restored?.[0] ?? submission;
+  }
+  return { assignment, submission };
+}
+
+async function setHomeworkArchiveState(assignmentId, archived) {
+  const updated = await sbPatch('homework_assignments',
+    `id=eq.${encodeURIComponent(assignmentId)}`, {
+      archived_at: archived ? new Date().toISOString() : null,
+    });
+  if (!updated.length) throw new Error('ДЗ не найдено.');
+
+  if (!archived) {
+    await sbPatch('homework_submissions',
+      `assignment_id=eq.${encodeURIComponent(assignmentId)}&status=eq.cancelled`,
+      { status: 'assigned' });
+  }
+  return updated[0];
 }
 
 const studentInviteLink = token => VK_GROUP_ID
@@ -573,7 +664,7 @@ async function handleText(msg) {
   if (text === '📋 домашние задания'  && owner) return showOwnerAssignments(chatId, 0);
   if (text === '📦 архив дз'            && owner) return showOwnerAssignments(chatId, 0, true);
   if (text === '❓ помощь') {
-    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт\n\nесли возникла проблема, напиши преподавателю.', rkbd(STUDENT_KBD));
+    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/archive — архив заданий\n/mydz — мои результаты\n/unlink — отвязать аккаунт\n\nесли возникла проблема, напиши преподавателю.', rkbd(STUDENT_KBD));
     if (owner) return sendOwnerHelp(chatId);
     return send(chatId, 'открой персональную ссылку, которую прислал преподаватель.');
   }
@@ -601,15 +692,16 @@ async function handleText(msg) {
 
   // /help
   if (text === '/help') {
-    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт\n\nесли возникла проблема, напиши преподавателю.', rkbd(STUDENT_KBD));
+    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/archive — архив заданий\n/mydz — мои результаты\n/unlink — отвязать аккаунт\n\nесли возникла проблема, напиши преподавателю.', rkbd(STUDENT_KBD));
     if (owner) return sendOwnerHelp(chatId);
     return send(chatId, 'открой персональную ссылку, которую прислал преподаватель.');
   }
 
   // Student commands
   if (student) {
-    if (text === '/dz')    return handleStudentListHw(chatId, student);
-    if (text === '/mydz')  return showStudentStats(chatId, student);
+    if (text === '/dz')      return handleStudentListHw(chatId, student);
+    if (text === '/archive') return showStudentArchive(chatId, student, 0);
+    if (text === '/mydz')    return showStudentStats(chatId, student);
     const sess = await getSession(tid);
     if (typeof sess.step === 'string' && sess.step.startsWith('brief_answer:')) {
       const subId = sess.step.slice('brief_answer:'.length);
@@ -756,6 +848,7 @@ async function handleRegistration(chatId, tid, token) {
   if (sm) {
     if (sm.vk_id) return send(chatId, 'эта ссылка уже была использована. напиши преподавателю.');
     await sbPatch('students', `id=eq.${sm.id}`, { vk_id: tid });
+    await assignCurrentHomeworkToStudent({ ...sm, vk_id: tid });
     await setSession(tid, { step: 'student' });
     return send(chatId,
       `готово! ты подключен как <b>${sm.name}</b>.\n\nесли это не ты, напиши преподавателю.`,
@@ -906,7 +999,7 @@ async function showOwnerStudent(chatId, studentId) {
   const [group, assignments] = await Promise.all([
     sbOne('groups', `id=eq.${encodeURIComponent(student.group_id)}&select=id,name,group_type`),
     sbSelect('homework_assignments',
-      `group_id=eq.${encodeURIComponent(student.group_id)}&select=id,topic,due_date,hw_type,task_config`),
+      `group_id=eq.${encodeURIComponent(student.group_id)}&select=id,topic,due_date,hw_type,task_config,archived_at`),
   ]);
   const assignmentMap = new Map(assignments.map(assignment => [assignment.id, assignment]));
   const submissions = assignments.length
@@ -1168,6 +1261,7 @@ async function finishStudentCreation(chatId, tid, rawName, sess) {
     created_at: new Date().toISOString(),
   });
   const student = inserted?.[0];
+  if (student) await assignCurrentHomeworkToStudent(student);
   const token = student?.reg_token;
   const inviteLink = token ? studentInviteLink(token) : null;
 
@@ -1248,40 +1342,114 @@ async function finishIndividualStudentCreation(chatId, tid, rawName, sess) {
 // ── Student: list HW ──────────────────────────────────────────────────────────
 
 async function handleStudentListHw(chatId, student) {
+  await assignCurrentHomeworkToStudent(student);
   const subs = await sbSelect('homework_submissions',
-    `student_id=eq.${student.id}&status=in.(assigned,revision)`);
-  if (!subs.length) return send(chatId, 'все задания сданы, молодец:)');
+    `student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,revision)`);
 
-  const aIds      = [...new Set(subs.map(s => s.assignment_id))];
-  const assignments = await sbSelect('homework_assignments',
-    `id=in.(${aIds.join(',')})&select=id,topic,due_date,hw_type`);
-  const aMap = Object.fromEntries(assignments.map(a => [a.id, a]));
+  const aIds = [...new Set(subs.map(sub => sub.assignment_id))];
+  const assignments = aIds.length
+    ? await sbSelect('homework_assignments',
+        `id=in.(${aIds.join(',')})&select=id,topic,due_date,hw_type,archived_at`)
+    : [];
+  const aMap = Object.fromEntries(assignments.map(assignment => [assignment.id, assignment]));
 
   const buttons = [];
-  const lines   = [];
+  const lines = [];
   const pending = subs
     .map(sub => ({ sub, assignment: aMap[sub.assignment_id] }))
-    .filter(item => item.assignment)
+    .filter(item => item.assignment && !item.assignment.archived_at)
     .sort((left, right) => {
       const leftDue = left.assignment.due_date || '9999-12-31';
       const rightDue = right.assignment.due_date || '9999-12-31';
       return leftDue.localeCompare(rightDue);
     });
-  pending.forEach(({ sub, assignment: a }, i) => {
+  pending.forEach(({ sub, assignment: a }, index) => {
     const dueLabel = humanDueDate(a.due_date);
     const overdue = a.due_date && a.due_date < todayMoscow();
     const due = ` · ${overdue ? '🔴 ' : ''}${dueLabel}`;
-    const type   = a.hw_type === 'brief' ? ' [краткий]' : a.hw_type === 'trial' ? ' [пробник]' : '';
+    const type = a.hw_type === 'brief' ? ' [краткий]' : a.hw_type === 'trial' ? ' [пробник]' : '';
     const revision = sub.status === 'revision' ? ' · 🔁 доработка' : '';
-    lines.push(`${i + 1}. <b>${a.topic || 'без темы'}</b>${type}${revision}${due}`);
+    lines.push(`${index + 1}. <b>${a.topic || 'без темы'}</b>${type}${revision}${due}`);
     buttons.push([{
       text: `${overdue ? '🔴' : sub.status === 'revision' ? '🔁' : '📚'} ${(a.topic || 'домашки').slice(0, 28)} · ${dueLabel}`,
       callback_data: `hw:${sub.id}`,
     }]);
   });
+  buttons.push([{ text: '📦 архив заданий', callback_data: 'student_arcpg:0' }]);
 
-  if (!lines.length) return send(chatId, 'нет активных заданий!');
-  return send(chatId, `задания (${lines.length}):\n\n${lines.join('\n')}\n\nвыбери для сдачи:`, kbd(buttons));
+  if (!lines.length) {
+    return send(chatId, 'активных заданий сейчас нет.', kbd(buttons));
+  }
+  return send(chatId,
+    `задания (${lines.length}):
+
+${lines.join('\n')}
+
+выбери для сдачи:`,
+    kbd(buttons));
+}
+
+async function showStudentArchive(chatId, student, offset = 0) {
+  const pageSize = 8;
+  const safeOffset = Math.max(0, offset);
+  const assignments = await sbSelect('homework_assignments',
+    `group_id=eq.${encodeURIComponent(student.group_id)}&archived_at=not.is.null` +
+    `&order=assigned_at.desc&limit=${pageSize}&offset=${safeOffset}` +
+    `&select=id,topic,due_date,hw_type,assigned_at`);
+
+  if (!assignments.length) {
+    return send(chatId,
+      safeOffset === 0 ? 'архив заданий пока пуст.' : 'больше архивных заданий нет.',
+      kbd([[{ text: '← к текущим заданиям', callback_data: 'student_current' }]]));
+  }
+
+  const assignmentIds = assignments.map(assignment => assignment.id);
+  const submissions = await sbSelect('homework_submissions',
+    `student_id=eq.${encodeURIComponent(student.id)}` +
+    `&assignment_id=in.(${assignmentIds.join(',')})` +
+    `&select=id,assignment_id,status,score,max_score`);
+  const submissionMap = new Map(submissions.map(row => [row.assignment_id, row]));
+
+  const lines = [];
+  const buttons = [];
+  assignments.forEach((assignment, index) => {
+    const submission = submissionMap.get(assignment.id);
+    const state = submission?.status === 'checked' ? '✅ выполнено'
+      : submission?.status === 'submitted' ? '📤 на проверке'
+      : submission?.status === 'revision' ? '🔁 доработка'
+      : '📚 можно решить';
+    const type = assignment.hw_type === 'brief' ? ' [краткий]'
+      : assignment.hw_type === 'trial' ? ' [пробник]' : '';
+    lines.push(`${safeOffset + index + 1}. <b>${assignment.topic || 'без темы'}</b>${type} · ${state}`);
+
+    const callback = submission && ['submitted', 'checked'].includes(submission.status)
+      ? `my_sub:${submission.id}`
+      : submission && ['assigned', 'revision'].includes(submission.status)
+        ? `hw:${submission.id}`
+        : `arch_hw:${assignment.id}`;
+    buttons.push([{
+      text: `${state.split(' ')[0]} ${(assignment.topic || 'домашка').slice(0, 34)}`,
+      callback_data: callback,
+    }]);
+  });
+
+  const nav = [];
+  if (safeOffset > 0) nav.push({
+    text: '←', callback_data: `student_arcpg:${Math.max(0, safeOffset - pageSize)}`,
+  });
+  if (assignments.length === pageSize) nav.push({
+    text: '→', callback_data: `student_arcpg:${safeOffset + pageSize}`,
+  });
+  if (nav.length) buttons.push(nav);
+  buttons.push([{ text: '← к текущим заданиям', callback_data: 'student_current' }]);
+
+  return send(chatId,
+    `📦 архив заданий
+
+${lines.join('\n')}
+
+старые задания можно открыть и решить в любое время.`,
+    kbd(buttons));
 }
 
 // ── Student: my results (/mydz) ───────────────────────────────────────────────
@@ -1302,7 +1470,7 @@ async function showStudentStats(chatId, student) {
   const done = allSubs.filter(s => ['submitted', 'checked'].includes(s.status));
   const aIds = allSubs.length ? [...new Set(allSubs.map(s => s.assignment_id))] : [];
   const assignments = aIds.length
-    ? await sbSelect('homework_assignments', `id=in.(${aIds.join(',')})&select=id,topic,due_date,hw_type,task_config`)
+    ? await sbSelect('homework_assignments', `id=in.(${aIds.join(',')})&select=id,topic,due_date,hw_type,task_config,archived_at`)
     : [];
   const aMap = Object.fromEntries(assignments.map(a => [a.id, a]));
   const assignmentMap = new Map(assignments.map(assignment => [assignment.id, assignment]));
@@ -2081,7 +2249,7 @@ async function startHomeworkRepeat(chatId, tid, hwId) {
 async function handleCallback(cq) {
   const chatId = cq.message.chat.id;
   const tid    = cq.from.id;
-  const data   = cq.data;
+  let data     = cq.data;
   await cbq(cq.id, '', { user_id: cq.user_id, peer_id: cq.peer_id }).catch(() => {});
 
   const owner = isOwner(tid);
@@ -2216,19 +2384,19 @@ async function handleCallback(cq) {
   if ((data.startsWith('dz_arc:') || data.startsWith('dz_del:')) && owner) {
     const hwId = data.slice(data.indexOf(':') + 1);
     const a    = await sbOne('homework_assignments', `id=eq.${hwId}&select=topic`);
-    return send(chatId, `убрать ДЗ «<b>${a?.topic || hwId}</b>» в архив?\n\nОно исчезнет у учеников, но результаты и файлы сохранятся.`,
+    return send(chatId, `убрать ДЗ «<b>${a?.topic || hwId}</b>» в архив?\n\nОно исчезнет из текущих заданий, но останется доступно ученикам в архиве. Результаты и файлы сохранятся.`,
       kbd([[{ text: '✅ да, в архив', callback_data: `dz_arcok:${hwId}` },
              { text: '❌ отмена',     callback_data: `dz:${hwId}` }]]));
   }
   if ((data.startsWith('dz_arcok:') || data.startsWith('dz_delok:')) && owner) {
     const hwId = data.slice(data.indexOf(':') + 1);
-    await sbRpc('set_homework_archived', { p_assignment_id: hwId, p_archived: true });
+    await setHomeworkArchiveState(hwId, true);
     await setSession(tid, { step: 'owner' });
-    return send(chatId, '✅ ДЗ убрано в архив. Результаты и файлы сохранены.', rkbd(OWNER_KBD));
+    return send(chatId, '✅ ДЗ убрано в архив. Ученики по-прежнему могут открыть и решить его там.', rkbd(OWNER_KBD));
   }
   if (data.startsWith('dz_restore:') && owner) {
     const hwId = data.slice('dz_restore:'.length);
-    await sbRpc('set_homework_archived', { p_assignment_id: hwId, p_archived: false });
+    await setHomeworkArchiveState(hwId, false);
     await setSession(tid, { step: 'owner' });
     return send(chatId, '✅ ДЗ снова активно и вернулось ученикам.', rkbd(OWNER_KBD));
   }
@@ -2382,6 +2550,23 @@ async function handleCallback(cq) {
   if (data === 'hw_cancel' && owner) {
     await setSession(tid, { step: 'owner' });
     return send(chatId, 'создание ДЗ отменено.', rkbd(OWNER_KBD));
+  }
+
+  if (data === 'student_current' && student) {
+    return handleStudentListHw(chatId, student);
+  }
+  if (data.startsWith('student_arcpg:') && student) {
+    return showStudentArchive(chatId, student,
+      parseInt(data.slice('student_arcpg:'.length), 10) || 0);
+  }
+  if (data.startsWith('arch_hw:') && student) {
+    const assignmentId = data.slice('arch_hw:'.length);
+    const { submission } = await ensureArchivedSubmission(student, assignmentId);
+    if (!submission) return send(chatId, 'архивное задание не найдено.');
+    if (['submitted', 'checked'].includes(submission.status)) {
+      return showStudentSubDetail(chatId, student, submission.id);
+    }
+    data = `hw:${submission.id}`;
   }
 
   // Student taps HW

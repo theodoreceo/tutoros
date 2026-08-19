@@ -15,6 +15,7 @@ const insertedGroups = [];
 const insertedStudents = [];
 const studentPatches = [];
 const groupPatches = [];
+const assignmentPatches = [];
 const deletedRequests = [];
 const rpcCalls = [];
 const homeworkRpcCalls = [];
@@ -77,6 +78,11 @@ globalThis.fetch = async (url, options = {}) => {
   if (target.includes('/rest/v1/students?') && target.includes('status=eq.assigned')) {
     return json([]);
   }
+  if (target.endsWith('/rest/v1/homework_submissions') && method === 'POST') {
+    const row = JSON.parse(options.body);
+    submissionRows.push(row);
+    return json([row]);
+  }
   if (target.includes('/rest/v1/homework_submissions?')) {
     if (method === 'PATCH') {
       const changes = JSON.parse(options.body);
@@ -87,6 +93,14 @@ globalThis.fetch = async (url, options = {}) => {
       return json([row]);
     }
     return json(submissionRows);
+  }
+  if (target.includes('/rest/v1/homework_assignments?') && method === 'PATCH') {
+    const changes = JSON.parse(options.body);
+    assignmentPatches.push(changes);
+    const requestedId = decodeURIComponent(target.match(/id=eq\.([^&]+)/)?.[1] || '');
+    const matched = assignmentRows.filter(row => !requestedId || row.id === requestedId);
+    matched.forEach(row => Object.assign(row, changes));
+    return json(matched);
   }
   if (target.includes('/rest/v1/homework_assignments?')) {
     return json(assignmentRows);
@@ -388,16 +402,26 @@ assert.equal(insertedGroups.length, 1);
 assert.equal(insertedGroups[0].name, 'Базовая А2');
 assert.equal(insertedGroups[0].group_type, 'mini_group');
 
+assignmentRows = [{
+  id: 'hw1', group_id: 'g1', topic: 'Архивируемое ДЗ', due_date: '2026-08-10',
+  hw_type: 'detailed', archived_at: null,
+}];
 const archiveResponse = responseRecorder();
 await botHandler(vkUpdate('message_event', {
   event_id: 'event-archive', peer_id: 123, user_id: 123,
   payload: { cmd: 'dz_arcok:hw1' },
 }), archiveResponse);
-assert.deepEqual(rpcCalls.at(-1), { p_assignment_id: 'hw1', p_archived: true });
+assert.ok(assignmentPatches.at(-1).archived_at);
+assert.ok(assignmentRows[0].archived_at);
 assert.ok(vkCalls.some(call =>
   call.method === 'messages.send' && /убрано в архив/.test(call.message)
 ));
 
+assignmentRows = [{
+  id: 'a-current', group_id: 'g1', topic: 'Текущее ДЗ', due_date: '2026-09-01',
+  hw_type: 'detailed', archived_at: null,
+}];
+submissionRows = [];
 sessionState = {};
 const registrationResponse = responseRecorder();
 await botHandler(messageUpdate(456, 'Начать', { ref: 'student-token' }), registrationResponse);
@@ -406,7 +430,34 @@ assert.equal(sessionState.step, 'student');
 assert.ok(vkCalls.some(call =>
   call.method === 'messages.send' && call.peer_id === '456' && /подключен как Иван Иванов/.test(call.message)
 ));
+assert.ok(submissionRows.some(row =>
+  row.assignment_id === 'a-current' && row.student_id === 's1' && row.status === 'assigned'
+));
 
+assignmentRows = [{
+  id: 'a-old', group_id: 'g1', topic: 'Старое ДЗ', due_date: '2026-08-01',
+  hw_type: 'brief', archived_at: '2026-08-02T00:05:00.000Z', answers: ['42'],
+}];
+submissionRows = [];
+const studentArchiveResponse = responseRecorder();
+await botHandler(messageUpdate(456, '/archive'), studentArchiveResponse);
+assert.match(vkCalls.at(-1).message, /архив заданий/);
+assert.ok(JSON.parse(vkCalls.at(-1).keyboard).buttons.flat().some(button =>
+  button.action.payload.includes('arch_hw:a-old')
+));
+
+const archivedHomeworkResponse = responseRecorder();
+await botHandler(vkUpdate('message_event', {
+  event_id: 'event-archived-homework', peer_id: 456, user_id: 456,
+  payload: { cmd: 'arch_hw:a-old' },
+}), archivedHomeworkResponse);
+assert.equal(submissionRows.length, 1);
+assert.equal(submissionRows[0].assignment_id, 'a-old');
+assert.equal(submissionRows[0].status, 'assigned');
+assert.match(sessionState.step, /^brief_answer:/);
+
+assignmentRows = [];
+submissionRows = [];
 sessionState = { step: 'await_files:sub1', data: { files: [] } };
 const photoResponse = responseRecorder();
 await botHandler(messageUpdate(456, '', {
