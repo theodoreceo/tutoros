@@ -1,0 +1,13 @@
+name: Patch homework material button once 2
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-homework-material-button-once-2.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo noop
