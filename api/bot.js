@@ -2165,12 +2165,12 @@ async function showDzDetail(chatId, hwId) {
 
   const buttons = a.archived_at
     ? [
-        ...(a.file_id ? [[{ text: '📎 открыть материалы', callback_data: `dz_materials:${hwId}` }]] : []),
+        [{ text: '📎 материалы', callback_data: `dz_materials:${hwId}` }],
         [{ text: '♻️ вернуть из архива', callback_data: `dz_restore:${hwId}` }],
         [{ text: '← к архиву', callback_data: 'dz_arcpg:0' }],
       ]
     : [
-        ...(a.file_id ? [[{ text: '📎 открыть материалы', callback_data: `dz_materials:${hwId}` }]] : []),
+        [{ text: '📎 материалы', callback_data: `dz_materials:${hwId}` }],
         [{ text: '✏️ изменить тему', callback_data: `dz_et:${hwId}` },
          { text: '📅 изменить дедлайн', callback_data: `dz_ed:${hwId}` }],
         [{ text: '🔔 напомнить несдавшим', callback_data: `dz_remind:${hwId}` }],
