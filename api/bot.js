@@ -1997,10 +1997,12 @@ async function showDzDetail(chatId, hwId) {
 
   const buttons = a.archived_at
     ? [
+        [{ text: '📎 материалы', callback_data: `dz_materials:${hwId}` }],
         [{ text: '♻️ вернуть из архива', callback_data: `dz_restore:${hwId}` }],
         [{ text: '← к архиву', callback_data: 'dz_arcpg:0' }],
       ]
     : [
+        [{ text: '📎 материалы', callback_data: `dz_materials:${hwId}` }],
         [{ text: '✏️ изменить тему', callback_data: `dz_et:${hwId}` },
          { text: '📅 изменить дедлайн', callback_data: `dz_ed:${hwId}` }],
         [{ text: '🔔 напомнить несдавшим', callback_data: `dz_remind:${hwId}` }],
@@ -2012,7 +2014,31 @@ async function showDzDetail(chatId, hwId) {
   return send(chatId, `${text}\nстатус: ${a.archived_at ? 'в архиве' : 'активно'}`, kbd(buttons));
 }
 
-async function remindMissingStudents(chatId, hwId) {
+async function showDzMaterials(chatId, hwId) {
+      const assignment = await sbOne('homework_assignments',
+        `id=eq.${encodeURIComponent(hwId)}&select=id,topic,file_id,archived_at`);
+      if (!assignment) return send(chatId, 'ДЗ не найдено.');
+
+      const back = kbd([[{ text: '← назад к ДЗ', callback_data: `dz:${hwId}` }]]);
+      if (!assignment.file_id) {
+        return send(chatId, `к ДЗ «${html(assignment.topic || '—')}» материалы не прикреплены.`, back);
+      }
+
+      try {
+        await sendAttachment(chatId, assignment.file_id);
+      } catch (error) {
+        console.warn('VK homework material send failed:', error?.message || error);
+        return send(chatId,
+          `⚠️ материал к ДЗ «${html(assignment.topic || '—')}» сохранён в базе, но VK больше не даёт открыть это вложение.`,
+          back);
+      }
+
+      return send(chatId,
+        `📎 материал к ДЗ «${html(assignment.topic || '—')}»`,
+        back);
+    }
+
+    async function remindMissingStudents(chatId, hwId) {
   const assignment = await sbOne('homework_assignments',
     `id=eq.${encodeURIComponent(hwId)}&archived_at=is.null`);
   if (!assignment) return send(chatId, 'ДЗ не найдено или уже в архиве.');
@@ -2193,6 +2219,9 @@ async function handleCallback(cq) {
   }
   if (data.startsWith('dz_arcpg:') && owner) {
     return showOwnerAssignments(chatId, parseInt(data.slice('dz_arcpg:'.length), 10) || 0, true);
+  }
+  if (data.startsWith('dz_materials:') && owner) {
+    return showDzMaterials(chatId, data.slice('dz_materials:'.length));
   }
   if (data.startsWith('dz:') && owner) {
     return showDzDetail(chatId, data.slice(3));
