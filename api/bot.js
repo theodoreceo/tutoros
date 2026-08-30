@@ -388,6 +388,41 @@ const kbd   = (rows) => {
   };
 };
 const botId = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+async function assignActiveHomeworkToStudent(student) {
+  if (!student?.id || !student?.group_id || student.status !== 'active') return 0;
+
+  const assignments = await sbSelect('homework_assignments',
+    `group_id=eq.${encodeURIComponent(student.group_id)}&archived_at=is.null&select=id`);
+  if (!assignments.length) return 0;
+
+  const assignmentIds = assignments.map(assignment => assignment.id);
+  const existing = await sbSelect('homework_submissions',
+    `student_id=eq.${encodeURIComponent(student.id)}` +
+    `&assignment_id=in.(${assignmentIds.join(',')})&select=assignment_id`);
+  const existingIds = new Set(existing.map(row => row.assignment_id));
+  const missing = assignments.filter(assignment => !existingIds.has(assignment.id));
+
+  let created = 0;
+  for (const assignment of missing) {
+    try {
+      await sbInsert('homework_submissions', {
+        id: botId(),
+        assignment_id: assignment.id,
+        student_id: student.id,
+        status: 'assigned',
+        source: 'vk',
+        submitted_at: null,
+        score: null,
+        comment: '',
+      });
+      created += 1;
+    } catch (error) {
+      if (!/duplicate key|23505/i.test(String(error?.message || error))) throw error;
+    }
+  }
+  return created;
+}
 const callbackNonce = () => Math.random().toString(36).slice(2, 8);
 const html  = (value) => String(value ?? '')
   .replaceAll('&', '&amp;')
@@ -926,6 +961,7 @@ async function handleRegistration(chatId, tid, token) {
   if (sm) {
     if (sm.vk_id) return send(chatId, 'эта ссылка уже была использована. напиши преподавателю.');
     await sbPatch('students', `id=eq.${sm.id}`, { vk_id: tid });
+    await assignActiveHomeworkToStudent({ ...sm, vk_id: tid });
     await setSession(tid, { step: 'student' });
     return send(chatId,
       `готово! ты подключен как <b>${sm.name}</b>.\n\nесли это не ты, напиши преподавателю.`,
@@ -1338,6 +1374,7 @@ async function finishStudentCreation(chatId, tid, rawName, sess) {
     created_at: new Date().toISOString(),
   });
   const student = inserted?.[0];
+  await assignActiveHomeworkToStudent(student);
   const token = student?.reg_token;
   const inviteLink = token ? studentInviteLink(token) : null;
 
@@ -1418,6 +1455,7 @@ async function finishIndividualStudentCreation(chatId, tid, rawName, sess) {
 // ── Student: list HW ──────────────────────────────────────────────────────────
 
 async function handleStudentListHw(chatId, student) {
+  await assignActiveHomeworkToStudent(student);
   const subs = await sbSelect('homework_submissions',
     `student_id=eq.${student.id}&status=in.(assigned,revision)`);
   if (!subs.length) return send(chatId, 'все задания сданы, молодец:)');
