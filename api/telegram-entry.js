@@ -1,5 +1,5 @@
 import telegramUiHandler from './telegram-ui.js';
-import { telegram } from './_lib/channels.js';
+import { telegram, withTelegramUiTransition } from './_lib/channels.js';
 import { handleTelegramStudentCjm } from './_lib/student-telegram-cjm.js';
 import { handleTelegramHomeworkCard } from './_lib/telegram-homework-card.js';
 import { handleTelegramHomeworkUpdate } from './_lib/telegram-homework.js';
@@ -64,7 +64,7 @@ async function cleanupFinalizePrompt(update) {
   }).catch(() => {});
 }
 
-export default async function handler(req, res) {
+async function runHandler(req, res) {
   if (req.method === 'POST' && TELEGRAM_WEBHOOK_SECRET) {
     const actual = req.headers['x-telegram-bot-api-secret-token'];
     if (actual !== TELEGRAM_WEBHOOK_SECRET) return res.status(403).send('wrong secret');
@@ -132,4 +132,8 @@ export default async function handler(req, res) {
   }
 
   return telegramUiHandler(req, res);
+}
+
+export default async function handler(req, res) {
+  return withTelegramUiTransition(() => runHandler(req, res));
 }
