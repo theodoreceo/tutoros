@@ -4,9 +4,11 @@ import {
   sendTelegram,
   sendTelegramDocument,
   resolveVkAttachmentUrl,
+  tgInlineKeyboard,
 } from './_lib/channels.js';
 
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
+const OWNER_TELEGRAM_ID = process.env.OWNER_TELEGRAM_ID;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY
   || process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -15,6 +17,9 @@ const SB = {
   apikey: SUPABASE_SECRET_KEY,
   Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
 };
+
+const esc = value => String(value ?? '')
+  .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
 async function sbOne(table, qs) {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${qs}&limit=1`, { headers: SB });
@@ -48,6 +53,42 @@ async function cleanupPreviousUiMessage(update) {
     // UI cleanup must never break the actual bot action.
     console.warn('Telegram UI cleanup failed:', error?.message || error);
   });
+}
+
+async function handleStudentInvite(update) {
+  const query = update?.callback_query;
+  const data = String(query?.data || '');
+  if (!data.startsWith('studentinfo:')) return false;
+
+  const chatId = query?.message?.chat?.id;
+  const userId = query?.from?.id;
+  const studentId = data.slice('studentinfo:'.length);
+  if (!chatId || !userId || !studentId) return false;
+  if (!OWNER_TELEGRAM_ID || String(userId) !== String(OWNER_TELEGRAM_ID)) return false;
+
+  await telegram('answerCallbackQuery', { callback_query_id: query.id }).catch(() => {});
+  const student = await sbOne(
+    'students',
+    `id=eq.${encodeURIComponent(studentId)}&select=id,name,group_id,vk_id,telegram_id,reg_token`
+  );
+  if (!student) {
+    await sendTelegram(chatId, 'ученик не найден.');
+    return true;
+  }
+
+  const bot = await telegram('getMe');
+  const inviteLink = bot?.username && student.reg_token
+    ? `https://t.me/${bot.username}?start=${encodeURIComponent(student.reg_token)}`
+    : null;
+
+  await sendTelegram(chatId,
+    `<b>${esc(student.name)}</b>\nTG: ${student.telegram_id ? 'подключён' : 'не подключён'}\nVK: ${student.vk_id ? 'подключён' : 'не подключён'}\n\n` +
+    (inviteLink
+      ? `Telegram-ссылка:\n${esc(inviteLink)}`
+      : `код Telegram: <code>${esc(student.reg_token)}</code>`), {
+      reply_markup: tgInlineKeyboard([[{ text: '← назад', callback_data: `og:${student.group_id}` }]]),
+    });
+  return true;
 }
 
 async function handlePortableHomeworkFile(update) {
@@ -107,6 +148,9 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     await cleanupPreviousUiMessage(req.body || {});
+    if (await handleStudentInvite(req.body || {})) {
+      return res.status(200).send('ok');
+    }
     if (await handlePortableHomeworkFile(req.body || {})) {
       return res.status(200).send('ok');
     }
