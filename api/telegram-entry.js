@@ -10,6 +10,7 @@ import { handleTelegramSubmissionFile } from './_lib/telegram-submission-files.j
 import { handleTelegramSubmissionUpdate } from './_lib/telegram-submissions.js';
 
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
+const OWNER_TELEGRAM_ID = process.env.OWNER_TELEGRAM_ID;
 
 function studentCjmUpdate(update) {
   const query = update?.callback_query;
@@ -27,6 +28,28 @@ function studentCjmUpdate(update) {
       message: { chat: query.message.chat },
     },
   };
+}
+
+async function blockRevisionAction(update) {
+  const query = update?.callback_query;
+  const data = String(query?.data || '');
+  const userId = query?.from?.id;
+  const chatId = query?.message?.chat?.id;
+  if (!data.startsWith('reviewrev:') || !OWNER_TELEGRAM_ID || String(userId) !== String(OWNER_TELEGRAM_ID)) {
+    return false;
+  }
+  await telegram('answerCallbackQuery', {
+    callback_query_id: query.id,
+    text: 'Доработка убрана из TutorOS',
+    show_alert: false,
+  }).catch(() => {});
+  if (chatId) {
+    await telegram('sendMessage', {
+      chat_id: chatId,
+      text: 'Функция «доработка» убрана. Поставь работе балл и комментарий; если нужно решить заново — создай новое ДЗ.',
+    }).catch(() => {});
+  }
+  return true;
 }
 
 async function cleanupFinalizePrompt(update) {
@@ -49,6 +72,10 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     try {
+      if (await blockRevisionAction(req.body || {})) {
+        return res.status(200).send('ok');
+      }
+
       // Canonical student flow always gets first refusal. Owner/admin updates
       // return false here and continue into the existing teacher handlers.
       if (await handleTelegramStudentCjm(studentCjmUpdate(req.body || {}))) {
