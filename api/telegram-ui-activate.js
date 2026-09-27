@@ -9,7 +9,9 @@ export default async function handler(req, res) {
   }
 
   const protocol = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  const requestHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  const branchHost = String(process.env.VERCEL_BRANCH_URL || '').trim();
+  const host = branchHost || requestHost;
   const url = `${protocol}://${host}/api/telegram-ui`;
 
   const before = await telegram('getWebhookInfo');
