@@ -37,7 +37,6 @@ export async function sendTelegramDocument(chatId, fileIdOrUrl, caption = '') {
     chat_id: chatId,
     document: fileIdOrUrl,
     caption: caption || undefined,
-    parse_mode: 'HTML',
   });
 }
 
