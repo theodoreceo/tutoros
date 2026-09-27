@@ -2,6 +2,7 @@ import telegramUiHandler from './telegram-ui.js';
 import { telegram } from './_lib/channels.js';
 import { handleTelegramHomeworkCard } from './_lib/telegram-homework-card.js';
 import { handleTelegramHomeworkUpdate } from './_lib/telegram-homework.js';
+import { handleTelegramNotesUpload } from './_lib/telegram-notes.js';
 import { handleStoredHomeworkFile } from './_lib/telegram-storage-file.js';
 import { handleTelegramReviewUpdate } from './_lib/telegram-review.js';
 import { handleTelegramSubmissionFile } from './_lib/telegram-submission-files.js';
@@ -42,6 +43,10 @@ export default async function handler(req, res) {
       }
 
       if (await handleTelegramHomeworkUpdate(req.body || {})) {
+        return res.status(200).send('ok');
+      }
+
+      if (await handleTelegramNotesUpload(req.body || {})) {
         return res.status(200).send('ok');
       }
 
