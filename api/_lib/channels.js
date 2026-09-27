@@ -1,13 +1,16 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const VK_GROUP_TOKEN = process.env.VK_GROUP_TOKEN;
 const VK_API_VERSION = process.env.VK_API_VERSION || '5.199';
 const OWNER_VK_ID = process.env.OWNER_VK_ID;
+const telegramUiTransitions = new AsyncLocalStorage();
 
 function assertTelegram() {
   if (!TELEGRAM_BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN is not configured');
 }
 
-export async function telegram(method, payload = {}) {
+async function rawTelegram(method, payload = {}) {
   assertTelegram();
   const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`, {
     method: 'POST',
@@ -19,6 +22,66 @@ export async function telegram(method, payload = {}) {
     throw new Error(`Telegram ${method}: ${result?.description || response.status}`);
   }
   return result.result;
+}
+
+export async function telegram(method, payload = {}) {
+  const transition = telegramUiTransitions.getStore();
+  const chatKey = payload?.chat_id === undefined || payload?.chat_id === null
+    ? null
+    : String(payload.chat_id);
+
+  // UI handlers historically do deleteMessage -> sendMessage. Keep the old
+  // message visible while the next screen is prepared, then edit it in place.
+  // This removes the visible blank gap without forcing every handler to know
+  // about Telegram-specific rendering details.
+  if (transition && method === 'deleteMessage' && chatKey && payload.message_id) {
+    transition.pendingDeletes.set(chatKey, {
+      chat_id: payload.chat_id,
+      message_id: payload.message_id,
+    });
+    return true;
+  }
+
+  if (transition && method === 'sendMessage' && chatKey) {
+    const pending = transition.pendingDeletes.get(chatKey);
+    if (pending) {
+      transition.pendingDeletes.delete(chatKey);
+      try {
+        return await rawTelegram('editMessageText', {
+          chat_id: payload.chat_id,
+          message_id: pending.message_id,
+          text: payload.text,
+          parse_mode: payload.parse_mode,
+          disable_web_page_preview: payload.disable_web_page_preview,
+          reply_markup: payload.reply_markup,
+        });
+      } catch (error) {
+        if (/message is not modified/i.test(String(error?.message || error))) {
+          return { message_id: pending.message_id, chat: { id: payload.chat_id } };
+        }
+        // Some Telegram messages cannot be edited (old messages, special
+        // message types, etc.). Fall back to the original behavior.
+        await rawTelegram('deleteMessage', pending).catch(() => {});
+        return rawTelegram('sendMessage', payload);
+      }
+    }
+  }
+
+  return rawTelegram(method, payload);
+}
+
+export async function withTelegramUiTransition(callback) {
+  const state = { pendingDeletes: new Map() };
+  return telegramUiTransitions.run(state, async () => {
+    try {
+      return await callback();
+    } finally {
+      // A delete that was not followed by sendMessage was a real deletion.
+      const pending = [...state.pendingDeletes.values()];
+      state.pendingDeletes.clear();
+      await Promise.all(pending.map(item => rawTelegram('deleteMessage', item).catch(() => {})));
+    }
+  });
 }
 
 export async function sendTelegram(chatId, text, extra = {}) {
