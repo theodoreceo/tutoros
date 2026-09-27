@@ -40,6 +40,8 @@ create table if not exists lesson_materials (
   )
 );
 
+alter table lesson_materials enable row level security;
+
 create index if not exists lesson_materials_group_created_idx
   on lesson_materials(group_id, created_at desc);
 create index if not exists lesson_materials_lesson_idx
