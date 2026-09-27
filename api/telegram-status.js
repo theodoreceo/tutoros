@@ -1,9 +1,26 @@
 import { telegram } from './_lib/channels.js';
 
+async function checkSchema() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return { ready: false, error: 'Supabase is not configured' };
+  const headers = { apikey: key, Authorization: `Bearer ${key}` };
+  try {
+    const [students, materials] = await Promise.all([
+      fetch(`${url}/rest/v1/students?select=telegram_id&limit=1`, { headers }),
+      fetch(`${url}/rest/v1/lesson_materials?select=id&limit=1`, { headers }),
+    ]);
+    if (!students.ok) return { ready: false, error: `students.telegram_id: ${students.status}` };
+    if (!materials.ok) return { ready: false, error: `lesson_materials: ${materials.status}` };
+    return { ready: true, error: null };
+  } catch (error) {
+    return { ready: false, error: error.message };
+  }
+}
+
 export default async function handler(req, res) {
   const configured = {
     telegram_bot_token: Boolean(process.env.TELEGRAM_BOT_TOKEN),
-    telegram_bot_username: Boolean(process.env.TELEGRAM_BOT_USERNAME),
     telegram_webhook_secret: Boolean(process.env.TELEGRAM_WEBHOOK_SECRET),
     owner_telegram_id: Boolean(process.env.OWNER_TELEGRAM_ID),
     supabase_url: Boolean(process.env.SUPABASE_URL),
@@ -20,10 +37,12 @@ export default async function handler(req, res) {
     bot = await telegram('getMe').catch(error => ({ error: error.message }));
     webhook = await telegram('getWebhookInfo').catch(error => ({ error: error.message }));
   }
+  const schema = await checkSchema();
 
   return res.status(200).json({
-    ok: Object.values(configured).every(Boolean),
+    ok: Object.values(configured).every(Boolean) && schema.ready,
     configured,
+    schema,
     webhook_url: webhookUrl,
     bot: bot && !bot.error ? { id: bot.id, username: bot.username, first_name: bot.first_name } : bot,
     webhook: webhook && !webhook.error ? {
