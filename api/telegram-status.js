@@ -28,8 +28,10 @@ export default async function handler(req, res) {
   };
 
   const protocol = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
-  const webhookUrl = host ? `${protocol}://${host}/api/telegram` : null;
+  const requestHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  const branchHost = String(process.env.VERCEL_BRANCH_URL || '').trim();
+  const host = branchHost || requestHost;
+  const webhookUrl = host ? `${protocol}://${host}/api/telegram-entry` : null;
 
   let bot = null;
   let webhook = null;
@@ -38,12 +40,14 @@ export default async function handler(req, res) {
     webhook = await telegram('getWebhookInfo').catch(error => ({ error: error.message }));
   }
   const schema = await checkSchema();
+  const webhookMatches = Boolean(webhookUrl && webhook && !webhook.error && webhook.url === webhookUrl);
 
   return res.status(200).json({
-    ok: Object.values(configured).every(Boolean) && schema.ready,
+    ok: Object.values(configured).every(Boolean) && schema.ready && webhookMatches,
     configured,
     schema,
     webhook_url: webhookUrl,
+    webhook_matches_expected: webhookMatches,
     bot: bot && !bot.error ? { id: bot.id, username: bot.username, first_name: bot.first_name } : bot,
     webhook: webhook && !webhook.error ? {
       url: webhook.url,
