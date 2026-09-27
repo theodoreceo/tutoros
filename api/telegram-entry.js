@@ -1,5 +1,6 @@
 import telegramUiHandler from './telegram-ui.js';
 import { telegram } from './_lib/channels.js';
+import { handleTelegramStudentCjm } from './_lib/student-telegram-cjm.js';
 import { handleTelegramHomeworkCard } from './_lib/telegram-homework-card.js';
 import { handleTelegramHomeworkUpdate } from './_lib/telegram-homework.js';
 import { handleTelegramNotesUpload } from './_lib/telegram-notes.js';
@@ -30,6 +31,12 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     try {
+      // Canonical student flow always gets first refusal. Owner/admin updates
+      // return false here and continue into the existing teacher handlers.
+      if (await handleTelegramStudentCjm(req.body || {})) {
+        return res.status(200).send('ok');
+      }
+
       if (await handleTelegramReviewUpdate(req.body || {})) {
         return res.status(200).send('ok');
       }
