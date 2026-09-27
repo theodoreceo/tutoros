@@ -1,4 +1,5 @@
-import vkHandler from './bot.js';
+import vkHandler from './vk-legacy.js';
+import { handleVkStudentCjm } from './_lib/student-vk-cjm.js';
 import { relayVkChanges, snapshotVkRelay } from './_lib/vk-relay.js';
 
 const VK_GROUP_ID = process.env.VK_GROUP_ID;
@@ -52,7 +53,21 @@ function capturedResponse() {
 
 export default async function handler(req, res) {
   let before = null;
+
   if (validRelayRequest(req)) {
+    try {
+      // Students use the canonical TutorOS CJM. Owner/admin updates deliberately
+      // return false and continue into the proven legacy teacher handler below.
+      if (await handleVkStudentCjm(req.body || {})) {
+        return res.status(200).send('ok');
+      }
+    } catch (error) {
+      // Never let VK retry a student action through the legacy state machine: a
+      // retry there could create a second, different journey after a partial write.
+      console.error('VK canonical student CJM failed:', error?.message || error);
+      return res.status(200).send('ok');
+    }
+
     before = await snapshotVkRelay(req.body || {}).catch(error => {
       console.warn('VK relay snapshot failed:', error?.message || error);
       return null;
