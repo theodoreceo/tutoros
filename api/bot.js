@@ -14,6 +14,8 @@ const VK_CONFIRMATION_CODE = process.env.VK_CONFIRMATION_CODE;
 const VK_API_VERSION     = process.env.VK_API_VERSION || '5.199';
 const OWNER_VK_ID        = process.env.OWNER_VK_ID;
 const UI_MESSAGE_IDS_KEY = '_ui_message_ids';
+const HW_STORAGE_BUCKET = 'homework-materials';
+const HW_STORAGE_PREFIX = 'storage:';
 const uiMessageStorage   = new AsyncLocalStorage();
 
 const isOwner = (vkUserId) =>
@@ -135,6 +137,138 @@ async function vk(method, params = {}) {
   return result?.response;
 }
 
+const storageObjectPath = path => String(path || '')
+  .split('/')
+  .map(part => encodeURIComponent(part))
+  .join('/');
+
+async function ensureHomeworkStorageBucket() {
+  const response = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+    method: 'POST',
+    headers: SB,
+    body: JSON.stringify({
+      id: HW_STORAGE_BUCKET,
+      name: HW_STORAGE_BUCKET,
+      public: false,
+      file_size_limit: 20 * 1024 * 1024,
+      allowed_mime_types: ['application/pdf'],
+    }),
+  });
+  if (response.ok) return;
+  const text = await response.text();
+  if ((response.status === 400 || response.status === 409)
+      && /already exists|duplicate/i.test(text)) return;
+  throw new Error(`storage bucket: ${text || response.status}`);
+}
+
+async function uploadHomeworkStorageObject(path, bytes) {
+  await ensureHomeworkStorageBucket();
+  const response = await fetch(
+    `${SUPABASE_URL}/storage/v1/object/${HW_STORAGE_BUCKET}/${storageObjectPath(path)}`,
+    {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_SECRET_KEY,
+        'Authorization': `Bearer ${SUPABASE_SECRET_KEY}`,
+        'Content-Type': 'application/pdf',
+        'x-upsert': 'true',
+      },
+      body: bytes,
+    },
+  );
+  if (!response.ok) throw new Error(`storage upload: ${await response.text()}`);
+}
+
+async function downloadHomeworkStorageObject(path) {
+  const response = await fetch(
+    `${SUPABASE_URL}/storage/v1/object/authenticated/${HW_STORAGE_BUCKET}/${storageObjectPath(path)}`,
+    { headers: { 'apikey': SUPABASE_SECRET_KEY, 'Authorization': `Bearer ${SUPABASE_SECRET_KEY}` } },
+  );
+  if (!response.ok) throw new Error(`storage download: ${await response.text()}`);
+  return response.arrayBuffer();
+}
+
+const materialPathFromRef = ref => String(ref || '').startsWith(HW_STORAGE_PREFIX)
+  ? String(ref).slice(HW_STORAGE_PREFIX.length)
+  : null;
+
+const safePdfName = value => {
+  const base = String(value || 'homework.pdf')
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80) || 'homework.pdf';
+  return base.toLowerCase().endsWith('.pdf') ? base : `${base}.pdf`;
+};
+
+async function resolveVkDocumentInfo(document) {
+  if (document?.url) return document;
+  const fileId = document?.file_id;
+  if (!fileId || !String(fileId).startsWith('doc')) return null;
+  const response = await vk('docs.getById', { docs: String(fileId).slice(3) });
+  const doc = Array.isArray(response) ? response[0] : response?.items?.[0] || response?.doc || null;
+  return doc ? {
+    ...document,
+    url: doc.url,
+    title: doc.title,
+    ext: doc.ext,
+    size: doc.size,
+  } : null;
+}
+
+async function persistHomeworkMaterial(document, assignmentId) {
+  const info = await resolveVkDocumentInfo(document);
+  if (!info?.url) throw new Error('VK не дал ссылку на документ');
+  const ext = String(info.ext || '').toLowerCase();
+  const title = String(info.title || 'homework.pdf');
+  if (ext && ext !== 'pdf' && !title.toLowerCase().endsWith('.pdf')) {
+    throw new Error('нужен именно PDF-файл');
+  }
+  const source = await fetch(info.url);
+  if (!source.ok) throw new Error(`VK download: ${source.status}`);
+  const bytes = await source.arrayBuffer();
+  if (!bytes.byteLength) throw new Error('пустой PDF');
+  if (bytes.byteLength > 20 * 1024 * 1024) throw new Error('PDF больше 20 МБ');
+  const filename = safePdfName(title);
+  const path = `${assignmentId}/${Date.now()}-${filename}`;
+  await uploadHomeworkStorageObject(path, bytes);
+  return `${HW_STORAGE_PREFIX}${path}`;
+}
+
+async function storedMaterialToVkAttachment(peerId, materialRef) {
+  const path = materialPathFromRef(materialRef);
+  if (!path) return null;
+  const bytes = await downloadHomeworkStorageObject(path);
+  const rawName = path.split('/').pop() || 'homework.pdf';
+  const filename = safePdfName(rawName.replace(/^\d+-/, ''));
+  const server = await vk('docs.getMessagesUploadServer', { peer_id: peerId, type: 'doc' });
+  if (!server?.upload_url) throw new Error('VK не выдал upload_url');
+  const form = new FormData();
+  form.append('file', new Blob([bytes], { type: 'application/pdf' }), filename);
+  const uploadedResponse = await fetch(server.upload_url, { method: 'POST', body: form });
+  const uploaded = await uploadedResponse.json().catch(() => null);
+  if (!uploadedResponse.ok || !uploaded?.file) {
+    throw new Error(`VK upload: ${uploaded?.error || uploadedResponse.status}`);
+  }
+  const saved = await vk('docs.save', { file: uploaded.file, title: filename });
+  const doc = Array.isArray(saved) ? saved[0] : saved?.doc || saved?.items?.[0] || saved;
+  if (doc?.owner_id === undefined || doc?.id === undefined) {
+    throw new Error('VK docs.save не вернул документ');
+  }
+  return `doc${doc.owner_id}_${doc.id}${doc.access_key ? `_${doc.access_key}` : ''}`;
+}
+
+async function sendHomeworkMaterial(peerId, materialRef) {
+  if (!materialRef) return false;
+  const storedPath = materialPathFromRef(materialRef);
+  const attachment = storedPath
+    ? await storedMaterialToVkAttachment(peerId, materialRef)
+    : materialRef;
+  if (!attachment) return false;
+  await sendAttachment(peerId, attachment);
+  return true;
+}
+
 const randomId = () => Math.floor(Math.random() * 2147483647) || 1;
 const plainText = value => String(value ?? '')
   .replace(/<\/?(?:b|code)>/g, '')
@@ -254,6 +388,41 @@ const kbd   = (rows) => {
   };
 };
 const botId = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+async function assignActiveHomeworkToStudent(student) {
+  if (!student?.id || !student?.group_id || student.status !== 'active') return 0;
+
+  const assignments = await sbSelect('homework_assignments',
+    `group_id=eq.${encodeURIComponent(student.group_id)}&archived_at=is.null&select=id`);
+  if (!assignments.length) return 0;
+
+  const assignmentIds = assignments.map(assignment => assignment.id);
+  const existing = await sbSelect('homework_submissions',
+    `student_id=eq.${encodeURIComponent(student.id)}` +
+    `&assignment_id=in.(${assignmentIds.join(',')})&select=assignment_id`);
+  const existingIds = new Set(existing.map(row => row.assignment_id));
+  const missing = assignments.filter(assignment => !existingIds.has(assignment.id));
+
+  let created = 0;
+  for (const assignment of missing) {
+    try {
+      await sbInsert('homework_submissions', {
+        id: botId(),
+        assignment_id: assignment.id,
+        student_id: student.id,
+        status: 'assigned',
+        source: 'vk',
+        submitted_at: null,
+        score: null,
+        comment: '',
+      });
+      created += 1;
+    } catch (error) {
+      if (!/duplicate key|23505/i.test(String(error?.message || error))) throw error;
+    }
+  }
+  return created;
+}
 const callbackNonce = () => Math.random().toString(36).slice(2, 8);
 const html  = (value) => String(value ?? '')
   .replaceAll('&', '&amp;')
@@ -273,9 +442,7 @@ const moscowDateTime = (isoDate) => isoDate
     }).format(new Date(isoDate))
   : '—';
 const isSubmittedOnTime = (assignment, submittedAt) =>
-  assignment?.due_date && !assignment?.archived_at
-    ? moscowDate(submittedAt) <= assignment.due_date
-    : null;
+  assignment?.due_date ? moscowDate(submittedAt) <= assignment.due_date : null;
 
 const todayMoscow = () => moscowDate(new Date().toISOString());
 const dateDiffDays = (fromDate, toDate) => {
@@ -315,11 +482,7 @@ const submissionPercent = (submission, assignment) => {
 };
 
 function buildStudentMetrics(submissions, assignmentMap) {
-  const relevant = submissions.filter(row => {
-    if (row.status === 'cancelled') return false;
-    if (['submitted', 'checked'].includes(row.status)) return true;
-    return !assignmentMap.get(row.assignment_id)?.archived_at;
-  });
+  const relevant = submissions.filter(row => row.status !== 'cancelled');
   const completed = relevant.filter(row => ['submitted', 'checked'].includes(row.status));
   const overdue = relevant.filter(row => {
     const assignment = assignmentMap.get(row.assignment_id);
@@ -436,91 +599,6 @@ async function updateAssignedSubmission(subId, studentId, changes) {
   return updated[0] ?? null;
 }
 
-async function assignCurrentHomeworkToStudent(student) {
-  if (!student?.id || !student?.group_id) return [];
-  const assignments = await sbSelect('homework_assignments',
-    `group_id=eq.${encodeURIComponent(student.group_id)}&archived_at=is.null&select=id`);
-  if (!assignments.length) return [];
-
-  const assignmentIds = assignments.map(assignment => assignment.id);
-  const existing = await sbSelect('homework_submissions',
-    `student_id=eq.${encodeURIComponent(student.id)}` +
-    `&assignment_id=in.(${assignmentIds.join(',')})&select=id,assignment_id,status`);
-  const byAssignment = new Map(existing.map(row => [row.assignment_id, row]));
-  const result = [];
-
-  for (const assignment of assignments) {
-    let submission = byAssignment.get(assignment.id) || null;
-    if (!submission) {
-      const inserted = await sbInsert('homework_submissions', {
-        id: botId(),
-        assignment_id: assignment.id,
-        student_id: student.id,
-        status: 'assigned',
-        source: 'vk',
-        submitted_at: null,
-        score: null,
-        comment: '',
-      });
-      submission = inserted?.[0] ?? null;
-    } else if (submission.status === 'cancelled') {
-      const restored = await sbPatch('homework_submissions',
-        `id=eq.${encodeURIComponent(submission.id)}` +
-        `&student_id=eq.${encodeURIComponent(student.id)}&status=eq.cancelled`,
-        { status: 'assigned', comment: '' });
-      submission = restored?.[0] ?? submission;
-    }
-    if (submission) result.push(submission);
-  }
-  return result;
-}
-
-async function ensureArchivedSubmission(student, assignmentId) {
-  const assignment = await sbOne('homework_assignments',
-    `id=eq.${encodeURIComponent(assignmentId)}` +
-    `&group_id=eq.${encodeURIComponent(student.group_id)}&archived_at=not.is.null`);
-  if (!assignment) return { assignment: null, submission: null };
-
-  let submission = await sbOne('homework_submissions',
-    `assignment_id=eq.${encodeURIComponent(assignment.id)}` +
-    `&student_id=eq.${encodeURIComponent(student.id)}`);
-  if (!submission) {
-    const inserted = await sbInsert('homework_submissions', {
-      id: botId(),
-      assignment_id: assignment.id,
-      student_id: student.id,
-      status: 'assigned',
-      source: 'vk',
-      submitted_at: null,
-      score: null,
-      comment: '',
-    });
-    submission = inserted?.[0] ?? null;
-  } else if (submission.status === 'cancelled') {
-    const restored = await sbPatch('homework_submissions',
-      `id=eq.${encodeURIComponent(submission.id)}` +
-      `&student_id=eq.${encodeURIComponent(student.id)}&status=eq.cancelled`,
-      { status: 'assigned', comment: '' });
-    submission = restored?.[0] ?? submission;
-  }
-  return { assignment, submission };
-}
-
-async function setHomeworkArchiveState(assignmentId, archived) {
-  const updated = await sbPatch('homework_assignments',
-    `id=eq.${encodeURIComponent(assignmentId)}`, {
-      archived_at: archived ? new Date().toISOString() : null,
-    });
-  if (!updated.length) throw new Error('ДЗ не найдено.');
-
-  if (!archived) {
-    await sbPatch('homework_submissions',
-      `assignment_id=eq.${encodeURIComponent(assignmentId)}&status=eq.cancelled`,
-      { status: 'assigned' });
-  }
-  return updated[0];
-}
-
 const studentInviteLink = token => VK_GROUP_ID
   ? `https://vk.com/write-${VK_GROUP_ID}?ref=${encodeURIComponent(token)}`
   : null;
@@ -564,7 +642,13 @@ function normalizeVkMessage(update) {
     text: String(message.text || ''),
     ref: message.ref || update.object?.ref || null,
     photo: photo ? [{ file_id: attachmentRef(photo) }] : null,
-    document: document ? { file_id: attachmentRef(document) } : null,
+    document: document ? {
+      file_id: attachmentRef(document),
+      url: document.doc?.url || null,
+      title: document.doc?.title || null,
+      ext: document.doc?.ext || null,
+      size: document.doc?.size || null,
+    } : null,
   };
 }
 
@@ -664,7 +748,7 @@ async function handleText(msg) {
   if (text === '📋 домашние задания'  && owner) return showOwnerAssignments(chatId, 0);
   if (text === '📦 архив дз'            && owner) return showOwnerAssignments(chatId, 0, true);
   if (text === '❓ помощь') {
-    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/archive — архив заданий\n/mydz — мои результаты\n/unlink — отвязать аккаунт\n\nесли возникла проблема, напиши преподавателю.', rkbd(STUDENT_KBD));
+    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт\n\nесли возникла проблема, напиши преподавателю.', rkbd(STUDENT_KBD));
     if (owner) return sendOwnerHelp(chatId);
     return send(chatId, 'открой персональную ссылку, которую прислал преподаватель.');
   }
@@ -692,16 +776,15 @@ async function handleText(msg) {
 
   // /help
   if (text === '/help') {
-    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/archive — архив заданий\n/mydz — мои результаты\n/unlink — отвязать аккаунт\n\nесли возникла проблема, напиши преподавателю.', rkbd(STUDENT_KBD));
+    if (student) return send(chatId, 'команды:\n/dz — активные задания\n/mydz — мои результаты\n/unlink — отвязать аккаунт\n\nесли возникла проблема, напиши преподавателю.', rkbd(STUDENT_KBD));
     if (owner) return sendOwnerHelp(chatId);
     return send(chatId, 'открой персональную ссылку, которую прислал преподаватель.');
   }
 
   // Student commands
   if (student) {
-    if (text === '/dz')      return handleStudentListHw(chatId, student);
-    if (text === '/archive') return showStudentArchive(chatId, student, 0);
-    if (text === '/mydz')    return showStudentStats(chatId, student);
+    if (text === '/dz')    return handleStudentListHw(chatId, student);
+    if (text === '/mydz')  return showStudentStats(chatId, student);
     const sess = await getSession(tid);
     if (typeof sess.step === 'string' && sess.step.startsWith('brief_answer:')) {
       const subId = sess.step.slice('brief_answer:'.length);
@@ -809,13 +892,43 @@ async function handleMedia(msg) {
   const fileId   = msg.photo ? msg.photo[msg.photo.length - 1].file_id : msg.document?.file_id;
   const fileType = msg.photo ? 'photo' : 'document';
 
-  // Owner uploading PDF for HW creation
+  // Owner uploading PDF for HW creation or replacing materials on an existing HW.
   if (owner) {
     const sess = await getSession(tid);
     if (sess.step === 'await_pdf') {
-      const newData = { ...sess.data, file_id: fileId };
-      await send(chatId, 'файл получен!');
-      return requestHomeworkConfig(chatId, tid, newData);
+      if (fileType !== 'document' || !fileId) {
+        return send(chatId, 'пришли PDF-файл документом.');
+      }
+      try {
+        const assignmentId = sess.data?.assignment_id || botId();
+        const durableRef = await persistHomeworkMaterial(msg.document, assignmentId);
+        const newData = { ...sess.data, assignment_id: assignmentId, file_id: durableRef };
+        await send(chatId, '✅ PDF сохранён в постоянное хранилище.');
+        return requestHomeworkConfig(chatId, tid, newData);
+      } catch (error) {
+        console.error('Homework material persist failed:', error?.message || error);
+        return send(chatId, `❌ не удалось сохранить PDF: ${error.message}
+
+отправь файл ещё раз.`);
+      }
+    }
+    if (String(sess.step || '').startsWith('replace_hw_material:')) {
+      const hwId = String(sess.step).slice('replace_hw_material:'.length);
+      if (fileType !== 'document' || !fileId) {
+        return send(chatId, 'пришли новый PDF-файл документом.');
+      }
+      try {
+        const durableRef = await persistHomeworkMaterial(msg.document, hwId);
+        await sbPatch('homework_assignments', `id=eq.${encodeURIComponent(hwId)}`, { file_id: durableRef });
+        await setSession(tid, { step: 'owner' });
+        return send(chatId, '✅ материалы ДЗ заменены и сохранены в постоянное хранилище.',
+          kbd([[{ text: '← назад к ДЗ', callback_data: `dz:${hwId}` }]]));
+      } catch (error) {
+        console.error('Homework material replacement failed:', error?.message || error);
+        return send(chatId, `❌ не удалось сохранить PDF: ${error.message}
+
+отправь файл ещё раз.`);
+      }
     }
   }
 
@@ -848,7 +961,7 @@ async function handleRegistration(chatId, tid, token) {
   if (sm) {
     if (sm.vk_id) return send(chatId, 'эта ссылка уже была использована. напиши преподавателю.');
     await sbPatch('students', `id=eq.${sm.id}`, { vk_id: tid });
-    await assignCurrentHomeworkToStudent({ ...sm, vk_id: tid });
+    await assignActiveHomeworkToStudent({ ...sm, vk_id: tid });
     await setSession(tid, { step: 'student' });
     return send(chatId,
       `готово! ты подключен как <b>${sm.name}</b>.\n\nесли это не ты, напиши преподавателю.`,
@@ -999,7 +1112,7 @@ async function showOwnerStudent(chatId, studentId) {
   const [group, assignments] = await Promise.all([
     sbOne('groups', `id=eq.${encodeURIComponent(student.group_id)}&select=id,name,group_type`),
     sbSelect('homework_assignments',
-      `group_id=eq.${encodeURIComponent(student.group_id)}&select=id,topic,due_date,hw_type,task_config,archived_at`),
+      `group_id=eq.${encodeURIComponent(student.group_id)}&select=id,topic,due_date,hw_type,task_config`),
   ]);
   const assignmentMap = new Map(assignments.map(assignment => [assignment.id, assignment]));
   const submissions = assignments.length
@@ -1261,7 +1374,7 @@ async function finishStudentCreation(chatId, tid, rawName, sess) {
     created_at: new Date().toISOString(),
   });
   const student = inserted?.[0];
-  if (student) await assignCurrentHomeworkToStudent(student);
+  await assignActiveHomeworkToStudent(student);
   const token = student?.reg_token;
   const inviteLink = token ? studentInviteLink(token) : null;
 
@@ -1342,114 +1455,41 @@ async function finishIndividualStudentCreation(chatId, tid, rawName, sess) {
 // ── Student: list HW ──────────────────────────────────────────────────────────
 
 async function handleStudentListHw(chatId, student) {
-  await assignCurrentHomeworkToStudent(student);
+  await assignActiveHomeworkToStudent(student);
   const subs = await sbSelect('homework_submissions',
-    `student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,revision)`);
+    `student_id=eq.${student.id}&status=in.(assigned,revision)`);
+  if (!subs.length) return send(chatId, 'все задания сданы, молодец:)');
 
-  const aIds = [...new Set(subs.map(sub => sub.assignment_id))];
-  const assignments = aIds.length
-    ? await sbSelect('homework_assignments',
-        `id=in.(${aIds.join(',')})&select=id,topic,due_date,hw_type,archived_at`)
-    : [];
-  const aMap = Object.fromEntries(assignments.map(assignment => [assignment.id, assignment]));
+  const aIds      = [...new Set(subs.map(s => s.assignment_id))];
+  const assignments = await sbSelect('homework_assignments',
+    `id=in.(${aIds.join(',')})&select=id,topic,due_date,hw_type`);
+  const aMap = Object.fromEntries(assignments.map(a => [a.id, a]));
 
   const buttons = [];
-  const lines = [];
+  const lines   = [];
   const pending = subs
     .map(sub => ({ sub, assignment: aMap[sub.assignment_id] }))
-    .filter(item => item.assignment && !item.assignment.archived_at)
+    .filter(item => item.assignment)
     .sort((left, right) => {
       const leftDue = left.assignment.due_date || '9999-12-31';
       const rightDue = right.assignment.due_date || '9999-12-31';
       return leftDue.localeCompare(rightDue);
     });
-  pending.forEach(({ sub, assignment: a }, index) => {
+  pending.forEach(({ sub, assignment: a }, i) => {
     const dueLabel = humanDueDate(a.due_date);
     const overdue = a.due_date && a.due_date < todayMoscow();
     const due = ` · ${overdue ? '🔴 ' : ''}${dueLabel}`;
-    const type = a.hw_type === 'brief' ? ' [краткий]' : a.hw_type === 'trial' ? ' [пробник]' : '';
+    const type   = a.hw_type === 'brief' ? ' [краткий]' : a.hw_type === 'trial' ? ' [пробник]' : '';
     const revision = sub.status === 'revision' ? ' · 🔁 доработка' : '';
-    lines.push(`${index + 1}. <b>${a.topic || 'без темы'}</b>${type}${revision}${due}`);
+    lines.push(`${i + 1}. <b>${a.topic || 'без темы'}</b>${type}${revision}${due}`);
     buttons.push([{
       text: `${overdue ? '🔴' : sub.status === 'revision' ? '🔁' : '📚'} ${(a.topic || 'домашки').slice(0, 28)} · ${dueLabel}`,
       callback_data: `hw:${sub.id}`,
     }]);
   });
-  buttons.push([{ text: '📦 архив заданий', callback_data: 'student_arcpg:0' }]);
 
-  if (!lines.length) {
-    return send(chatId, 'активных заданий сейчас нет.', kbd(buttons));
-  }
-  return send(chatId,
-    `задания (${lines.length}):
-
-${lines.join('\n')}
-
-выбери для сдачи:`,
-    kbd(buttons));
-}
-
-async function showStudentArchive(chatId, student, offset = 0) {
-  const pageSize = 8;
-  const safeOffset = Math.max(0, offset);
-  const assignments = await sbSelect('homework_assignments',
-    `group_id=eq.${encodeURIComponent(student.group_id)}&archived_at=not.is.null` +
-    `&order=assigned_at.desc&limit=${pageSize}&offset=${safeOffset}` +
-    `&select=id,topic,due_date,hw_type,assigned_at`);
-
-  if (!assignments.length) {
-    return send(chatId,
-      safeOffset === 0 ? 'архив заданий пока пуст.' : 'больше архивных заданий нет.',
-      kbd([[{ text: '← к текущим заданиям', callback_data: 'student_current' }]]));
-  }
-
-  const assignmentIds = assignments.map(assignment => assignment.id);
-  const submissions = await sbSelect('homework_submissions',
-    `student_id=eq.${encodeURIComponent(student.id)}` +
-    `&assignment_id=in.(${assignmentIds.join(',')})` +
-    `&select=id,assignment_id,status,score,max_score`);
-  const submissionMap = new Map(submissions.map(row => [row.assignment_id, row]));
-
-  const lines = [];
-  const buttons = [];
-  assignments.forEach((assignment, index) => {
-    const submission = submissionMap.get(assignment.id);
-    const state = submission?.status === 'checked' ? '✅ выполнено'
-      : submission?.status === 'submitted' ? '📤 на проверке'
-      : submission?.status === 'revision' ? '🔁 доработка'
-      : '📚 можно решить';
-    const type = assignment.hw_type === 'brief' ? ' [краткий]'
-      : assignment.hw_type === 'trial' ? ' [пробник]' : '';
-    lines.push(`${safeOffset + index + 1}. <b>${assignment.topic || 'без темы'}</b>${type} · ${state}`);
-
-    const callback = submission && ['submitted', 'checked'].includes(submission.status)
-      ? `my_sub:${submission.id}`
-      : submission && ['assigned', 'revision'].includes(submission.status)
-        ? `hw:${submission.id}`
-        : `arch_hw:${assignment.id}`;
-    buttons.push([{
-      text: `${state.split(' ')[0]} ${(assignment.topic || 'домашка').slice(0, 34)}`,
-      callback_data: callback,
-    }]);
-  });
-
-  const nav = [];
-  if (safeOffset > 0) nav.push({
-    text: '←', callback_data: `student_arcpg:${Math.max(0, safeOffset - pageSize)}`,
-  });
-  if (assignments.length === pageSize) nav.push({
-    text: '→', callback_data: `student_arcpg:${safeOffset + pageSize}`,
-  });
-  if (nav.length) buttons.push(nav);
-  buttons.push([{ text: '← к текущим заданиям', callback_data: 'student_current' }]);
-
-  return send(chatId,
-    `📦 архив заданий
-
-${lines.join('\n')}
-
-старые задания можно открыть и решить в любое время.`,
-    kbd(buttons));
+  if (!lines.length) return send(chatId, 'нет активных заданий!');
+  return send(chatId, `задания (${lines.length}):\n\n${lines.join('\n')}\n\nвыбери для сдачи:`, kbd(buttons));
 }
 
 // ── Student: my results (/mydz) ───────────────────────────────────────────────
@@ -1470,7 +1510,7 @@ async function showStudentStats(chatId, student) {
   const done = allSubs.filter(s => ['submitted', 'checked'].includes(s.status));
   const aIds = allSubs.length ? [...new Set(allSubs.map(s => s.assignment_id))] : [];
   const assignments = aIds.length
-    ? await sbSelect('homework_assignments', `id=in.(${aIds.join(',')})&select=id,topic,due_date,hw_type,task_config,archived_at`)
+    ? await sbSelect('homework_assignments', `id=in.(${aIds.join(',')})&select=id,topic,due_date,hw_type,task_config`)
     : [];
   const aMap = Object.fromEntries(assignments.map(a => [a.id, a]));
   const assignmentMap = new Map(assignments.map(assignment => [assignment.id, assignment]));
@@ -2166,11 +2206,13 @@ async function showDzDetail(chatId, hwId) {
   const buttons = a.archived_at
     ? [
         [{ text: '📎 материалы', callback_data: `dz_materials:${hwId}` }],
+        [{ text: a.file_id ? '♻️ заменить материалы' : '📤 загрузить материалы', callback_data: `dz_material_replace:${hwId}` }],
         [{ text: '♻️ вернуть из архива', callback_data: `dz_restore:${hwId}` }],
         [{ text: '← к архиву', callback_data: 'dz_arcpg:0' }],
       ]
     : [
         [{ text: '📎 материалы', callback_data: `dz_materials:${hwId}` }],
+        [{ text: a.file_id ? '♻️ заменить материалы' : '📤 загрузить материалы', callback_data: `dz_material_replace:${hwId}` }],
         [{ text: '✏️ изменить тему', callback_data: `dz_et:${hwId}` },
          { text: '📅 изменить дедлайн', callback_data: `dz_ed:${hwId}` }],
         [{ text: '🔔 напомнить несдавшим', callback_data: `dz_remind:${hwId}` }],
@@ -2183,30 +2225,30 @@ async function showDzDetail(chatId, hwId) {
 }
 
 async function showDzMaterials(chatId, hwId) {
-  const assignment = await sbOne('homework_assignments',
-    `id=eq.${encodeURIComponent(hwId)}&select=id,topic,file_id,archived_at`);
-  if (!assignment) return send(chatId, 'ДЗ не найдено.');
+      const assignment = await sbOne('homework_assignments',
+        `id=eq.${encodeURIComponent(hwId)}&select=id,topic,file_id,archived_at`);
+      if (!assignment) return send(chatId, 'ДЗ не найдено.');
 
-  const back = kbd([[{ text: '← назад к ДЗ', callback_data: `dz:${hwId}` }]]);
-  if (!assignment.file_id) {
-    return send(chatId, `к ДЗ «${html(assignment.topic || '—')}» материалы не прикреплены.`, back);
-  }
+      const back = kbd([[{ text: '← назад к ДЗ', callback_data: `dz:${hwId}` }]]);
+      if (!assignment.file_id) {
+        return send(chatId, `к ДЗ «${html(assignment.topic || '—')}» материалы не прикреплены.`, back);
+      }
 
-  try {
-    await sendAttachment(chatId, assignment.file_id);
-  } catch (error) {
-    console.warn('VK homework material send failed:', error?.message || error);
-    return send(chatId,
-      `⚠️ материал к ДЗ «${html(assignment.topic || '—')}» сохранён в базе, но VK больше не даёт открыть это вложение.`,
-      back);
-  }
+      try {
+        await sendHomeworkMaterial(chatId, assignment.file_id);
+      } catch (error) {
+        console.warn('VK homework material send failed:', error?.message || error);
+        return send(chatId,
+          `⚠️ материал к ДЗ «${html(assignment.topic || '—')}» сохранён в базе, но VK больше не даёт открыть это вложение.`,
+          back);
+      }
 
-  return send(chatId,
-    `📎 материал к ДЗ «${html(assignment.topic || '—')}»`,
-    back);
-}
+      return send(chatId,
+        `📎 материал к ДЗ «${html(assignment.topic || '—')}»`,
+        back);
+    }
 
-async function remindMissingStudents(chatId, hwId) {
+    async function remindMissingStudents(chatId, hwId) {
   const assignment = await sbOne('homework_assignments',
     `id=eq.${encodeURIComponent(hwId)}&archived_at=is.null`);
   if (!assignment) return send(chatId, 'ДЗ не найдено или уже в архиве.');
@@ -2275,7 +2317,7 @@ async function startHomeworkRepeat(chatId, tid, hwId) {
 async function handleCallback(cq) {
   const chatId = cq.message.chat.id;
   const tid    = cq.from.id;
-  let data     = cq.data;
+  const data   = cq.data;
   await cbq(cq.id, '', { user_id: cq.user_id, peer_id: cq.peer_id }).catch(() => {});
 
   const owner = isOwner(tid);
@@ -2388,6 +2430,14 @@ async function handleCallback(cq) {
   if (data.startsWith('dz_arcpg:') && owner) {
     return showOwnerAssignments(chatId, parseInt(data.slice('dz_arcpg:'.length), 10) || 0, true);
   }
+  if (data.startsWith('dz_material_replace:') && owner) {
+    const hwId = data.slice('dz_material_replace:'.length);
+    const assignment = await sbOne('homework_assignments', `id=eq.${encodeURIComponent(hwId)}&select=id,topic`);
+    if (!assignment) return send(chatId, 'ДЗ не найдено.');
+    await setSession(tid, { step: `replace_hw_material:${hwId}`, data: { hwId } });
+    return send(chatId, `пришли новый PDF для ДЗ «${html(assignment.topic || '—')}».\n\nОн будет сохранён независимо от VK.`,
+      kbd([[{ text: '❌ отменить', callback_data: `dz:${hwId}` }]]));
+  }
   if (data.startsWith('dz_materials:') && owner) {
     return showDzMaterials(chatId, data.slice('dz_materials:'.length));
   }
@@ -2413,19 +2463,19 @@ async function handleCallback(cq) {
   if ((data.startsWith('dz_arc:') || data.startsWith('dz_del:')) && owner) {
     const hwId = data.slice(data.indexOf(':') + 1);
     const a    = await sbOne('homework_assignments', `id=eq.${hwId}&select=topic`);
-    return send(chatId, `убрать ДЗ «<b>${a?.topic || hwId}</b>» в архив?\n\nОно исчезнет из текущих заданий, но останется доступно ученикам в архиве. Результаты и файлы сохранятся.`,
+    return send(chatId, `убрать ДЗ «<b>${a?.topic || hwId}</b>» в архив?\n\nОно исчезнет у учеников, но результаты и файлы сохранятся.`,
       kbd([[{ text: '✅ да, в архив', callback_data: `dz_arcok:${hwId}` },
              { text: '❌ отмена',     callback_data: `dz:${hwId}` }]]));
   }
   if ((data.startsWith('dz_arcok:') || data.startsWith('dz_delok:')) && owner) {
     const hwId = data.slice(data.indexOf(':') + 1);
-    await setHomeworkArchiveState(hwId, true);
+    await sbRpc('set_homework_archived', { p_assignment_id: hwId, p_archived: true });
     await setSession(tid, { step: 'owner' });
-    return send(chatId, '✅ ДЗ убрано в архив. Ученики по-прежнему могут открыть и решить его там.', rkbd(OWNER_KBD));
+    return send(chatId, '✅ ДЗ убрано в архив. Результаты и файлы сохранены.', rkbd(OWNER_KBD));
   }
   if (data.startsWith('dz_restore:') && owner) {
     const hwId = data.slice('dz_restore:'.length);
-    await setHomeworkArchiveState(hwId, false);
+    await sbRpc('set_homework_archived', { p_assignment_id: hwId, p_archived: false });
     await setSession(tid, { step: 'owner' });
     return send(chatId, '✅ ДЗ снова активно и вернулось ученикам.', rkbd(OWNER_KBD));
   }
@@ -2581,23 +2631,6 @@ async function handleCallback(cq) {
     return send(chatId, 'создание ДЗ отменено.', rkbd(OWNER_KBD));
   }
 
-  if (data === 'student_current' && student) {
-    return handleStudentListHw(chatId, student);
-  }
-  if (data.startsWith('student_arcpg:') && student) {
-    return showStudentArchive(chatId, student,
-      parseInt(data.slice('student_arcpg:'.length), 10) || 0);
-  }
-  if (data.startsWith('arch_hw:') && student) {
-    const assignmentId = data.slice('arch_hw:'.length);
-    const { submission } = await ensureArchivedSubmission(student, assignmentId);
-    if (!submission) return send(chatId, 'архивное задание не найдено.');
-    if (['submitted', 'checked'].includes(submission.status)) {
-      return showStudentSubDetail(chatId, student, submission.id);
-    }
-    data = `hw:${submission.id}`;
-  }
-
   // Student taps HW
   if (data.startsWith('hw:') && student) {
     const subId = data.slice(3);
@@ -2609,7 +2642,7 @@ async function handleCallback(cq) {
     if (!assignment) return send(chatId, 'задание не найдено.');
 
     if (assignment.file_id) {
-      await sendAttachment(chatId, assignment.file_id);
+      await sendHomeworkMaterial(chatId, assignment.file_id);
     }
 
     const desc = assignment.description ? `\n${assignment.description}` : '';
