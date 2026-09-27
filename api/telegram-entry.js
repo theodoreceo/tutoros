@@ -11,6 +11,24 @@ import { handleTelegramSubmissionUpdate } from './_lib/telegram-submissions.js';
 
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
 
+function studentCjmUpdate(update) {
+  const query = update?.callback_query;
+  const data = String(query?.data || '');
+  if (!data.startsWith('hw:') || !query?.message?.chat) return update;
+
+  // Legacy homework notification buttons use hw:<submission>. Opening such a
+  // notification should keep the notification in chat history. The canonical
+  // CJM still needs its chat id, but without message_id its UI cleanup becomes
+  // a no-op for this source message.
+  return {
+    ...update,
+    callback_query: {
+      ...query,
+      message: { chat: query.message.chat },
+    },
+  };
+}
+
 async function cleanupFinalizePrompt(update) {
   const query = update?.callback_query;
   const data = String(query?.data || '');
@@ -33,7 +51,7 @@ export default async function handler(req, res) {
     try {
       // Canonical student flow always gets first refusal. Owner/admin updates
       // return false here and continue into the existing teacher handlers.
-      if (await handleTelegramStudentCjm(req.body || {})) {
+      if (await handleTelegramStudentCjm(studentCjmUpdate(req.body || {}))) {
         return res.status(200).send('ok');
       }
 
