@@ -1,6 +1,8 @@
 import telegramHandler from './telegram.js';
 import { telegram } from './_lib/channels.js';
 
+const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
+
 function shouldKeepSourceMessage(query) {
   const data = String(query?.data || '');
   const text = String(query?.message?.text || query?.message?.caption || '').trim();
@@ -27,6 +29,11 @@ async function cleanupPreviousUiMessage(update) {
 }
 
 export default async function handler(req, res) {
+  if (req.method === 'POST' && TELEGRAM_WEBHOOK_SECRET) {
+    const actual = req.headers['x-telegram-bot-api-secret-token'];
+    if (actual !== TELEGRAM_WEBHOOK_SECRET) return res.status(403).send('wrong secret');
+  }
+
   if (req.method === 'POST') {
     await cleanupPreviousUiMessage(req.body || {});
   }
