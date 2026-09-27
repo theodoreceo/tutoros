@@ -1,5 +1,6 @@
 import telegramUiHandler from './telegram-ui.js';
 import { telegram } from './_lib/channels.js';
+import { handleTelegramHomeworkUpdate } from './_lib/telegram-homework.js';
 import { handleTelegramSubmissionUpdate } from './_lib/telegram-submissions.js';
 
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -24,6 +25,10 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     try {
+      if (await handleTelegramHomeworkUpdate(req.body || {})) {
+        return res.status(200).send('ok');
+      }
+
       if (req.body?.message) {
         if (await handleTelegramSubmissionUpdate(req.body || {})) {
           return res.status(200).send('ok');
@@ -37,12 +42,12 @@ export default async function handler(req, res) {
         }
       }
     } catch (error) {
-      console.error('Telegram submission guard failed:', error);
+      console.error('Telegram guarded flow failed:', error);
       const chatId = req.body?.message?.chat?.id || req.body?.callback_query?.message?.chat?.id;
       if (chatId) {
         await telegram('sendMessage', {
           chat_id: chatId,
-          text: '⚠️ не удалось обработать сдачу. открой ДЗ и попробуй ещё раз.',
+          text: '⚠️ не удалось обработать действие. попробуй ещё раз.',
         }).catch(() => {});
       }
       return res.status(200).send('ok');
