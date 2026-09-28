@@ -17,6 +17,7 @@ const OWNER_TELEGRAM_ID = process.env.OWNER_TELEGRAM_ID;
 const OWNER_VK_ID = process.env.OWNER_VK_ID;
 
 const esc = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+const isUnlinkCommand = text => /^\/unlink(?:@[a-z0-9_]+)?$/i.test(String(text || '').trim());
 
 function tgHome() {
   return tgInlineKeyboard([
@@ -43,7 +44,7 @@ export async function handleTelegramStudentAccount(update) {
   if (!userId || !chatId || (OWNER_TELEGRAM_ID && String(userId) === String(OWNER_TELEGRAM_ID))) return false;
   const text = String(message.text || '').trim();
 
-  if (text === '/unlink') {
+  if (isUnlinkCommand(text)) {
     const student = await studentByTelegram(userId);
     if (!student) {
       await sendTelegram(chatId, 'этот Telegram сейчас не привязан к профилю ученика.');
@@ -89,7 +90,7 @@ export async function handleVkStudentAccount(update) {
   const message = normalizeVkMessage(update);
   if (!message?.userId || !message?.peerId || (OWNER_VK_ID && String(message.userId) === String(OWNER_VK_ID))) return false;
 
-  if (message.text === '/unlink') {
+  if (isUnlinkCommand(message.text)) {
     const student = await studentByVk(message.userId);
     if (!student) {
       await sendVk(message.peerId, 'этот VK сейчас не привязан к профилю ученика.');
