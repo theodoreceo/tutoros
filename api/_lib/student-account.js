@@ -51,20 +51,30 @@ export async function handleTelegramStudentAccount(update) {
       return true;
     }
     await unlinkStudentEverywhere(student.id);
-    await sendTelegram(chatId, 'готово. профиль отвязан и от Telegram, и от VK. теперь открой правильную ссылку подключения.');
+    await sendTelegram(chatId, 'готово. профиль отвязан и от Telegram, и от VK. теперь открой правильную ссылку подключения или введи код подключения сюда.');
     return true;
   }
 
-  if (!text.startsWith('/start ')) return false;
+  const startToken = text.startsWith('/start ') ? text.slice(7).trim() : null;
+  const rawToken = !startToken && text && !text.startsWith('/') ? text : null;
+  if (!startToken && !rawToken) return false;
+
   const current = await studentByTelegram(userId);
   if (current) {
-    await sendTelegram(chatId, `ты уже подключен как <b>${esc(current.name)}</b>. если это не ты — сначала отправь /unlink.`);
-    return true;
+    if (startToken) {
+      await sendTelegram(chatId, `ты уже подключен как <b>${esc(current.name)}</b>. если это не ты — сначала отправь /unlink.`);
+      return true;
+    }
+    return false;
   }
-  const candidate = await studentByToken(text.slice(7));
+
+  const candidate = await studentByToken(startToken || rawToken);
   if (!candidate) {
-    await sendTelegram(chatId, 'ссылка недействительна. попроси преподавателя прислать новую.');
-    return true;
+    if (startToken) {
+      await sendTelegram(chatId, 'ссылка недействительна. попроси преподавателя прислать новую.');
+      return true;
+    }
+    return false;
   }
   const linked = await linkStudentChannel(candidate, 'telegram', userId);
   if (!linked?.ok) {
