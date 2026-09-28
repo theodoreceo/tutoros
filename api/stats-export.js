@@ -37,7 +37,7 @@ const studentStatusLabel = status => ({
   active: 'Активен', paused: 'Пауза', left: 'Ушёл',
 }[status] || status || '—');
 const submissionStatusLabel = status => ({
-  assigned: 'Не сдано', submitted: 'Сдано', checked: 'Проверено', revision: 'На доработке',
+  assigned: 'Не сдано', submitted: 'Сдано', checked: 'Проверено',
   cancelled: 'Отменено (ДЗ в архиве)',
 }[status] || status || '—');
 const homeworkTypeLabel = type => ({
@@ -48,7 +48,7 @@ const ratio = (score, maxScore) => {
   const scoreNumber = Number(score);
   const maxNumber = Number(maxScore);
   return Number.isFinite(scoreNumber) && Number.isFinite(maxNumber) && maxNumber > 0
-    ? scoreNumber / maxNumber
+    ? scoreNumber / maxScore
     : null;
 };
 
@@ -82,7 +82,7 @@ const todayIso = () => {
   return `${values.year}-${values.month}-${values.day}`;
 };
 const overdue = (row, assignmentMap) =>
-  ['assigned', 'revision'].includes(row.status)
+  row.status === 'assigned'
   && assignmentMap.get(row.assignment_id)?.due_date < todayIso();
 const scoreTrend = (rows, assignmentMap) => {
   const scores = rows
@@ -119,7 +119,7 @@ export default async function handler(req, res) {
   try {
     const [rawGroups, rawStudents, rawLessons, rawAssignments, rawSubmissions] = await Promise.all([
       sbAll('groups', 'select=id,name,group_type,active,created_at'),
-      sbAll('students', 'select=id,name,group_id,status,vk_id,created_at'),
+      sbAll('students', 'select=id,name,group_id,status,vk_id,telegram_id,created_at'),
       sbAll('lessons', 'select=id,group_id,lesson_number,topic,event_type'),
       sbAll('homework_assignments', 'select=id,group_id,lesson_id,topic,due_date,hw_type,is_advanced,assigned_at,archived_at'),
       sbAll('homework_submissions', 'select=id,assignment_id,student_id,status,submitted_at,checked_at,score,max_score,on_time,comment,task_scores'),
@@ -163,7 +163,7 @@ export default async function handler(req, res) {
         on_time_rate: onTimeRate(groupSubmissions),
         review_hours: reviewTurnaround(groupSubmissions),
         connected_rate: groupStudents.length
-          ? groupStudents.filter(student => student.vk_id).length / groupStudents.length
+          ? groupStudents.filter(student => student.vk_id || student.telegram_id).length / groupStudents.length
           : null,
         status: groupStatusLabel(group.active),
       };
@@ -195,7 +195,7 @@ export default async function handler(req, res) {
         trend,
         on_time_rate: onTimeRate(studentSubmissions),
         last_submitted_at: lastSubmittedAt,
-        connected: Boolean(student.vk_id),
+        connected: Boolean(student.vk_id || student.telegram_id),
         attention: attentionLabel({ rows: studentSubmissions, overdueCount, trend }),
       };
     }).sort((a, b) =>
