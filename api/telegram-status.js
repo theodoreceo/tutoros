@@ -3,18 +3,32 @@ import { telegram } from './_lib/channels.js';
 async function checkSchema() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return { ready: false, error: 'Supabase is not configured' };
+  if (!url || !key) return { ready: false, canonical: false, error: 'Supabase is not configured' };
   const headers = { apikey: key, Authorization: `Bearer ${key}` };
   try {
-    const [students, materials] = await Promise.all([
-      fetch(`${url}/rest/v1/students?select=telegram_id&limit=1`, { headers }),
+    const [students, materials, revisions, invalidHomeworkTypes] = await Promise.all([
+      fetch(`${url}/rest/v1/students?select=telegram_id,vk_id,reg_token&limit=1`, { headers }),
       fetch(`${url}/rest/v1/lesson_materials?select=id&limit=1`, { headers }),
+      fetch(`${url}/rest/v1/homework_submissions?status=eq.revision&select=id&limit=1`, { headers }),
+      fetch(`${url}/rest/v1/homework_assignments?hw_type=not.in.(brief,detailed,trial)&select=id,hw_type&limit=1`, { headers }),
     ]);
-    if (!students.ok) return { ready: false, error: `students.telegram_id: ${students.status}` };
-    if (!materials.ok) return { ready: false, error: `lesson_materials: ${materials.status}` };
-    return { ready: true, error: null };
+    if (!students.ok) return { ready: false, canonical: false, error: `students cross-channel fields: ${students.status}` };
+    if (!materials.ok) return { ready: false, canonical: false, error: `lesson_materials: ${materials.status}` };
+    if (!revisions.ok) return { ready: false, canonical: false, error: `homework_submissions: ${revisions.status}` };
+    if (!invalidHomeworkTypes.ok) return { ready: false, canonical: false, error: `homework_assignments: ${invalidHomeworkTypes.status}` };
+
+    const revisionRows = await revisions.json();
+    const invalidTypeRows = await invalidHomeworkTypes.json();
+    const canonical = revisionRows.length === 0 && invalidTypeRows.length === 0;
+    return {
+      ready: true,
+      canonical,
+      revision_rows: revisionRows.length,
+      invalid_homework_types: invalidTypeRows.map(row => row.hw_type),
+      error: canonical ? null : 'Legacy workflow rows still exist; run canonical_workflow_cleanup.sql',
+    };
   } catch (error) {
-    return { ready: false, error: error.message };
+    return { ready: false, canonical: false, error: error.message };
   }
 }
 
@@ -43,7 +57,7 @@ export default async function handler(req, res) {
   const webhookMatches = Boolean(webhookUrl && webhook && !webhook.error && webhook.url === webhookUrl);
 
   return res.status(200).json({
-    ok: Object.values(configured).every(Boolean) && schema.ready && webhookMatches,
+    ok: Object.values(configured).every(Boolean) && schema.ready && schema.canonical && webhookMatches,
     configured,
     schema,
     webhook_url: webhookUrl,
