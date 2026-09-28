@@ -1,13 +1,15 @@
 import {
   addLessonMaterialAdmin,
   archiveGroup,
+  archiveHomeworkAdmin,
   archiveStudent,
   createGroupAdmin,
   createHomeworkAdmin,
   createStudentAdmin,
-  ensureTeacherLesson,
+  createTeacherLesson,
   finalizeReviewAdmin,
   groupAdminView,
+  homeworkAdminView,
   lessonAdminView,
   listGroupHomeworkAdmin,
   listGroupLessonsAdmin,
@@ -19,6 +21,7 @@ import {
   teacherAnalytics,
   uncheckedAdminView,
   unlinkStudentEverywhere,
+  updateHomeworkAdmin,
 } from './teacher-core.js';
 import {
   sendStudentEverywhere,
@@ -195,7 +198,7 @@ async function showStudentSettings(peerId, studentId) {
   return screen(peerId, `${data.student.name} · управление`, [
     [b('🔌 Отвязать TG + VK', `teacher:unlinkstudent:${studentId}`)],
     [b('🔄 Новый код подключения', `teacher:rotatetoken:${studentId}`)],
-    [b('📦 Архивировать ученика', `teacher:archivestudent:${studentId}`)],
+    [b('📦 Архивировать ученика', `teacher:archivestudent-confirm:${studentId}`)],
     [b('← К ученику', `teacher:student:${studentId}`)],
   ]);
 }
@@ -213,19 +216,50 @@ async function showLesson(peerId, groupId, lessonId) {
   const notes = data.materials.filter(m => m.material_type === 'notes').length;
   const recordings = data.materials.filter(m => m.material_type === 'recording').length;
   return screen(peerId, `${data.lesson.topic || 'Занятие'}\n${data.lesson.scheduled_date || ''}\n\nконспекты: ${notes}\nзаписи: ${recordings}\nДЗ: ${data.homework.length}`, [
-    [b('📝 Добавить конспект', `teacher:addnotes:${groupId}:${lessonId}`)],
-    [b('🎥 Добавить запись', `teacher:addrecording:${groupId}:${lessonId}`)],
+    [b(notes ? '📝 Заменить конспект' : '📝 Добавить конспект', `teacher:addnotes:${groupId}:${lessonId}`)],
+    [b(recordings ? '🎥 Изменить запись' : '🎥 Добавить запись', `teacher:addrecording:${groupId}:${lessonId}`)],
     [b('➕ Создать ДЗ', `teacher:newhw:${groupId}:${lessonId}`, 'primary')],
     [b('← К занятиям', `teacher:lessons:${groupId}`)],
   ]);
 }
+
+function homeworkKind(value) {
+  const type = value?.hw_type || value;
+  if (type === 'brief') return 'краткий ответ';
+  if (type === 'trial') return 'пробник';
+  if (type === 'detailed_hard' || value?.is_advanced) return 'подробный · сложное';
+  return 'подробный · несложное';
+}
+
 async function showHomework(peerId, groupId) {
   const items = await listGroupHomeworkAdmin(groupId);
-  const lines = items.map(({ assignment, total, submitted, pending, overdue }) =>
-    `• ${assignment.topic} · сдали ${submitted}/${total}${pending ? ` · ⏳ ${pending}` : ''}${overdue ? ` · 🔴 ${overdue}` : ''}`);
-  return screen(peerId, items.length ? `Домашние задания\n\n${lines.join('\n')}` : 'Активных ДЗ пока нет.', [
-    [b('➕ Создать ДЗ', `teacher:newhw:${groupId}`, 'primary')],
-    [b('← К группе', `teacher:group:${groupId}`)],
+  const rows = items.map(({ assignment, submitted, total, overdue }) => [b(
+    `${overdue ? '🔴' : '📚'} ${assignment.topic} · ${submitted}/${total}`.slice(0, 38),
+    `teacher:hwcard:${assignment.id}`,
+  )]);
+  rows.push([b('➕ Создать ДЗ', `teacher:newhw:${groupId}`, 'primary')]);
+  rows.push([b('← К группе', `teacher:group:${groupId}`)]);
+  return screen(peerId, items.length ? 'Домашние задания' : 'Активных ДЗ пока нет.', rows);
+}
+
+async function showHomeworkCard(peerId, assignmentId) {
+  const data = await homeworkAdminView(assignmentId);
+  if (!data) return screen(peerId, 'ДЗ не найдено.', [[b('← Группы', 'teacher:groups')]]);
+  const a = data.assignment;
+  const text = `${a.topic}\nгруппа: ${data.group.name}\n\n` +
+    `тип: ${homeworkKind(a)}\n` +
+    `дедлайн: ${a.due_date || 'без срока'}\n` +
+    `сдали: ${data.submitted}/${data.submissions.length}\n` +
+    `на проверке: ${data.pending}\n` +
+    `проверено: ${data.checked}` +
+    (data.overdue ? `\n🔴 просрочено: ${data.overdue}` : '') +
+    `\nфайл: ${a.telegram_file_id || a.file_id ? 'есть' : 'нет'}`;
+  return screen(peerId, text, [
+    [b('✏️ Изменить тему', `teacher:hwedit-topic:${a.id}`)],
+    [b('📅 Изменить дедлайн', `teacher:hwedit-due:${a.id}`)],
+    [b('📎 Заменить файл', `teacher:hwedit-file:${a.id}`)],
+    [b('📦 Архивировать ДЗ', `teacher:hwarchive-confirm:${a.id}`)],
+    [b('← К ДЗ группы', `teacher:homework:${a.group_id}`)],
   ]);
 }
 
@@ -266,16 +300,21 @@ function parseCustomDueDate(text) {
   let year;
   let month;
   let day;
+  let yearExplicit = false;
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     [year, month, day] = raw.split('-').map(Number);
+    yearExplicit = true;
   } else {
     const match = raw.match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?$/);
     if (!match) return null;
     day = Number(match[1]);
     month = Number(match[2]);
+    yearExplicit = Boolean(match[3]);
     year = match[3] ? Number(match[3]) : Number(dueDate(0).slice(0, 4));
   }
-  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const build = y => `${String(y).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  let iso = build(year);
+  if (!yearExplicit && iso < dueDate(0)) iso = build(year + 1);
   const check = new Date(`${iso}T12:00:00Z`);
   if (Number.isNaN(check.getTime())) return null;
   const normalized = new Intl.DateTimeFormat('sv-SE', { timeZone: 'UTC' }).format(check);
@@ -289,6 +328,24 @@ const homeworkTypeRows = () => [
   [b('📝 Подробный — сложное', 'teacher:hwtype:detailed_hard')],
   [b('📋 Пробник', 'teacher:hwtype:trial')],
 ];
+
+async function showHomeworkPreview(peerId, userId, data) {
+  await setSession(userId, { step: 'teacher_hw_confirm', data });
+  const config = data.hw_type === 'brief'
+    ? `ответов: ${data.answers?.length || 0}`
+    : `баллы по заданиям: ${data.task_config?.length ? data.task_config.join('; ') : 'общая оценка'}`;
+  return screen(peerId,
+    `Проверь ДЗ перед отправкой\n\n` +
+    `тема: ${data.topic}\n` +
+    `дедлайн: ${data.due_date || 'без срока'}\n` +
+    `тип: ${homeworkKind(data)}\n` +
+    `файл: ${data.file_id || data.telegram_file_id ? data.material_name || 'есть' : 'нет'}\n${config}`,
+    [
+      [b('✅ Создать и отправить', 'teacher:hwconfirm', 'positive')],
+      [b('✏️ Начать заново', `teacher:newhw:${data.group_id}:${data.lesson_id || ''}`)],
+      [b('❌ Отмена', `teacher:group:${data.group_id}`)],
+    ]);
+}
 
 async function finalizeHomework(peerId, userId, data) {
   const result = await createHomeworkAdmin(data);
@@ -305,7 +362,7 @@ async function finalizeHomework(peerId, userId, data) {
     });
   }));
   await setSession(userId, { step: 'teacher_home' });
-  return screen(peerId, `✅ ДЗ «${data.topic}» создано и отправлено ${result.students.length} ученикам.`, [[b('← К группе', `teacher:group:${data.group_id}`)]]);
+  return screen(peerId, `✅ ДЗ «${data.topic}» создано и отправлено ${result.students.length} ученикам.`, [[b('← К ДЗ группы', `teacher:homework:${data.group_id}`)]]);
 }
 
 async function handleMessage(message) {
@@ -313,13 +370,13 @@ async function handleMessage(message) {
   const session = await getSession(userId);
   if (text === '/start' || text === '/menu' || text.toLowerCase() === 'меню') { await home(peerId, userId); return true; }
   if (session.step === 'teacher_group_name' && text && !text.startsWith('/')) {
-    const group = await createGroupAdmin(text); await setSession(userId, { step: 'teacher_home' }); await showGroup(peerId, group.id); return true;
+    const group = await createGroupAdmin(text, session.data?.group_type || 'mini_group'); await setSession(userId, { step: 'teacher_home' }); await showGroup(peerId, group.id); return true;
   }
   if (session.step === 'teacher_student_name' && text && !text.startsWith('/')) {
     const student = await createStudentAdmin(session.data.group_id, text); await setSession(userId, { step: 'teacher_home' }); await showStudent(peerId, student.id); return true;
   }
   if (session.step === 'teacher_lesson_topic' && text && !text.startsWith('/')) {
-    const lessonId = await ensureTeacherLesson(session.data.group_id, text); await setSession(userId, { step: 'teacher_home' }); await showLesson(peerId, session.data.group_id, lessonId); return true;
+    const lessonId = await createTeacherLesson(session.data.group_id, text); await setSession(userId, { step: 'teacher_home' }); await showLesson(peerId, session.data.group_id, lessonId); return true;
   }
   if (session.step === 'teacher_recording_url' && text && !text.startsWith('/')) {
     if (!/^https?:\/\//i.test(text)) { await screen(peerId, 'Нужна обычная http/https-ссылка.'); return true; }
@@ -345,10 +402,7 @@ async function handleMessage(message) {
   }
   if (session.step === 'teacher_hw_due_custom' && text && !text.startsWith('/')) {
     const custom = parseCustomDueDate(text);
-    if (!custom) {
-      await screen(peerId, 'Не понял дату. Введи ДД.ММ или ДД.ММ.ГГГГ. Дата не должна быть в прошлом.');
-      return true;
-    }
+    if (!custom) { await screen(peerId, 'Не понял дату. Введи ДД.ММ или ДД.ММ.ГГГГ. Дата не должна быть в прошлом.'); return true; }
     const next = { ...session.data, due_date: custom };
     await setSession(userId, { step: 'teacher_hw_type', data: next });
     await screen(peerId, `Дедлайн: ${custom}\n\nВыбери тип задания:`, homeworkTypeRows());
@@ -369,12 +423,32 @@ async function handleMessage(message) {
     const data = { ...session.data };
     if (data.hw_type === 'brief') { data.answers = parseList(text); if (!data.answers.length) { await screen(peerId, 'Нужен хотя бы один правильный ответ.'); return true; } }
     else data.task_config = text === '-' ? null : parseList(text).map(Number).filter(v => Number.isFinite(v) && v > 0);
-    await finalizeHomework(peerId, userId, data); return true;
+    await showHomeworkPreview(peerId, userId, data); return true;
+  }
+  if (session.step === 'teacher_hw_edit_topic' && text && !text.startsWith('/')) {
+    await updateHomeworkAdmin(session.data.assignment_id, { topic: text }); await setSession(userId, { step: 'teacher_home' }); await showHomeworkCard(peerId, session.data.assignment_id); return true;
+  }
+  if (session.step === 'teacher_hw_edit_due_custom' && text && !text.startsWith('/')) {
+    const custom = parseCustomDueDate(text);
+    if (!custom) { await screen(peerId, 'Не понял дату. Введи ДД.ММ или ДД.ММ.ГГГГ.'); return true; }
+    await updateHomeworkAdmin(session.data.assignment_id, { due_date: custom }); await setSession(userId, { step: 'teacher_home' }); await showHomeworkCard(peerId, session.data.assignment_id); return true;
+  }
+  if (session.step === 'teacher_hw_edit_file') {
+    if (text === '-' || text.toLowerCase() === 'нет') {
+      await updateHomeworkAdmin(session.data.assignment_id, { telegram_file_id: null, file_id: null, material_name: null });
+      await setSession(userId, { step: 'teacher_home' }); await showHomeworkCard(peerId, session.data.assignment_id); return true;
+    }
+    const file = files[0]; if (!file) { await screen(peerId, 'Пришли новый PDF/документ или «-», чтобы убрать файл.'); return true; }
+    await updateHomeworkAdmin(session.data.assignment_id, { telegram_file_id: null, file_id: file.file_id, material_name: file.name });
+    await setSession(userId, { step: 'teacher_home' }); await showHomeworkCard(peerId, session.data.assignment_id); return true;
   }
   if (session.step === 'teacher_review_score' && text && !text.startsWith('/')) {
     const match = text.match(/^\s*(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s*$/);
     if (!match) { await screen(peerId, 'Формат: 7/10.'); return true; }
-    await setSession(userId, { step: 'teacher_review_comment', data: { submission_id: session.data.submission_id, score: Number(match[1].replace(',', '.')), max_score: Number(match[2].replace(',', '.')) } });
+    const score = Number(match[1].replace(',', '.'));
+    const maxScore = Number(match[2].replace(',', '.'));
+    if (!(maxScore > 0) || score < 0 || score > maxScore) { await screen(peerId, 'Оценка должна быть от 0 до максимума. Например: 7/10.'); return true; }
+    await setSession(userId, { step: 'teacher_review_comment', data: { submission_id: session.data.submission_id, score, max_score: maxScore } });
     await screen(peerId, 'Добавь комментарий или отправь «-», если комментарий не нужен.'); return true;
   }
   if (session.step === 'teacher_review_comment' && text && !text.startsWith('/')) {
@@ -400,10 +474,21 @@ async function handleCallback(update, parsed) {
   if (!data.startsWith('teacher:')) return false;
   await answerCallback(update);
   if (data === 'teacher:home') { await home(peerId, userId); return true; }
-  if (data === 'teacher:groups') { await setSession(userId, { step: 'teacher_home' }); await showGroups(peerId); return true; }
-  if (data === 'teacher:unchecked') { await setSession(userId, { step: 'teacher_home' }); await showUnchecked(peerId); return true; }
-  if (data === 'teacher:analytics') { await setSession(userId, { step: 'teacher_home' }); await showAnalytics(peerId); return true; }
-  if (data === 'teacher:newgroup') { await setSession(userId, { step: 'teacher_group_name' }); await screen(peerId, 'Введи название новой группы:'); return true; }
+  if (data === 'teacher:groups') { await showGroups(peerId); return true; }
+  if (data === 'teacher:unchecked') { await showUnchecked(peerId); return true; }
+  if (data === 'teacher:analytics') { await showAnalytics(peerId); return true; }
+  if (data === 'teacher:newgroup') {
+    await screen(peerId, 'Какой формат создать?', [
+      [b('👥 Мини-группа', 'teacher:newgroup-type:mini_group', 'primary')],
+      [b('👤 Индивидуально', 'teacher:newgroup-type:individual')],
+      [b('← Группы', 'teacher:groups')],
+    ]); return true;
+  }
+  if (data.startsWith('teacher:newgroup-type:')) {
+    const groupType = data.slice('teacher:newgroup-type:'.length);
+    await setSession(userId, { step: 'teacher_group_name', data: { group_type: groupType } });
+    await screen(peerId, 'Введи название новой группы:'); return true;
+  }
   if (data.startsWith('teacher:group:')) { await showGroup(peerId, data.slice('teacher:group:'.length)); return true; }
   if (data.startsWith('teacher:students:')) { await showStudents(peerId, data.slice('teacher:students:'.length)); return true; }
   if (data.startsWith('teacher:newstudent:')) { const groupId = data.slice('teacher:newstudent:'.length); await setSession(userId, { step: 'teacher_student_name', data: { group_id: groupId } }); await screen(peerId, 'Введи имя ученика:'); return true; }
@@ -412,13 +497,42 @@ async function handleCallback(update, parsed) {
   if (data.startsWith('teacher:student:')) { await showStudent(peerId, data.slice('teacher:student:'.length)); return true; }
   if (data.startsWith('teacher:unlinkstudent:')) { const id = data.slice('teacher:unlinkstudent:'.length); await unlinkStudentEverywhere(id); await showStudent(peerId, id); return true; }
   if (data.startsWith('teacher:rotatetoken:')) { const id = data.slice('teacher:rotatetoken:'.length); await rotateStudentToken(id); await showStudent(peerId, id); return true; }
+  if (data.startsWith('teacher:archivestudent-confirm:')) {
+    const id = data.slice('teacher:archivestudent-confirm:'.length); const s = await studentAdminView(id);
+    await screen(peerId, `Архивировать ${s?.student?.name || 'ученика'}? Несданные ДЗ будут отменены, TG/VK отвязаны.`, [
+      [b('✅ Да, архивировать', `teacher:archivestudent:${id}`, 'negative')], [b('← Отмена', `teacher:studentsettings:${id}`)],
+    ]); return true;
+  }
   if (data.startsWith('teacher:archivestudent:')) { const id = data.slice('teacher:archivestudent:'.length); const student = await archiveStudent(id); await showStudents(peerId, student?.group_id || ''); return true; }
   if (data.startsWith('teacher:lessons:')) { await showLessons(peerId, data.slice('teacher:lessons:'.length)); return true; }
   if (data.startsWith('teacher:newlesson:')) { const groupId = data.slice('teacher:newlesson:'.length); await setSession(userId, { step: 'teacher_lesson_topic', data: { group_id: groupId } }); await screen(peerId, 'Введи тему занятия:'); return true; }
   if (data.startsWith('teacher:lesson:')) { const [, , groupId, lessonId] = data.split(':'); await showLesson(peerId, groupId, lessonId); return true; }
-  if (data.startsWith('teacher:addnotes:')) { const [, , groupId, lessonId] = data.split(':'); const lesson = await lessonAdminView(groupId, lessonId); await setSession(userId, { step: 'teacher_notes_file', data: { group_id: groupId, lesson_id: lessonId, lesson_topic: lesson?.lesson?.topic } }); await screen(peerId, 'Пришли конспект документом.'); return true; }
-  if (data.startsWith('teacher:addrecording:')) { const [, , groupId, lessonId] = data.split(':'); const lesson = await lessonAdminView(groupId, lessonId); await setSession(userId, { step: 'teacher_recording_url', data: { group_id: groupId, lesson_id: lessonId, lesson_topic: lesson?.lesson?.topic } }); await screen(peerId, 'Вставь ссылку на запись занятия:'); return true; }
+  if (data.startsWith('teacher:addnotes:')) { const [, , groupId, lessonId] = data.split(':'); const lesson = await lessonAdminView(groupId, lessonId); await setSession(userId, { step: 'teacher_notes_file', data: { group_id: groupId, lesson_id: lessonId, lesson_topic: lesson?.lesson?.topic } }); await screen(peerId, 'Пришли конспект документом. Новый файл заменит текущий конспект занятия.'); return true; }
+  if (data.startsWith('teacher:addrecording:')) { const [, , groupId, lessonId] = data.split(':'); const lesson = await lessonAdminView(groupId, lessonId); await setSession(userId, { step: 'teacher_recording_url', data: { group_id: groupId, lesson_id: lessonId, lesson_topic: lesson?.lesson?.topic } }); await screen(peerId, 'Вставь ссылку на запись занятия. Новая ссылка заменит текущую.'); return true; }
   if (data.startsWith('teacher:homework:')) { await showHomework(peerId, data.slice('teacher:homework:'.length)); return true; }
+  if (data.startsWith('teacher:hwcard:')) { await showHomeworkCard(peerId, data.slice('teacher:hwcard:'.length)); return true; }
+  if (data.startsWith('teacher:hwedit-topic:')) { const id = data.slice('teacher:hwedit-topic:'.length); await setSession(userId, { step: 'teacher_hw_edit_topic', data: { assignment_id: id } }); await screen(peerId, 'Введи новую тему ДЗ:'); return true; }
+  if (data.startsWith('teacher:hwedit-due:')) {
+    const id = data.slice('teacher:hwedit-due:'.length);
+    await screen(peerId, 'Новый дедлайн:', [
+      [b('завтра', `teacher:hweditdue:1:${id}`), b('через 3 дня', `teacher:hweditdue:3:${id}`)],
+      [b('через неделю', `teacher:hweditdue:7:${id}`), b('без срока', `teacher:hweditdue:none:${id}`)],
+      [b('📅 Своя дата', `teacher:hweditdue:custom:${id}`)], [b('← Назад', `teacher:hwcard:${id}`)],
+    ]); return true;
+  }
+  if (data.startsWith('teacher:hweditdue:')) {
+    const parts = data.split(':'); const raw = parts[2]; const id = parts.slice(3).join(':');
+    if (raw === 'custom') { await setSession(userId, { step: 'teacher_hw_edit_due_custom', data: { assignment_id: id } }); await screen(peerId, 'Введи дату: ДД.ММ или ДД.ММ.ГГГГ.'); return true; }
+    await updateHomeworkAdmin(id, { due_date: raw === 'none' ? null : dueDate(Number(raw)) }); await showHomeworkCard(peerId, id); return true;
+  }
+  if (data.startsWith('teacher:hwedit-file:')) { const id = data.slice('teacher:hwedit-file:'.length); await setSession(userId, { step: 'teacher_hw_edit_file', data: { assignment_id: id } }); await screen(peerId, 'Пришли новый PDF/документ или «-», чтобы убрать файл.'); return true; }
+  if (data.startsWith('teacher:hwarchive-confirm:')) {
+    const id = data.slice('teacher:hwarchive-confirm:'.length); const hw = await homeworkAdminView(id);
+    await screen(peerId, `Архивировать ДЗ «${hw?.assignment?.topic || ''}»? Несданные работы будут отменены, проверенные результаты сохранятся.`, [
+      [b('✅ Архивировать', `teacher:hwarchive:${id}`, 'negative')], [b('← Отмена', `teacher:hwcard:${id}`)],
+    ]); return true;
+  }
+  if (data.startsWith('teacher:hwarchive:')) { const id = data.slice('teacher:hwarchive:'.length); const hw = await homeworkAdminView(id); await archiveHomeworkAdmin(id); await showHomework(peerId, hw?.assignment?.group_id || ''); return true; }
   if (data.startsWith('teacher:newhw:')) { const parts = data.split(':'); await setSession(userId, { step: 'teacher_hw_topic', data: { group_id: parts[2], lesson_id: parts[3] || null } }); await screen(peerId, 'Введи тему ДЗ:'); return true; }
   if (data.startsWith('teacher:hwdue:')) {
     const raw = data.slice('teacher:hwdue:'.length);
@@ -434,8 +548,19 @@ async function handleCallback(update, parsed) {
     return true;
   }
   if (data.startsWith('teacher:hwtype:')) { const hwType = data.slice('teacher:hwtype:'.length); const session = await getSession(userId); if (session.step !== 'teacher_hw_type') return true; await setSession(userId, { step: 'teacher_hw_file', data: { ...session.data, hw_type: hwType } }); await screen(peerId, 'Пришли PDF/документ или отправь «-», если файла нет.'); return true; }
+  if (data === 'teacher:hwconfirm') {
+    const session = await getSession(userId);
+    if (session.step !== 'teacher_hw_confirm') { await screen(peerId, 'Черновик ДЗ устарел. Создай его заново.', [[b('← Меню', 'teacher:home')]]); return true; }
+    await finalizeHomework(peerId, userId, session.data); return true;
+  }
   if (data.startsWith('teacher:review:')) { await showReview(peerId, userId, data.slice('teacher:review:'.length)); return true; }
-  if (data.startsWith('teacher:groupsettings:')) { const groupId = data.slice('teacher:groupsettings:'.length); const g = await groupAdminView(groupId); await screen(peerId, `${g?.group?.name || 'Группа'} · настройки`, [[b('📦 Архивировать группу', `teacher:archivegroup:${groupId}`)], [b('← К группе', `teacher:group:${groupId}`)]]); return true; }
+  if (data.startsWith('teacher:groupsettings:')) { const groupId = data.slice('teacher:groupsettings:'.length); const g = await groupAdminView(groupId); await screen(peerId, `${g?.group?.name || 'Группа'} · настройки`, [[b('📦 Архивировать группу', `teacher:archivegroup-confirm:${groupId}`)], [b('← К группе', `teacher:group:${groupId}`)]]); return true; }
+  if (data.startsWith('teacher:archivegroup-confirm:')) {
+    const groupId = data.slice('teacher:archivegroup-confirm:'.length); const g = await groupAdminView(groupId);
+    await screen(peerId, `Архивировать группу ${g?.group?.name || ''}? Все ${g?.students?.length || 0} активных учеников будут архивированы и отвязаны от TG/VK.`, [
+      [b('✅ Да, архивировать', `teacher:archivegroup:${groupId}`, 'negative')], [b('← Отмена', `teacher:groupsettings:${groupId}`)],
+    ]); return true;
+  }
   if (data.startsWith('teacher:archivegroup:')) { const groupId = data.slice('teacher:archivegroup:'.length); await archiveGroup(groupId); await showGroups(peerId); return true; }
   return false;
 }
