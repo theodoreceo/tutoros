@@ -68,11 +68,10 @@ function normalizeVkKeyboard(keyboard) {
     .map(row => (Array.isArray(row) ? row : []).map(button => {
       if (!button?.action) return button;
       let payload = button.action.payload;
-      let command = '';
       if (payload) {
         try {
           const value = typeof payload === 'string' ? JSON.parse(payload) : payload;
-          command = canonicalCallback(value?.cmd || value?.command || '');
+          const command = canonicalCallback(value?.cmd || value?.command || '');
           if (command) payload = JSON.stringify({ ...value, cmd: command });
         } catch { /* keep unknown payloads untouched */ }
       }
@@ -104,32 +103,64 @@ function normalizeTutorText(value) {
     .replace(/баллы по заданиям:/giu, 'максимальный балл:');
 
   // Recording notifications should not leak the recording URL before the
-  // student explicitly opens the lesson. The URL remains in lesson materials.
+  // student explicitly opens the resource.
   if (/^🎥/u.test(text)) {
     text = text.split('\n').filter(line => !/^https?:\/\//iu.test(line.trim())).join('\n').trim();
   }
   return text;
 }
 
+function notificationTelegramMarkup(replyMarkup, type) {
+  if (type === 'notes') return tgInlineKeyboard([[{ text: 'Открыть', callback_data: 'notify:notes' }]]);
+  if (type === 'recording') return tgInlineKeyboard([[{ text: 'Открыть', callback_data: 'notify:recording' }]]);
+  if (type === 'homework' && Array.isArray(replyMarkup?.inline_keyboard)) {
+    return {
+      ...replyMarkup,
+      inline_keyboard: replyMarkup.inline_keyboard.map(row => row.map(button => {
+        const data = String(button?.callback_data || '');
+        return data.startsWith('hw:')
+          ? { ...button, text: 'Открыть', callback_data: `notify:homework:${data.slice(3)}` }
+          : button;
+      })),
+    };
+  }
+  return replyMarkup;
+}
+
+function notificationVkKeyboard(keyboard, type) {
+  if (type === 'notes') return vkInlineKeyboard([[vkInlineButton('Открыть', 'notify:notes')]]);
+  if (type === 'recording') return vkInlineKeyboard([[vkInlineButton('Открыть', 'notify:recording')]]);
+  if (type !== 'homework' || !keyboard) return keyboard;
+  let parsed;
+  try { parsed = typeof keyboard === 'string' ? JSON.parse(keyboard) : structuredClone(keyboard); }
+  catch { return keyboard; }
+  if (!Array.isArray(parsed?.buttons)) return keyboard;
+  parsed.buttons = parsed.buttons.map(row => row.map(button => {
+    let payload = button?.action?.payload;
+    if (!payload) return button;
+    try {
+      const value = typeof payload === 'string' ? JSON.parse(payload) : payload;
+      const cmd = String(value?.cmd || value?.command || '');
+      if (!cmd.startsWith('hw:')) return button;
+      payload = JSON.stringify({ ...value, cmd: `notify:homework:${cmd.slice(3)}` });
+      return { ...button, action: { ...button.action, label: 'Открыть', payload } };
+    } catch { return button; }
+  }));
+  return typeof keyboard === 'string' ? JSON.stringify(parsed) : parsed;
+}
+
 function lazyMaterialPayload(payload = {}) {
   const text = normalizeTutorText(payload.text || '');
+  const isHomework = /^📚\s*новое\s+ДЗ/iu.test(text);
   const isNotes = /^📝\s*(новый\s+конспект|Конспект)/iu.test(text);
   const isRecording = /^🎥/u.test(text);
+  const type = isHomework ? 'homework' : isNotes ? 'notes' : isRecording ? 'recording' : null;
 
   let telegramReplyMarkup = normalizeTelegramReplyMarkup(payload.telegramReplyMarkup);
   let vkKeyboard = normalizeVkKeyboard(payload.vkKeyboard);
-
-  // Notes/recordings are notifications only. Resource delivery starts after an
-  // explicit Open click; cjm:lessons then shows the exact lesson/material card.
-  if ((isNotes || isRecording) && !telegramReplyMarkup) {
-    telegramReplyMarkup = tgInlineKeyboard([[
-      { text: 'Открыть', callback_data: 'cjm:lessons' },
-    ]]);
-  }
-  if ((isNotes || isRecording) && !vkKeyboard) {
-    vkKeyboard = vkInlineKeyboard([[
-      vkInlineButton('Открыть', 'cjm:lessons'),
-    ]]);
+  if (type) {
+    telegramReplyMarkup = notificationTelegramMarkup(telegramReplyMarkup, type);
+    vkKeyboard = notificationVkKeyboard(vkKeyboard, type);
   }
 
   return {
@@ -137,8 +168,8 @@ function lazyMaterialPayload(payload = {}) {
     text,
     telegramReplyMarkup,
     vkKeyboard,
-    // Never push homework/material files proactively. Homework cards and lesson
-    // materials deliver them only after the student asks to open the resource.
+    // Never push homework/material files proactively. The notification only
+    // advertises the resource; notify:* handlers deliver it after Open.
     telegramFileId: null,
     vkAttachment: null,
   };
