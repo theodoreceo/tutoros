@@ -1,6 +1,7 @@
 import vkHandler from './vk-legacy.js';
-import { deactivateVkActiveUi, sendVk } from './_lib/channels.js';
+import { sendVk } from './_lib/channels.js';
 import { handleVkStudentAccount } from './_lib/student-account.js';
+import { handleVkStudentFastNav } from './_lib/student-vk-fast-nav.js';
 import { handleVkStudentCjm } from './_lib/student-vk-cjm.js';
 import { handleVkTeacher } from './_lib/teacher-vk.js';
 import { relayVkChanges, snapshotVkRelay } from './_lib/vk-relay.js';
@@ -18,12 +19,6 @@ function validRelayRequest(req) {
   return true;
 }
 
-function updatePeerId(update) {
-  if (update?.type === 'message_new') return update?.object?.message?.peer_id || null;
-  if (update?.type === 'message_event') return update?.object?.peer_id || null;
-  return null;
-}
-
 function callbackCommand(update) {
   if (update?.type !== 'message_event') return '';
   let payload = update?.object?.payload || {};
@@ -37,9 +32,7 @@ async function blockRevisionAction(update) {
   const userId = update?.object?.user_id;
   const peerId = update?.object?.peer_id;
   const command = callbackCommand(update);
-  if (!command.startsWith('review_revision:') || !OWNER_VK_ID || String(userId) !== String(OWNER_VK_ID)) {
-    return false;
-  }
+  if (!command.startsWith('review_revision:') || !OWNER_VK_ID || String(userId) !== String(OWNER_VK_ID)) return false;
   if (peerId) {
     await sendVk(peerId,
       'Функция «доработка» убрана. Поставь работе балл и комментарий; если нужно решить заново — создай новое ДЗ.'
@@ -65,16 +58,12 @@ export default async function handler(req, res) {
   let before = null;
 
   if (validRelayRequest(req)) {
-    const peerId = updatePeerId(req.body || {});
-    if (peerId) await deactivateVkActiveUi(peerId).catch(() => {});
-
     if (await blockRevisionAction(req.body || {})) return res.status(200).send('ok');
 
     try {
       if (await handleVkStudentAccount(req.body || {})) return res.status(200).send('ok');
-
+      if (await handleVkStudentFastNav(req.body || {})) return res.status(200).send('ok');
       if (await handleVkStudentCjm(req.body || {})) return res.status(200).send('ok');
-
       if (await handleVkTeacher(req.body || {})) return res.status(200).send('ok');
     } catch (error) {
       console.error('VK canonical flow failed:', error?.message || error);
