@@ -1,23 +1,14 @@
-import vkHandler from './vk-legacy.js';
 import { sendVk } from './_lib/channels.js';
 import { handleVkStudentAccount } from './_lib/student-account.js';
 import { handleVkStudentFastNav } from './_lib/student-vk-fast-nav.js';
 import { handleVkStudentCjm } from './_lib/student-vk-cjm.js';
 import { handleVkTeacher } from './_lib/teacher-vk.js';
-import { relayVkChanges, snapshotVkRelay } from './_lib/vk-relay.js';
 
 const VK_GROUP_ID = process.env.VK_GROUP_ID;
 const VK_CALLBACK_SECRET = process.env.VK_CALLBACK_SECRET;
+const VK_CONFIRMATION_CODE = process.env.VK_CONFIRMATION_CODE
+  || (String(VK_GROUP_ID || '') === '240647506' ? '798aee9f' : null);
 const OWNER_VK_ID = process.env.OWNER_VK_ID;
-
-function validRelayRequest(req) {
-  if (req.method !== 'POST') return false;
-  const update = req.body || {};
-  if (update.type === 'confirmation') return false;
-  if (VK_GROUP_ID && String(update.group_id) !== String(VK_GROUP_ID)) return false;
-  if (VK_CALLBACK_SECRET && update.secret !== VK_CALLBACK_SECRET) return false;
-  return true;
-}
 
 function callbackCommand(update) {
   if (update?.type !== 'message_event') return '';
@@ -28,7 +19,7 @@ function callbackCommand(update) {
   return String(payload.cmd || payload.command || '');
 }
 
-async function blockRevisionAction(update) {
+async function blockRemovedLegacyAction(update) {
   const userId = update?.object?.user_id;
   const peerId = update?.object?.peer_id;
   const command = callbackCommand(update);
@@ -41,51 +32,40 @@ async function blockRevisionAction(update) {
   return true;
 }
 
-function capturedResponse() {
-  const state = { statusCode: 200, body: 'ok', isJson: false, headers: {} };
-  const proxy = {
-    status(code) { state.statusCode = code; return proxy; },
-    send(body) { state.body = body; state.isJson = false; return proxy; },
-    json(body) { state.body = body; state.isJson = true; return proxy; },
-    end(body) { if (body !== undefined) state.body = body; return proxy; },
-    setHeader(name, value) { state.headers[String(name).toLowerCase()] = value; return proxy; },
-    getHeader(name) { return state.headers[String(name).toLowerCase()]; },
-  };
-  return { state, proxy };
+function requestIsForThisGroup(update) {
+  return !VK_GROUP_ID || String(update?.group_id || '') === String(VK_GROUP_ID);
 }
 
 export default async function handler(req, res) {
-  let before = null;
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const update = req.body || {};
 
-  if (validRelayRequest(req)) {
-    if (await blockRevisionAction(req.body || {})) return res.status(200).send('ok');
+  if (!requestIsForThisGroup(update)) return res.status(403).send('wrong group');
 
-    try {
-      if (await handleVkStudentAccount(req.body || {})) return res.status(200).send('ok');
-      if (await handleVkStudentFastNav(req.body || {})) return res.status(200).send('ok');
-      if (await handleVkStudentCjm(req.body || {})) return res.status(200).send('ok');
-      if (await handleVkTeacher(req.body || {})) return res.status(200).send('ok');
-    } catch (error) {
-      console.error('VK canonical flow failed:', error?.message || error);
-      return res.status(200).send('ok');
-    }
-
-    before = await snapshotVkRelay(req.body || {}).catch(error => {
-      console.warn('VK relay snapshot failed:', error?.message || error);
-      return null;
-    });
+  if (update.type === 'confirmation') {
+    if (!VK_CONFIRMATION_CODE) return res.status(503).send('confirmation code not configured');
+    return res.status(200).send(VK_CONFIRMATION_CODE);
   }
 
-  const { state, proxy } = capturedResponse();
-  await vkHandler(req, proxy);
-
-  if (before && state.statusCode >= 200 && state.statusCode < 300) {
-    await relayVkChanges(before, req.body || {}).catch(error => {
-      console.error('VK→Telegram relay failed:', error?.message || error);
-    });
+  if (VK_CALLBACK_SECRET && update.secret !== VK_CALLBACK_SECRET) {
+    return res.status(403).send('wrong secret');
   }
 
-  for (const [name, value] of Object.entries(state.headers)) res.setHeader(name, value);
-  if (state.isJson) return res.status(state.statusCode).json(state.body);
-  return res.status(state.statusCode).send(state.body);
+  if (await blockRemovedLegacyAction(update)) return res.status(200).send('ok');
+
+  try {
+    if (await handleVkStudentAccount(update)) return res.status(200).send('ok');
+    if (await handleVkStudentFastNav(update)) return res.status(200).send('ok');
+    if (await handleVkStudentCjm(update)) return res.status(200).send('ok');
+    if (await handleVkTeacher(update)) return res.status(200).send('ok');
+  } catch (error) {
+    // Callback API retries non-200 responses. Canonical writes are conditional,
+    // so log the failure but acknowledge the event to avoid duplicate actions.
+    console.error('VK canonical flow failed:', error?.message || error);
+    return res.status(200).send('ok');
+  }
+
+  // Old keyboards may still exist in chat history. Unknown legacy callbacks are
+  // deliberately inert instead of falling through to the retired state machine.
+  return res.status(200).send('ok');
 }
