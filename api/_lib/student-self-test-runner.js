@@ -116,6 +116,7 @@ export async function runStudentSelfTest() {
         hw_type: 'detailed',
         is_advanced: false,
         task_config: [2, 3, 5],
+        answers: null,
         file_id: null,
         assigned_at: now,
       },
@@ -128,7 +129,9 @@ export async function runStudentSelfTest() {
         due_date: due,
         hw_type: 'brief',
         is_advanced: false,
+        task_config: null,
         answers: ['2', '4', '6'],
+        file_id: null,
         assigned_at: now,
       },
     ]);
