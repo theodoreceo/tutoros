@@ -13,8 +13,8 @@ import { handleTelegramSubmissionUpdate } from './_lib/telegram-submissions.js';
 
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
 const OWNER_TELEGRAM_ID = process.env.OWNER_TELEGRAM_ID;
-const recentCallbacks = new Map();
-const CALLBACK_DEDUPE_MS = 3500;
+const recentCallbackIds = new Map();
+const CALLBACK_DEDUPE_TTL_MS = 10000;
 
 function studentCjmUpdate(update) {
   const query = update?.callback_query;
@@ -29,25 +29,16 @@ function studentCjmUpdate(update) {
   };
 }
 
-function callbackFingerprint(query) {
-  const userId = query?.from?.id;
-  const chatId = query?.message?.chat?.id;
-  const messageId = query?.message?.message_id;
-  const data = String(query?.data || '');
-  if (!userId || !chatId || !messageId || !data) return null;
-  return `${userId}:${chatId}:${messageId}:${data}`;
-}
-
 function isDuplicateCallback(query) {
-  const key = callbackFingerprint(query);
-  if (!key) return false;
+  const callbackId = query?.id ? String(query.id) : null;
+  if (!callbackId) return false;
   const now = Date.now();
-  for (const [oldKey, timestamp] of recentCallbacks) {
-    if (now - timestamp > 10000) recentCallbacks.delete(oldKey);
+  for (const [oldId, timestamp] of recentCallbackIds) {
+    if (now - timestamp > CALLBACK_DEDUPE_TTL_MS) recentCallbackIds.delete(oldId);
   }
-  const previous = recentCallbacks.get(key);
-  recentCallbacks.set(key, now);
-  return previous !== undefined && now - previous < CALLBACK_DEDUPE_MS;
+  if (recentCallbackIds.has(callbackId)) return true;
+  recentCallbackIds.set(callbackId, now);
+  return false;
 }
 
 async function acknowledgeCallbackImmediately(update) {
