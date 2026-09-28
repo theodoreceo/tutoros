@@ -4,6 +4,9 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const VK_GROUP_TOKEN = process.env.VK_GROUP_TOKEN;
 const VK_API_VERSION = process.env.VK_API_VERSION || '5.199';
 const OWNER_VK_ID = process.env.OWNER_VK_ID;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ACTIVE_UI_KEY = '_active_ui_message_id';
 
 const telegramUiTransitions = new AsyncLocalStorage();
 const tgActiveUi = new Map();
@@ -32,6 +35,40 @@ function hasVkKeyboard(keyboard) {
     const parsed = typeof keyboard === 'string' ? JSON.parse(keyboard) : keyboard;
     return Array.isArray(parsed?.buttons) && parsed.buttons.some(row => Array.isArray(row) && row.length);
   } catch { return false; }
+}
+
+function sessionConfig(channel) {
+  return channel === 'telegram'
+    ? { table: 'telegram_sessions', idField: 'telegram_user_id' }
+    : { table: 'vk_sessions', idField: 'vk_user_id' };
+}
+
+async function loadDurableUiState(channel, externalId) {
+  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || externalId === undefined || externalId === null) return {};
+  const { table, idField } = sessionConfig(channel);
+  const response = await fetch(
+    `${SUPABASE_URL}/rest/v1/${table}?${idField}=eq.${encodeURIComponent(externalId)}&select=state&limit=1`,
+    { headers: { apikey: SUPABASE_SECRET_KEY, Authorization: `Bearer ${SUPABASE_SECRET_KEY}` } },
+  );
+  if (!response.ok) return {};
+  const rows = await response.json().catch(() => []);
+  return rows[0]?.state && typeof rows[0].state === 'object' ? rows[0].state : {};
+}
+
+async function saveDurableUiState(channel, externalId, state, messageId) {
+  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || externalId === undefined || externalId === null) return;
+  const { table, idField } = sessionConfig(channel);
+  const next = { ...(state || {}), [ACTIVE_UI_KEY]: messageId || null };
+  await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: SUPABASE_SECRET_KEY,
+      Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify({ [idField]: externalId, state: next, updated_at: new Date().toISOString() }),
+  }).catch(() => {});
 }
 
 export async function telegram(method, payload = {}) {
@@ -89,7 +126,11 @@ export async function withTelegramUiTransition(callback) {
 
 export async function deactivateTelegramActiveUi(chatId) {
   const key = String(chatId);
-  const messageId = tgActiveUi.get(key);
+  let messageId = tgActiveUi.get(key) || null;
+  if (!messageId) {
+    const state = await loadDurableUiState('telegram', chatId);
+    messageId = state[ACTIVE_UI_KEY] || null;
+  }
   if (!messageId) return;
   tgActiveUi.delete(key);
   await rawTelegram('editMessageReplyMarkup', {
@@ -104,14 +145,29 @@ export async function sendTelegram(chatId, text, extra = {}) {
   const interactive = hasTelegramKeyboard(payload.reply_markup);
   const transition = telegramUiTransitions.getStore();
   const pending = transition?.pendingDeletes?.get(String(chatId));
+  let durableState = null;
 
-  // Callback navigation edits the clicked screen in-place; no registry lookup,
-  // no database request, and no pre-emptive delete.
-  if (interactive && !pending) await deactivateTelegramActiveUi(chatId).catch(() => {});
+  // Callback navigation edits the clicked screen in-place. Only genuinely new
+  // interactive screens pay the durable-state cost, so hot-path navigation stays fast.
+  if (interactive && !pending) {
+    durableState = await loadDurableUiState('telegram', chatId);
+    const previous = tgActiveUi.get(String(chatId)) || durableState[ACTIVE_UI_KEY] || null;
+    if (previous) {
+      await rawTelegram('editMessageReplyMarkup', {
+        chat_id: chatId, message_id: previous, reply_markup: { inline_keyboard: [] },
+      }).catch(() => {});
+    }
+    tgActiveUi.delete(String(chatId));
+  }
+
   const result = await telegram('sendMessage', payload);
   const messageId = result?.message_id || pending?.message_id || null;
-  if (interactive && messageId) tgActiveUi.set(String(chatId), messageId);
-  else if (pending) tgActiveUi.delete(String(chatId));
+  if (interactive && messageId) {
+    tgActiveUi.set(String(chatId), messageId);
+    if (!pending) await saveDurableUiState('telegram', chatId, durableState || {}, messageId);
+  } else if (pending) {
+    tgActiveUi.delete(String(chatId));
+  }
   return result;
 }
 
@@ -147,7 +203,11 @@ const randomId = () => Math.floor(Math.random() * 2147483647) || 1;
 
 export async function deactivateVkActiveUi(peerId) {
   const key = String(peerId);
-  const messageId = vkActiveUi.get(key);
+  let messageId = vkActiveUi.get(key) || null;
+  if (!messageId) {
+    const state = await loadDurableUiState('vk', peerId);
+    messageId = state[ACTIVE_UI_KEY] || null;
+  }
   if (!messageId) return;
   vkActiveUi.delete(key);
   await vk('messages.edit', {
@@ -157,11 +217,24 @@ export async function deactivateVkActiveUi(peerId) {
 
 export async function sendVk(peerId, text, extra = {}) {
   const interactive = hasVkKeyboard(extra.keyboard);
-  if (interactive) await deactivateVkActiveUi(peerId).catch(() => {});
+  let durableState = null;
+  if (interactive) {
+    durableState = await loadDurableUiState('vk', peerId);
+    const previous = vkActiveUi.get(String(peerId)) || durableState[ACTIVE_UI_KEY] || null;
+    if (previous) {
+      await vk('messages.edit', {
+        peer_id: peerId, message_id: previous, keyboard: JSON.stringify({ inline: true, buttons: [] }),
+      }).catch(() => {});
+    }
+    vkActiveUi.delete(String(peerId));
+  }
   const messageId = await vk('messages.send', {
     peer_id: peerId, random_id: randomId(), message: String(text || '').replace(/<[^>]+>/g, ''), ...extra,
   });
-  if (interactive && messageId) vkActiveUi.set(String(peerId), messageId);
+  if (interactive && messageId) {
+    vkActiveUi.set(String(peerId), messageId);
+    await saveDurableUiState('vk', peerId, durableState || {}, messageId);
+  }
   return messageId;
 }
 
