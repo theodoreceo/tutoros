@@ -249,6 +249,27 @@ function dueDate(days) {
   const d = new Date(); d.setDate(d.getDate() + Number(days));
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(d);
 }
+function parseCustomDueDate(text) {
+  const raw = String(text || '').trim();
+  let year;
+  let month;
+  let day;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    [year, month, day] = raw.split('-').map(Number);
+  } else {
+    const match = raw.match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?$/);
+    if (!match) return null;
+    day = Number(match[1]);
+    month = Number(match[2]);
+    year = match[3] ? Number(match[3]) : Number(dueDate(0).slice(0, 4));
+  }
+  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const check = new Date(`${iso}T12:00:00Z`);
+  if (Number.isNaN(check.getTime())) return null;
+  const normalized = new Intl.DateTimeFormat('sv-SE', { timeZone: 'UTC' }).format(check);
+  if (normalized !== iso || iso < dueDate(0)) return null;
+  return iso;
+}
 function parseList(text) {
   return String(text || '').split(';').map(v => v.trim()).filter(Boolean);
 }
@@ -328,7 +349,19 @@ async function handleMessage(update) {
     await screen(chatId, `Тема: <b>${esc(text)}</b>\n\nВыбери дедлайн:`, [
       [b('завтра', `teacher:hwdue:1`), b('через 3 дня', `teacher:hwdue:3`)],
       [b('через неделю', `teacher:hwdue:7`), b('без срока', 'teacher:hwdue:none')],
+      [b('📅 Своя дата', 'teacher:hwdue:custom')],
     ]); return true;
+  }
+  if (session.step === 'teacher_hw_due_custom' && text && !text.startsWith('/')) {
+    const custom = parseCustomDueDate(text);
+    if (!custom) {
+      await screen(chatId, 'Не понял дату. Введи <code>ДД.ММ</code> или <code>ДД.ММ.ГГГГ</code>. Дата не должна быть в прошлом.');
+      return true;
+    }
+    const next = { ...session.data, due_date: custom };
+    await setSession(userId, { step: 'teacher_hw_type', data: next });
+    await screen(chatId, `Дедлайн: <b>${esc(custom)}</b>\n\nВыбери тип задания:`, homeworkTypeRows(next.group_id, next.lesson_id || ''));
+    return true;
   }
   if (session.step === 'teacher_hw_file') {
     if (text === '-' || text.toLowerCase() === 'нет') {
@@ -424,6 +457,11 @@ async function handleCallback(update) {
   if (data.startsWith('teacher:hwdue:')) {
     const raw = data.slice('teacher:hwdue:'.length); const session = await getSession(userId);
     if (session.step !== 'teacher_hw_due') return true;
+    if (raw === 'custom') {
+      await setSession(userId, { step: 'teacher_hw_due_custom', data: session.data });
+      await screen(chatId, 'Введи дату дедлайна: <code>ДД.ММ</code> или <code>ДД.ММ.ГГГГ</code>.');
+      return true;
+    }
     const next = { ...session.data, due_date: raw === 'none' ? null : dueDate(Number(raw)) };
     await setSession(userId, { step: 'teacher_hw_type', data: next });
     await screen(chatId, 'Выбери тип задания:', homeworkTypeRows(next.group_id, next.lesson_id || '')); return true;
