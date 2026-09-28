@@ -10,7 +10,6 @@ const getCalls = [];
 let assignmentId = null;
 
 const json = body => Response.json(body);
-
 const student = {
   id: 's1', name: 'Иван', group_id: 'g1', status: 'active',
   telegram_id: 111, vk_id: 222, reg_token: 'token', target_score: 25,
@@ -26,8 +25,7 @@ globalThis.fetch = async (url, options = {}) => {
   const target = String(url);
   const decodedTarget = decodeURIComponent(target);
   const method = options.method || 'GET';
-  const query = queryOf(target);
-  if (method === 'GET') getCalls.push(query);
+  if (method === 'GET') getCalls.push(queryOf(target));
 
   if (target.includes('/rest/v1/rpc/create_homework_for_group')) {
     const body = JSON.parse(options.body || '{}');
@@ -35,7 +33,6 @@ globalThis.fetch = async (url, options = {}) => {
     assignmentId = body.p_assignment_id;
     return json({ assignment_id: assignmentId, students_count: 1 });
   }
-
   if (target.includes('/rest/v1/rpc/set_homework_archived')) {
     const body = JSON.parse(options.body || '{}');
     rpcCalls.push({ fn: 'set_homework_archived', ...body });
@@ -50,26 +47,21 @@ globalThis.fetch = async (url, options = {}) => {
       hw_type: 'detailed', is_advanced: true, due_date: '2026-10-01', ...body,
     }]);
   }
-
   if (target.includes('/rest/v1/homework_assignments?') && method === 'GET') {
-    if (target.includes('id=eq.a1')) {
-      return json([{ id: 'a1', group_id: 'g1', lesson_id: 'l1', topic: 'Тема', due_date: '2026-10-01', hw_type: 'detailed', is_advanced: false }]);
+    if (decodedTarget.includes('id=eq.a1') || decodedTarget.includes('id=in.(a1)')) {
+      return json([{ id: 'a1', group_id: 'g1', lesson_id: 'l1', topic: 'Тема', due_date: '2026-10-01', hw_type: 'detailed', is_advanced: false, assigned_at: '2026-09-28T00:00:00Z' }]);
     }
     return json([]);
   }
 
-  if (target.includes('/rest/v1/groups?') && method === 'GET') {
-    return json([group]);
-  }
+  if (target.includes('/rest/v1/groups?') && method === 'GET') return json([group]);
   if (target.includes('/rest/v1/groups?') && method === 'PATCH') {
     const body = JSON.parse(options.body || '{}');
     patchCalls.push({ table: 'groups', target, body });
     return json([{ ...group, ...body }]);
   }
 
-  if (target.includes('/rest/v1/students?group_id=eq.g1') && method === 'GET') {
-    return json([student]);
-  }
+  if (target.includes('/rest/v1/students?group_id=eq.g1') && method === 'GET') return json([student]);
   if (target.includes('/rest/v1/students?') && method === 'PATCH') {
     const body = JSON.parse(options.body || '{}');
     patchCalls.push({ table: 'students', target, body });
@@ -84,7 +76,6 @@ globalThis.fetch = async (url, options = {}) => {
     }
     return json([]);
   }
-
   if (target.includes('/rest/v1/homework_submissions?') && method === 'GET') {
     if (assignmentId && target.includes(`assignment_id=eq.${assignmentId}`)) {
       return json([{ id: 'sub-created', assignment_id: assignmentId, student_id: 's1', status: 'assigned' }]);
@@ -110,7 +101,6 @@ globalThis.fetch = async (url, options = {}) => {
 const teacher = await import('../api/_lib/teacher-core.js');
 const studentCore = await import('../api/_lib/student-core.js');
 
-// UI may expose easy/hard, but DB must store one canonical detailed type.
 const created = await teacher.createHomeworkAdmin({
   group_id: 'g1', lesson_id: 'l1', topic: 'Тема', due_date: '2026-10-01',
   hw_type: 'detailed_hard', telegram_file_id: 'tg-file', file_id: 'vk-doc',
@@ -121,7 +111,6 @@ assert.equal(rpcCalls[0].p_hw_type, 'detailed');
 assert.equal(rpcCalls[0].p_is_advanced, true);
 assert.deepEqual(rpcCalls[0].p_task_config, [1, 2]);
 
-// Impossible scores must never reach the database.
 const patchesBeforeInvalidReview = patchCalls.length;
 assert.equal(await teacher.finalizeReviewAdmin('sub-review', 12, 10, 'bad'), null);
 assert.equal(await teacher.finalizeReviewAdmin('sub-review', 7, 0, 'bad'), null);
@@ -131,8 +120,6 @@ assert.equal(validReview.score, 7);
 assert.equal(validReview.max_score, 10);
 assert.equal(validReview.status, 'checked');
 
-// Archiving a group must also deactivate students, cancel outstanding work and
-// clear both messenger sessions, otherwise invisible students keep using the bot.
 const archived = await teacher.archiveGroup('g1');
 assert.equal(archived.archived_students, 1);
 assert.ok(patchCalls.some(call => call.table === 'groups' && call.body.active === false));
@@ -141,7 +128,6 @@ assert.ok(patchCalls.some(call => call.table === 'homework_submissions' && call.
 assert.ok(deleteCalls.some(call => call.table === 'telegram_sessions'));
 assert.ok(deleteCalls.some(call => call.table === 'vk_sessions'));
 
-// Canonical student navigation must not query or expose the removed revision state.
 const homework = await studentCore.homeworkOverview({ id: 's1', group_id: 'g1' });
 assert.equal(homework.todo.length, 1);
 const overviewRequest = getCalls.find(call => call.includes('/rest/v1/homework_submissions') && call.includes('student_id=eq.s1'));
