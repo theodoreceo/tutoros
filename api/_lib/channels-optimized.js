@@ -7,6 +7,7 @@ const OWNER_VK_ID = process.env.OWNER_VK_ID;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ACTIVE_UI_KEY = '_active_ui_message_id';
+const UI_SESSION_OFFSET = 1000000000000000n;
 
 const telegramUiTransitions = new AsyncLocalStorage();
 const tgActiveUi = new Map();
@@ -43,11 +44,23 @@ function sessionConfig(channel) {
     : { table: 'vk_sessions', idField: 'vk_user_id' };
 }
 
+function uiSessionId(externalId) {
+  try {
+    const raw = BigInt(String(externalId));
+    const absolute = raw < 0n ? -raw : raw;
+    return String(-(UI_SESSION_OFFSET + absolute));
+  } catch {
+    return null;
+  }
+}
+
 async function loadDurableUiState(channel, externalId) {
-  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || externalId === undefined || externalId === null) return {};
+  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) return {};
+  const syntheticId = uiSessionId(externalId);
+  if (!syntheticId) return {};
   const { table, idField } = sessionConfig(channel);
   const response = await fetch(
-    `${SUPABASE_URL}/rest/v1/${table}?${idField}=eq.${encodeURIComponent(externalId)}&select=state&limit=1`,
+    `${SUPABASE_URL}/rest/v1/${table}?${idField}=eq.${encodeURIComponent(syntheticId)}&select=state&limit=1`,
     { headers: { apikey: SUPABASE_SECRET_KEY, Authorization: `Bearer ${SUPABASE_SECRET_KEY}` } },
   );
   if (!response.ok) return {};
@@ -56,9 +69,11 @@ async function loadDurableUiState(channel, externalId) {
 }
 
 async function saveDurableUiState(channel, externalId, state, messageId) {
-  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY || externalId === undefined || externalId === null) return;
+  if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) return;
+  const syntheticId = uiSessionId(externalId);
+  if (!syntheticId) return;
   const { table, idField } = sessionConfig(channel);
-  const next = { ...(state || {}), [ACTIVE_UI_KEY]: messageId || null };
+  const next = { ...(state || {}), [ACTIVE_UI_KEY]: messageId || null, ui_registry: true };
   await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: 'POST',
     headers: {
@@ -67,7 +82,7 @@ async function saveDurableUiState(channel, externalId, state, messageId) {
       Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
       Prefer: 'resolution=merge-duplicates,return=minimal',
     },
-    body: JSON.stringify({ [idField]: externalId, state: next, updated_at: new Date().toISOString() }),
+    body: JSON.stringify({ [idField]: syntheticId, state: next, updated_at: new Date().toISOString() }),
   }).catch(() => {});
 }
 
