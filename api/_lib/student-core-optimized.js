@@ -7,7 +7,7 @@ const SB = {
   Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
 };
 
-const botId = () => 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const botId = () => 'b' + crypto.randomUUID().replaceAll('-', '');
 
 async function sbSelect(table, qs = '') {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${qs}`, { headers: SB });
@@ -75,7 +75,6 @@ export function percentOf(submission, assignment) {
 }
 
 const normalizeAnswer = value => String(value ?? '').trim().toLowerCase().replace(',', '.');
-const normalizeSubmission = row => row?.status === 'revision' ? { ...row, status: 'assigned' } : row;
 
 export async function studentByToken(token) {
   const clean = String(token || '').trim().toLowerCase();
@@ -87,13 +86,6 @@ export async function studentByTelegram(telegramId) {
 }
 export async function studentByVk(vkId) {
   return sbOne('students', `vk_id=eq.${encodeURIComponent(vkId)}&status=eq.active&select=id,name,group_id,status,target_score,vk_id,telegram_id`);
-}
-
-async function normalizeLegacyOnLink(student) {
-  if (!student?.id) return;
-  await sbPatch('homework_submissions', `student_id=eq.${encodeURIComponent(student.id)}&status=eq.revision`, {
-    status: 'assigned', checked_at: null,
-  }).catch(() => {});
 }
 
 export async function linkStudentChannel(student, channel, externalId) {
@@ -111,13 +103,11 @@ export async function linkStudentChannel(student, channel, externalId) {
       throw error;
     }
   }
-  await Promise.all([normalizeLegacyOnLink(student), assignActiveHomework(student)]);
+  await assignActiveHomework(student);
   return { ok: true, student: { ...student, [field]: externalId } };
 }
 
-// Kept for compatibility with existing adapters. Expensive reconciliation no longer
-// runs on every click; create_homework_for_group creates normal submissions, and
-// linking a student performs the one-time reconciliation above.
+// Compatibility shim for adapters. Canonical data is no longer rewritten on every click.
 export async function canonicalizeStudent(student) { return student; }
 
 export async function assignActiveHomework(student) {
@@ -144,9 +134,8 @@ export async function assignActiveHomework(student) {
 }
 
 export async function homeworkOverview(student) {
-  const submissionsRaw = await sbSelect('homework_submissions', `student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,submitted,revision)&select=id,assignment_id,status,submitted_at`);
-  if (!submissionsRaw.length) return { todo: [], review: [] };
-  const submissions = submissionsRaw.map(normalizeSubmission);
+  const submissions = await sbSelect('homework_submissions', `student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,submitted)&select=id,assignment_id,status,submitted_at`);
+  if (!submissions.length) return { todo: [], review: [] };
   const ids = [...new Set(submissions.map(row => row.assignment_id))];
   const assignments = await sbSelect('homework_assignments', `id=in.(${ids.join(',')})&archived_at=is.null&select=id,topic,due_date,hw_type,assigned_at,file_id,telegram_file_id,material_name,lesson_id`);
   const assignmentMap = new Map(assignments.map(row => [row.id, row]));
@@ -161,15 +150,14 @@ export async function homeworkOverview(student) {
 }
 
 export async function submissionCard(student, submissionId) {
-  const submissionRaw = await sbOne('homework_submissions', `id=eq.${encodeURIComponent(submissionId)}&student_id=eq.${encodeURIComponent(student.id)}&status=not.eq.cancelled`);
-  if (!submissionRaw) return null;
-  const submission = normalizeSubmission(submissionRaw);
+  const submission = await sbOne('homework_submissions', `id=eq.${encodeURIComponent(submissionId)}&student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,submitted,checked)`);
+  if (!submission) return null;
   const assignment = await sbOne('homework_assignments', `id=eq.${encodeURIComponent(submission.assignment_id)}&archived_at=is.null`);
   return assignment ? { submission, assignment } : null;
 }
 
 export async function homeworkMaterial(student, assignmentId) {
-  return sbOne('homework_assignments', `id=eq.${encodeURIComponent(assignmentId)}&group_id=eq.${encodeURIComponent(student.group_id)}&select=id,topic,file_id,telegram_file_id,material_name`);
+  return sbOne('homework_assignments', `id=eq.${encodeURIComponent(assignmentId)}&group_id=eq.${encodeURIComponent(student.group_id)}&archived_at=is.null&select=id,topic,file_id,telegram_file_id,material_name`);
 }
 
 export async function beginBrief(student, submissionId) {
@@ -180,9 +168,9 @@ export async function beginBrief(student, submissionId) {
 }
 
 export async function finalizeBrief(student, submissionId, given, source) {
-  const submission = await sbOne('homework_submissions', `id=eq.${encodeURIComponent(submissionId)}&student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,revision)`);
+  const submission = await sbOne('homework_submissions', `id=eq.${encodeURIComponent(submissionId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
   if (!submission) return null;
-  const assignment = await sbOne('homework_assignments', `id=eq.${encodeURIComponent(submission.assignment_id)}`);
+  const assignment = await sbOne('homework_assignments', `id=eq.${encodeURIComponent(submission.assignment_id)}&archived_at=is.null`);
   if (!assignment) return null;
   const correct = Array.isArray(assignment.answers) ? assignment.answers : [];
   if (!correct.length || given.length !== correct.length) return null;
@@ -191,7 +179,7 @@ export async function finalizeBrief(student, submissionId, given, source) {
   const maxScore = correct.length;
   const now = new Date().toISOString();
   const onTime = assignment.due_date ? moscowDate(now) <= assignment.due_date : null;
-  const updated = await sbPatch('homework_submissions', `id=eq.${encodeURIComponent(submissionId)}&student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,revision)`, {
+  const updated = await sbPatch('homework_submissions', `id=eq.${encodeURIComponent(submissionId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`, {
     status: 'checked', submitted_at: now, checked_at: now, score, max_score: maxScore,
     student_answers: given, task_scores: results.map(ok => ok ? 1 : 0),
     comment: `${score}/${maxScore} верно`, source, on_time: onTime,
@@ -201,32 +189,32 @@ export async function finalizeBrief(student, submissionId, given, source) {
 
 export async function finalizeFiles(student, submissionId, files, source) {
   if (!Array.isArray(files) || !files.length) return null;
-  const submission = await sbOne('homework_submissions', `id=eq.${encodeURIComponent(submissionId)}&student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,revision)`);
+  const submission = await sbOne('homework_submissions', `id=eq.${encodeURIComponent(submissionId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`);
   if (!submission) return null;
-  const assignment = await sbOne('homework_assignments', `id=eq.${encodeURIComponent(submission.assignment_id)}`);
+  const assignment = await sbOne('homework_assignments', `id=eq.${encodeURIComponent(submission.assignment_id)}&archived_at=is.null`);
   if (!assignment) return null;
   const now = new Date().toISOString();
   const onTime = assignment.due_date ? moscowDate(now) <= assignment.due_date : null;
-  const updated = await sbPatch('homework_submissions', `id=eq.${encodeURIComponent(submissionId)}&student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,revision)`, {
+  const updated = await sbPatch('homework_submissions', `id=eq.${encodeURIComponent(submissionId)}&student_id=eq.${encodeURIComponent(student.id)}&status=eq.assigned`, {
     status: 'submitted', submitted_at: now, submitted_files: files, source, on_time: onTime,
   });
   return updated.length ? { submission: updated[0], assignment } : null;
 }
 
 export async function resultsOverview(student) {
-  const allRaw = await sbSelect('homework_submissions', `student_id=eq.${encodeURIComponent(student.id)}&status=not.eq.cancelled&order=submitted_at.desc.nullslast&select=id,assignment_id,status,score,max_score,submitted_at,checked_at,on_time,student_answers,comment`);
-  const all = allRaw.map(normalizeSubmission);
+  const all = await sbSelect('homework_submissions', `student_id=eq.${encodeURIComponent(student.id)}&status=in.(assigned,submitted,checked)&order=submitted_at.desc.nullslast&select=id,assignment_id,status,score,max_score,submitted_at,checked_at,on_time,student_answers,comment`);
   const ids = [...new Set(all.map(row => row.assignment_id))];
-  const assignments = ids.length ? await sbSelect('homework_assignments', `id=in.(${ids.join(',')})&select=id,topic,due_date,hw_type,task_config,lesson_id`) : [];
+  const assignments = ids.length ? await sbSelect('homework_assignments', `id=in.(${ids.join(',')})&select=id,topic,due_date,hw_type,task_config,lesson_id,archived_at`) : [];
   const assignmentMap = new Map(assignments.map(row => [row.id, row]));
-  const checked = all.filter(row => row.status === 'checked').sort((a, b) => String(b.checked_at || '').localeCompare(String(a.checked_at || '')));
+  const visible = all.filter(row => !assignmentMap.get(row.assignment_id)?.archived_at || row.status === 'checked');
+  const checked = visible.filter(row => row.status === 'checked').sort((a, b) => String(b.checked_at || '').localeCompare(String(a.checked_at || '')));
   const scored = checked.map(row => ({ row, assignment: assignmentMap.get(row.assignment_id), pct: percentOf(row, assignmentMap.get(row.assignment_id)) })).filter(item => Number.isFinite(item.pct));
   const recent = scored.slice(0, 3).map(item => item.pct);
   const previous = scored.slice(3, 6).map(item => item.pct);
   const avg = values => values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
   const trend = recent.length >= 2 && previous.length >= 2 ? Math.round(avg(recent) - avg(previous)) : null;
   const lastTrial = scored.find(item => item.assignment?.hw_type === 'trial') || null;
-  const relevant = all.filter(row => ['assigned', 'submitted', 'checked'].includes(row.status));
+  const relevant = visible.filter(row => ['assigned', 'submitted', 'checked'].includes(row.status));
   return {
     total: relevant.length,
     completed: relevant.filter(row => ['submitted', 'checked'].includes(row.status)).length,
@@ -271,8 +259,7 @@ export async function lessonDetail(student, lessonId) {
   let homework = [];
   if (assignments.length) {
     const ids = assignments.map(row => row.id);
-    const submissionsRaw = await sbSelect('homework_submissions', `student_id=eq.${encodeURIComponent(student.id)}&assignment_id=in.(${ids.join(',')})&status=not.eq.cancelled&select=id,assignment_id,status`);
-    const submissions = submissionsRaw.map(normalizeSubmission);
+    const submissions = await sbSelect('homework_submissions', `student_id=eq.${encodeURIComponent(student.id)}&assignment_id=in.(${ids.join(',')})&status=in.(assigned,submitted,checked)&select=id,assignment_id,status`);
     const map = new Map(submissions.map(row => [row.assignment_id, row]));
     homework = assignments.map(assignment => ({ assignment, submission: map.get(assignment.id) || null }));
   }
