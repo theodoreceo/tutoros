@@ -1,6 +1,8 @@
 import vkHandler from './vk-legacy.js';
 import { sendVk } from './_lib/channels.js';
+import { handleVkStudentAccount } from './_lib/student-account.js';
 import { handleVkStudentCjm } from './_lib/student-vk-cjm.js';
+import { handleVkTeacher } from './_lib/teacher-vk.js';
 import { relayVkChanges, snapshotVkRelay } from './_lib/vk-relay.js';
 
 const VK_GROUP_ID = process.env.VK_GROUP_ID;
@@ -41,38 +43,14 @@ async function blockRevisionAction(update) {
 }
 
 function capturedResponse() {
-  const state = {
-    statusCode: 200,
-    body: 'ok',
-    isJson: false,
-    headers: {},
-  };
+  const state = { statusCode: 200, body: 'ok', isJson: false, headers: {} };
   const proxy = {
-    status(code) {
-      state.statusCode = code;
-      return proxy;
-    },
-    send(body) {
-      state.body = body;
-      state.isJson = false;
-      return proxy;
-    },
-    json(body) {
-      state.body = body;
-      state.isJson = true;
-      return proxy;
-    },
-    end(body) {
-      if (body !== undefined) state.body = body;
-      return proxy;
-    },
-    setHeader(name, value) {
-      state.headers[String(name).toLowerCase()] = value;
-      return proxy;
-    },
-    getHeader(name) {
-      return state.headers[String(name).toLowerCase()];
-    },
+    status(code) { state.statusCode = code; return proxy; },
+    send(body) { state.body = body; state.isJson = false; return proxy; },
+    json(body) { state.body = body; state.isJson = true; return proxy; },
+    end(body) { if (body !== undefined) state.body = body; return proxy; },
+    setHeader(name, value) { state.headers[String(name).toLowerCase()] = value; return proxy; },
+    getHeader(name) { return state.headers[String(name).toLowerCase()]; },
   };
   return { state, proxy };
 }
@@ -81,20 +59,16 @@ export default async function handler(req, res) {
   let before = null;
 
   if (validRelayRequest(req)) {
-    if (await blockRevisionAction(req.body || {})) {
-      return res.status(200).send('ok');
-    }
+    if (await blockRevisionAction(req.body || {})) return res.status(200).send('ok');
 
     try {
-      // Students use the canonical TutorOS CJM. Owner/admin updates deliberately
-      // return false and continue into the proven legacy teacher handler below.
-      if (await handleVkStudentCjm(req.body || {})) {
-        return res.status(200).send('ok');
-      }
+      if (await handleVkStudentAccount(req.body || {})) return res.status(200).send('ok');
+
+      if (await handleVkStudentCjm(req.body || {})) return res.status(200).send('ok');
+
+      if (await handleVkTeacher(req.body || {})) return res.status(200).send('ok');
     } catch (error) {
-      // Never let VK retry a student action through the legacy state machine: a
-      // retry there could create a second, different journey after a partial write.
-      console.error('VK canonical student CJM failed:', error?.message || error);
+      console.error('VK canonical flow failed:', error?.message || error);
       return res.status(200).send('ok');
     }
 
@@ -109,15 +83,11 @@ export default async function handler(req, res) {
 
   if (before && state.statusCode >= 200 && state.statusCode < 300) {
     await relayVkChanges(before, req.body || {}).catch(error => {
-      // The canonical VK action already succeeded. Cross-channel delivery must
-      // never turn that success into a VK webhook failure/retry.
       console.error('VK→Telegram relay failed:', error?.message || error);
     });
   }
 
-  for (const [name, value] of Object.entries(state.headers)) {
-    res.setHeader(name, value);
-  }
+  for (const [name, value] of Object.entries(state.headers)) res.setHeader(name, value);
   if (state.isJson) return res.status(state.statusCode).json(state.body);
   return res.status(state.statusCode).send(state.body);
 }
