@@ -24,6 +24,7 @@ function queryOf(target) {
 
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url);
+  const decodedTarget = decodeURIComponent(target);
   const method = options.method || 'GET';
   const query = queryOf(target);
   if (method === 'GET') getCalls.push(query);
@@ -88,7 +89,7 @@ globalThis.fetch = async (url, options = {}) => {
     if (assignmentId && target.includes(`assignment_id=eq.${assignmentId}`)) {
       return json([{ id: 'sub-created', assignment_id: assignmentId, student_id: 's1', status: 'assigned' }]);
     }
-    if (target.includes('student_id=eq.s1') && target.includes('status=in.%28assigned%2Csubmitted%29')) {
+    if (decodedTarget.includes('student_id=eq.s1') && decodedTarget.includes('status=in.(assigned,submitted)')) {
       return json([{ id: 'sub1', assignment_id: 'a1', student_id: 's1', status: 'assigned', submitted_at: null }]);
     }
     return json([]);
