@@ -3,6 +3,7 @@ import { handleVkStudentAccount } from './_lib/student-account.js';
 import { handleVkStudentFastNav } from './_lib/student-vk-fast-nav.js';
 import { handleVkStudentCjm } from './_lib/student-vk-cjm.js';
 import { handleVkTeacher } from './_lib/teacher-vk.js';
+import { handleVkTeacherPolicy } from './_lib/teacher-policy.js';
 
 const VK_GROUP_ID = process.env.VK_GROUP_ID;
 const VK_CALLBACK_SECRET = process.env.VK_CALLBACK_SECRET;
@@ -57,6 +58,7 @@ export default async function handler(req, res) {
     if (await handleVkStudentAccount(update)) return res.status(200).send('ok');
     if (await handleVkStudentFastNav(update)) return res.status(200).send('ok');
     if (await handleVkStudentCjm(update)) return res.status(200).send('ok');
+    if (await handleVkTeacherPolicy(update)) return res.status(200).send('ok');
     if (await handleVkTeacher(update)) return res.status(200).send('ok');
   } catch (error) {
     // Callback API retries non-200 responses. Canonical writes are conditional,
