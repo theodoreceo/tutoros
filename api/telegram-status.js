@@ -1,4 +1,5 @@
 import { telegram } from './_lib/channels.js';
+import { runStudentSelfTest } from './_lib/student-self-test-runner.js';
 
 async function checkSchema() {
   const url = process.env.SUPABASE_URL;
@@ -19,6 +20,11 @@ async function checkSchema() {
 }
 
 export default async function handler(req, res) {
+  if (process.env.VERCEL_ENV === 'preview' && String(req.query?.self_test || '') === '1') {
+    const result = await runStudentSelfTest();
+    return res.status(result.ok ? 200 : 500).json(result);
+  }
+
   const configured = {
     telegram_bot_token: Boolean(process.env.TELEGRAM_BOT_TOKEN),
     telegram_webhook_secret: Boolean(process.env.TELEGRAM_WEBHOOK_SECRET),
