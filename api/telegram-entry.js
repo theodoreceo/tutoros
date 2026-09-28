@@ -13,6 +13,8 @@ import { handleTelegramSubmissionUpdate } from './_lib/telegram-submissions.js';
 
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
 const OWNER_TELEGRAM_ID = process.env.OWNER_TELEGRAM_ID;
+const recentCallbacks = new Map();
+const CALLBACK_DEDUPE_MS = 3500;
 
 function studentCjmUpdate(update) {
   const query = update?.callback_query;
@@ -25,6 +27,38 @@ function studentCjmUpdate(update) {
       message: { chat: query.message.chat },
     },
   };
+}
+
+function callbackFingerprint(query) {
+  const userId = query?.from?.id;
+  const chatId = query?.message?.chat?.id;
+  const messageId = query?.message?.message_id;
+  const data = String(query?.data || '');
+  if (!userId || !chatId || !messageId || !data) return null;
+  return `${userId}:${chatId}:${messageId}:${data}`;
+}
+
+function isDuplicateCallback(query) {
+  const key = callbackFingerprint(query);
+  if (!key) return false;
+  const now = Date.now();
+  for (const [oldKey, timestamp] of recentCallbacks) {
+    if (now - timestamp > 10000) recentCallbacks.delete(oldKey);
+  }
+  const previous = recentCallbacks.get(key);
+  recentCallbacks.set(key, now);
+  return previous !== undefined && now - previous < CALLBACK_DEDUPE_MS;
+}
+
+async function acknowledgeCallbackImmediately(update) {
+  const query = update?.callback_query;
+  if (!query?.id) return { duplicate: false };
+  const data = String(query.data || '');
+  // Keep the dedicated revision handler's explanatory callback response.
+  if (data.startsWith('reviewrev:')) return { duplicate: false };
+  const duplicate = isDuplicateCallback(query);
+  await telegram('answerCallbackQuery', { callback_query_id: query.id }).catch(() => {});
+  return { duplicate };
 }
 
 async function blockRevisionAction(update) {
@@ -68,37 +102,41 @@ async function runHandler(req, res) {
   }
 
   if (req.method === 'POST') {
+    const update = req.body || {};
     try {
-      if (await blockRevisionAction(req.body || {})) return res.status(200).send('ok');
+      const { duplicate } = await acknowledgeCallbackImmediately(update);
+      if (duplicate) return res.status(200).send('ok');
 
-      if (await handleTelegramStudentAccount(req.body || {})) return res.status(200).send('ok');
+      if (await blockRevisionAction(update)) return res.status(200).send('ok');
 
-      if (await handleTelegramStudentCjm(studentCjmUpdate(req.body || {}))) {
+      if (await handleTelegramStudentAccount(update)) return res.status(200).send('ok');
+
+      if (await handleTelegramStudentCjm(studentCjmUpdate(update))) {
         return res.status(200).send('ok');
       }
 
-      if (await handleTelegramTeacher(req.body || {})) {
+      if (await handleTelegramTeacher(update)) {
         return res.status(200).send('ok');
       }
 
-      if (await handleTelegramReviewUpdate(req.body || {})) return res.status(200).send('ok');
-      if (await handleTelegramHomeworkCard(req.body || {})) return res.status(200).send('ok');
-      if (await handleStoredHomeworkFile(req.body || {})) return res.status(200).send('ok');
-      if (await handleTelegramHomeworkUpdate(req.body || {})) return res.status(200).send('ok');
-      if (await handleTelegramNotesUpload(req.body || {})) return res.status(200).send('ok');
-      if (await handleTelegramSubmissionFile(req.body || {})) return res.status(200).send('ok');
+      if (await handleTelegramReviewUpdate(update)) return res.status(200).send('ok');
+      if (await handleTelegramHomeworkCard(update)) return res.status(200).send('ok');
+      if (await handleStoredHomeworkFile(update)) return res.status(200).send('ok');
+      if (await handleTelegramHomeworkUpdate(update)) return res.status(200).send('ok');
+      if (await handleTelegramNotesUpload(update)) return res.status(200).send('ok');
+      if (await handleTelegramSubmissionFile(update)) return res.status(200).send('ok');
 
-      if (req.body?.message) {
-        if (await handleTelegramSubmissionUpdate(req.body || {})) return res.status(200).send('ok');
+      if (update.message) {
+        if (await handleTelegramSubmissionUpdate(update)) return res.status(200).send('ok');
       }
 
-      if (req.body?.callback_query && String(req.body.callback_query.data || '').startsWith('done:')) {
-        await cleanupFinalizePrompt(req.body || {});
-        if (await handleTelegramSubmissionUpdate(req.body || {})) return res.status(200).send('ok');
+      if (update.callback_query && String(update.callback_query.data || '').startsWith('done:')) {
+        await cleanupFinalizePrompt(update);
+        if (await handleTelegramSubmissionUpdate(update)) return res.status(200).send('ok');
       }
     } catch (error) {
       console.error('Telegram guarded flow failed:', error);
-      const chatId = req.body?.message?.chat?.id || req.body?.callback_query?.message?.chat?.id;
+      const chatId = update?.message?.chat?.id || update?.callback_query?.message?.chat?.id;
       if (chatId) {
         await telegram('sendMessage', {
           chat_id: chatId,
