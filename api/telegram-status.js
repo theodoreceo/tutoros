@@ -1,35 +1,11 @@
 import { telegram } from './_lib/channels.js';
 
-async function repairCanonicalData() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return;
-  const headers = {
-    'Content-Type': 'application/json',
-    apikey: key,
-    Authorization: `Bearer ${key}`,
-    Prefer: 'return=minimal',
-  };
-  await Promise.all([
-    fetch(`${url}/rest/v1/homework_submissions?status=eq.revision`, {
-      method: 'PATCH', headers, body: JSON.stringify({ status: 'assigned', checked_at: null }),
-    }),
-    fetch(`${url}/rest/v1/homework_assignments?hw_type=eq.detailed_easy`, {
-      method: 'PATCH', headers, body: JSON.stringify({ hw_type: 'detailed', is_advanced: false }),
-    }),
-    fetch(`${url}/rest/v1/homework_assignments?hw_type=eq.detailed_hard`, {
-      method: 'PATCH', headers, body: JSON.stringify({ hw_type: 'detailed', is_advanced: true }),
-    }),
-  ]);
-}
-
 async function checkSchema() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return { ready: false, canonical: false, error: 'Supabase is not configured' };
   const headers = { apikey: key, Authorization: `Bearer ${key}` };
   try {
-    await repairCanonicalData();
     const [students, materials, revisions, invalidHomeworkTypes] = await Promise.all([
       fetch(`${url}/rest/v1/students?select=telegram_id,vk_id,reg_token&limit=1`, { headers }),
       fetch(`${url}/rest/v1/lesson_materials?select=id&limit=1`, { headers }),
