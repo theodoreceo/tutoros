@@ -34,18 +34,26 @@ async function sbInsert(table, body) {
   return r.status !== 409;
 }
 
+function moscowDate(offsetDays = 0) {
+  const shifted = new Date(Date.now() + offsetDays * 86400000);
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(shifted);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 export default async function handler(req, res) {
   if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const tomorrow = new Date();
-  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+  const tomorrowStr = moscowDate(1);
+  const today = moscowDate(0);
 
   const submissions = await sbSelect(
     'homework_submissions',
-    'status=in.(assigned,revision)&select=id,student_id,assignment_id'
+    'status=eq.assigned&select=id,student_id,assignment_id'
   );
   if (!submissions.length) return res.status(200).json({ sent_students: 0, sent_channels: 0 });
 
@@ -73,18 +81,18 @@ export default async function handler(req, res) {
   let sentChannels = 0;
   let skipped = 0;
   let failedChannels = 0;
-  const today = new Date().toISOString().slice(0, 10);
 
   for (const sub of targets) {
+    const existing = await sbSelect(
+      'sent_reminders',
+      `student_id=eq.${encodeURIComponent(sub.student_id)}` +
+      `&assignment_id=eq.${encodeURIComponent(sub.assignment_id)}` +
+      `&sent_date=eq.${today}&select=student_id&limit=1`
+    );
+    if (existing.length) { skipped++; continue; }
+
     const student = stuMap[sub.student_id];
     const assignment = aMap[sub.assignment_id];
-    const isNew = await sbInsert('sent_reminders', {
-      student_id: sub.student_id,
-      assignment_id: sub.assignment_id,
-      sent_date: today,
-    });
-    if (!isNew) { skipped++; continue; }
-
     const result = await sendStudentEverywhere(student, {
       text: `⏰ завтра дедлайн по ДЗ «<b>${assignment.topic}</b>». не забудь сдать!`,
       telegramReplyMarkup: tgInlineKeyboard([[
@@ -97,7 +105,14 @@ export default async function handler(req, res) {
 
     const delivered = [result.telegram, result.vk].filter(value => value === true).length;
     const failed = [result.telegram, result.vk].filter(value => value === false).length;
-    if (delivered) sentStudents++;
+    if (delivered) {
+      sentStudents++;
+      await sbInsert('sent_reminders', {
+        student_id: sub.student_id,
+        assignment_id: sub.assignment_id,
+        sent_date: today,
+      });
+    }
     sentChannels += delivered;
     failedChannels += failed;
   }
