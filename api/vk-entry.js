@@ -1,5 +1,6 @@
 import { sendVk } from './_lib/channels.js';
 import { handleVkStudentAccount } from './_lib/student-account.js';
+import { handleVkNotificationOpen } from './_lib/student-notification-open.js';
 import { handleVkStudentFastNav } from './_lib/student-vk-fast-nav.js';
 import { handleVkStudentCjm } from './_lib/student-vk-cjm.js';
 import { handleVkTeacher } from './_lib/teacher-vk.js';
@@ -56,6 +57,7 @@ export default async function handler(req, res) {
 
   try {
     if (await handleVkStudentAccount(update)) return res.status(200).send('ok');
+    if (await handleVkNotificationOpen(update)) return res.status(200).send('ok');
     if (await handleVkStudentFastNav(update)) return res.status(200).send('ok');
     if (await handleVkStudentCjm(update)) return res.status(200).send('ok');
     if (await handleVkTeacherPolicy(update)) return res.status(200).send('ok');
