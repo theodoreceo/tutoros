@@ -1,6 +1,8 @@
 import telegramUiHandler from './telegram-ui.js';
 import { telegram, withTelegramUiTransition } from './_lib/channels.js';
+import { handleTelegramStudentAccount } from './_lib/student-account.js';
 import { handleTelegramStudentCjm } from './_lib/student-telegram-cjm.js';
+import { handleTelegramTeacher } from './_lib/teacher-telegram.js';
 import { handleTelegramHomeworkCard } from './_lib/telegram-homework-card.js';
 import { handleTelegramHomeworkUpdate } from './_lib/telegram-homework.js';
 import { handleTelegramNotesUpload } from './_lib/telegram-notes.js';
@@ -16,11 +18,6 @@ function studentCjmUpdate(update) {
   const query = update?.callback_query;
   const data = String(query?.data || '');
   if (!data.startsWith('hw:') || !query?.message?.chat) return update;
-
-  // Legacy homework notification buttons use hw:<submission>. Opening such a
-  // notification should keep the notification in chat history. The canonical
-  // CJM still needs its chat id, but without message_id its UI cleanup becomes
-  // a no-op for this source message.
   return {
     ...update,
     callback_query: {
@@ -72,51 +69,32 @@ async function runHandler(req, res) {
 
   if (req.method === 'POST') {
     try {
-      if (await blockRevisionAction(req.body || {})) {
-        return res.status(200).send('ok');
-      }
+      if (await blockRevisionAction(req.body || {})) return res.status(200).send('ok');
 
-      // Canonical student flow always gets first refusal. Owner/admin updates
-      // return false here and continue into the existing teacher handlers.
+      if (await handleTelegramStudentAccount(req.body || {})) return res.status(200).send('ok');
+
       if (await handleTelegramStudentCjm(studentCjmUpdate(req.body || {}))) {
         return res.status(200).send('ok');
       }
 
-      if (await handleTelegramReviewUpdate(req.body || {})) {
+      if (await handleTelegramTeacher(req.body || {})) {
         return res.status(200).send('ok');
       }
 
-      if (await handleTelegramHomeworkCard(req.body || {})) {
-        return res.status(200).send('ok');
-      }
-
-      if (await handleStoredHomeworkFile(req.body || {})) {
-        return res.status(200).send('ok');
-      }
-
-      if (await handleTelegramHomeworkUpdate(req.body || {})) {
-        return res.status(200).send('ok');
-      }
-
-      if (await handleTelegramNotesUpload(req.body || {})) {
-        return res.status(200).send('ok');
-      }
-
-      if (await handleTelegramSubmissionFile(req.body || {})) {
-        return res.status(200).send('ok');
-      }
+      if (await handleTelegramReviewUpdate(req.body || {})) return res.status(200).send('ok');
+      if (await handleTelegramHomeworkCard(req.body || {})) return res.status(200).send('ok');
+      if (await handleStoredHomeworkFile(req.body || {})) return res.status(200).send('ok');
+      if (await handleTelegramHomeworkUpdate(req.body || {})) return res.status(200).send('ok');
+      if (await handleTelegramNotesUpload(req.body || {})) return res.status(200).send('ok');
+      if (await handleTelegramSubmissionFile(req.body || {})) return res.status(200).send('ok');
 
       if (req.body?.message) {
-        if (await handleTelegramSubmissionUpdate(req.body || {})) {
-          return res.status(200).send('ok');
-        }
+        if (await handleTelegramSubmissionUpdate(req.body || {})) return res.status(200).send('ok');
       }
 
       if (req.body?.callback_query && String(req.body.callback_query.data || '').startsWith('done:')) {
         await cleanupFinalizePrompt(req.body || {});
-        if (await handleTelegramSubmissionUpdate(req.body || {})) {
-          return res.status(200).send('ok');
-        }
+        if (await handleTelegramSubmissionUpdate(req.body || {})) return res.status(200).send('ok');
       }
     } catch (error) {
       console.error('Telegram guarded flow failed:', error);
