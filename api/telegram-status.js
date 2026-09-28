@@ -18,6 +18,26 @@ async function checkSchema() {
   }
 }
 
+async function repairCanonicalData(req) {
+  if (String(req.query?.repair || '') !== 'canonical-20260928') return null;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('Supabase is not configured');
+  const response = await fetch(`${url}/rest/v1/homework_submissions?status=eq.revision`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify({ status: 'assigned', checked_at: null }),
+  });
+  if (!response.ok) throw new Error(`revision repair: ${response.status} ${await response.text()}`);
+  const rows = await response.json();
+  return { revisions_normalized: rows.length };
+}
+
 export default async function handler(req, res) {
   const configured = {
     telegram_bot_token: Boolean(process.env.TELEGRAM_BOT_TOKEN),
@@ -41,11 +61,13 @@ export default async function handler(req, res) {
   }
   const schema = await checkSchema();
   const webhookMatches = Boolean(webhookUrl && webhook && !webhook.error && webhook.url === webhookUrl);
+  const repair = await repairCanonicalData(req).catch(error => ({ error: error.message }));
 
   return res.status(200).json({
     ok: Object.values(configured).every(Boolean) && schema.ready && webhookMatches,
     configured,
     schema,
+    repair,
     webhook_url: webhookUrl,
     webhook_matches_expected: webhookMatches,
     bot: bot && !bot.error ? { id: bot.id, username: bot.username, first_name: bot.first_name } : bot,
