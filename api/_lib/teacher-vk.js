@@ -261,6 +261,27 @@ function dueDate(days) {
   const d = new Date(); d.setDate(d.getDate() + Number(days));
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(d);
 }
+function parseCustomDueDate(text) {
+  const raw = String(text || '').trim();
+  let year;
+  let month;
+  let day;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    [year, month, day] = raw.split('-').map(Number);
+  } else {
+    const match = raw.match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?$/);
+    if (!match) return null;
+    day = Number(match[1]);
+    month = Number(match[2]);
+    year = match[3] ? Number(match[3]) : Number(dueDate(0).slice(0, 4));
+  }
+  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const check = new Date(`${iso}T12:00:00Z`);
+  if (Number.isNaN(check.getTime())) return null;
+  const normalized = new Intl.DateTimeFormat('sv-SE', { timeZone: 'UTC' }).format(check);
+  if (normalized !== iso || iso < dueDate(0)) return null;
+  return iso;
+}
 const parseList = text => String(text || '').split(';').map(v => v.trim()).filter(Boolean);
 const homeworkTypeRows = () => [
   [b('🔢 Краткий ответ', 'teacher:hwtype:brief')],
@@ -316,7 +337,22 @@ async function handleMessage(message) {
   }
   if (session.step === 'teacher_hw_topic' && text && !text.startsWith('/')) {
     await setSession(userId, { step: 'teacher_hw_due', data: { ...session.data, topic: text } });
-    await screen(peerId, `Тема: ${text}\n\nВыбери дедлайн:`, [[b('завтра', 'teacher:hwdue:1'), b('через 3 дня', 'teacher:hwdue:3')], [b('через неделю', 'teacher:hwdue:7'), b('без срока', 'teacher:hwdue:none')]]); return true;
+    await screen(peerId, `Тема: ${text}\n\nВыбери дедлайн:`, [
+      [b('завтра', 'teacher:hwdue:1'), b('через 3 дня', 'teacher:hwdue:3')],
+      [b('через неделю', 'teacher:hwdue:7'), b('без срока', 'teacher:hwdue:none')],
+      [b('📅 Своя дата', 'teacher:hwdue:custom')],
+    ]); return true;
+  }
+  if (session.step === 'teacher_hw_due_custom' && text && !text.startsWith('/')) {
+    const custom = parseCustomDueDate(text);
+    if (!custom) {
+      await screen(peerId, 'Не понял дату. Введи ДД.ММ или ДД.ММ.ГГГГ. Дата не должна быть в прошлом.');
+      return true;
+    }
+    const next = { ...session.data, due_date: custom };
+    await setSession(userId, { step: 'teacher_hw_type', data: next });
+    await screen(peerId, `Дедлайн: ${custom}\n\nВыбери тип задания:`, homeworkTypeRows());
+    return true;
   }
   if (session.step === 'teacher_hw_file') {
     if (text === '-' || text.toLowerCase() === 'нет') {
@@ -384,7 +420,19 @@ async function handleCallback(update, parsed) {
   if (data.startsWith('teacher:addrecording:')) { const [, , groupId, lessonId] = data.split(':'); const lesson = await lessonAdminView(groupId, lessonId); await setSession(userId, { step: 'teacher_recording_url', data: { group_id: groupId, lesson_id: lessonId, lesson_topic: lesson?.lesson?.topic } }); await screen(peerId, 'Вставь ссылку на запись занятия:'); return true; }
   if (data.startsWith('teacher:homework:')) { await showHomework(peerId, data.slice('teacher:homework:'.length)); return true; }
   if (data.startsWith('teacher:newhw:')) { const parts = data.split(':'); await setSession(userId, { step: 'teacher_hw_topic', data: { group_id: parts[2], lesson_id: parts[3] || null } }); await screen(peerId, 'Введи тему ДЗ:'); return true; }
-  if (data.startsWith('teacher:hwdue:')) { const raw = data.slice('teacher:hwdue:'.length); const session = await getSession(userId); if (session.step !== 'teacher_hw_due') return true; await setSession(userId, { step: 'teacher_hw_type', data: { ...session.data, due_date: raw === 'none' ? null : dueDate(Number(raw)) } }); await screen(peerId, 'Выбери тип задания:', homeworkTypeRows()); return true; }
+  if (data.startsWith('teacher:hwdue:')) {
+    const raw = data.slice('teacher:hwdue:'.length);
+    const session = await getSession(userId);
+    if (session.step !== 'teacher_hw_due') return true;
+    if (raw === 'custom') {
+      await setSession(userId, { step: 'teacher_hw_due_custom', data: session.data });
+      await screen(peerId, 'Введи дату дедлайна: ДД.ММ или ДД.ММ.ГГГГ.');
+      return true;
+    }
+    await setSession(userId, { step: 'teacher_hw_type', data: { ...session.data, due_date: raw === 'none' ? null : dueDate(Number(raw)) } });
+    await screen(peerId, 'Выбери тип задания:', homeworkTypeRows());
+    return true;
+  }
   if (data.startsWith('teacher:hwtype:')) { const hwType = data.slice('teacher:hwtype:'.length); const session = await getSession(userId); if (session.step !== 'teacher_hw_type') return true; await setSession(userId, { step: 'teacher_hw_file', data: { ...session.data, hw_type: hwType } }); await screen(peerId, 'Пришли PDF/документ или отправь «-», если файла нет.'); return true; }
   if (data.startsWith('teacher:review:')) { await showReview(peerId, userId, data.slice('teacher:review:'.length)); return true; }
   if (data.startsWith('teacher:groupsettings:')) { const groupId = data.slice('teacher:groupsettings:'.length); const g = await groupAdminView(groupId); await screen(peerId, `${g?.group?.name || 'Группа'} · настройки`, [[b('📦 Архивировать группу', `teacher:archivegroup:${groupId}`)], [b('← К группе', `teacher:group:${groupId}`)]]); return true; }
