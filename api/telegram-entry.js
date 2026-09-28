@@ -2,6 +2,7 @@ import { telegram, withTelegramUiTransition } from './_lib/channels.js';
 import { handleTelegramStudentAccount } from './_lib/student-account.js';
 import { handleTelegramStudentCjm } from './_lib/student-telegram-cjm.js';
 import { handleTelegramTeacher } from './_lib/teacher-telegram.js';
+import { handleTelegramTeacherPolicy } from './_lib/teacher-policy.js';
 import { handleTelegramHomeworkCard } from './_lib/telegram-homework-card.js';
 import { handleTelegramHomeworkUpdate } from './_lib/telegram-homework.js';
 import { handleTelegramNotesUpload } from './_lib/telegram-notes.js';
@@ -100,6 +101,7 @@ async function runHandler(req, res) {
     if (await blockRevisionAction(update)) return res.status(200).send('ok');
     if (await handleTelegramStudentAccount(update)) return res.status(200).send('ok');
     if (await handleTelegramStudentCjm(studentCjmUpdate(update))) return res.status(200).send('ok');
+    if (await handleTelegramTeacherPolicy(update)) return res.status(200).send('ok');
     if (await handleTelegramTeacher(update)) return res.status(200).send('ok');
 
     // Specialized compatibility handlers remain until their file/review payloads
