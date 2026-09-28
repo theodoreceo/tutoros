@@ -1,5 +1,5 @@
 import vkHandler from './vk-legacy.js';
-import { sendVk } from './_lib/channels.js';
+import { deactivateVkActiveUi, sendVk } from './_lib/channels.js';
 import { handleVkStudentAccount } from './_lib/student-account.js';
 import { handleVkStudentCjm } from './_lib/student-vk-cjm.js';
 import { handleVkTeacher } from './_lib/teacher-vk.js';
@@ -16,6 +16,12 @@ function validRelayRequest(req) {
   if (VK_GROUP_ID && String(update.group_id) !== String(VK_GROUP_ID)) return false;
   if (VK_CALLBACK_SECRET && update.secret !== VK_CALLBACK_SECRET) return false;
   return true;
+}
+
+function updatePeerId(update) {
+  if (update?.type === 'message_new') return update?.object?.message?.peer_id || null;
+  if (update?.type === 'message_event') return update?.object?.peer_id || null;
+  return null;
 }
 
 function callbackCommand(update) {
@@ -59,6 +65,9 @@ export default async function handler(req, res) {
   let before = null;
 
   if (validRelayRequest(req)) {
+    const peerId = updatePeerId(req.body || {});
+    if (peerId) await deactivateVkActiveUi(peerId).catch(() => {});
+
     if (await blockRevisionAction(req.body || {})) return res.status(200).send('ok');
 
     try {
