@@ -1,4 +1,3 @@
-import telegramUiHandler from './telegram-ui.js';
 import { telegram, withTelegramUiTransition } from './_lib/channels.js';
 import { handleTelegramStudentAccount } from './_lib/student-account.js';
 import { handleTelegramStudentCjm } from './_lib/student-telegram-cjm.js';
@@ -45,7 +44,6 @@ async function acknowledgeCallbackImmediately(update) {
   const query = update?.callback_query;
   if (!query?.id) return { duplicate: false };
   const data = String(query.data || '');
-  // Keep the dedicated revision handler's explanatory callback response.
   if (data.startsWith('reviewrev:')) return { duplicate: false };
   const duplicate = isDuplicateCallback(query);
   await telegram('answerCallbackQuery', { callback_query_id: query.id }).catch(() => {});
@@ -87,58 +85,55 @@ async function cleanupFinalizePrompt(update) {
 }
 
 async function runHandler(req, res) {
-  if (req.method === 'POST' && TELEGRAM_WEBHOOK_SECRET) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  if (TELEGRAM_WEBHOOK_SECRET) {
     const actual = req.headers['x-telegram-bot-api-secret-token'];
     if (actual !== TELEGRAM_WEBHOOK_SECRET) return res.status(403).send('wrong secret');
   }
 
-  if (req.method === 'POST') {
-    const update = req.body || {};
-    try {
-      const { duplicate } = await acknowledgeCallbackImmediately(update);
-      if (duplicate) return res.status(200).send('ok');
+  const update = req.body || {};
+  try {
+    const { duplicate } = await acknowledgeCallbackImmediately(update);
+    if (duplicate) return res.status(200).send('ok');
 
-      if (await blockRevisionAction(update)) return res.status(200).send('ok');
+    if (await blockRevisionAction(update)) return res.status(200).send('ok');
+    if (await handleTelegramStudentAccount(update)) return res.status(200).send('ok');
+    if (await handleTelegramStudentCjm(studentCjmUpdate(update))) return res.status(200).send('ok');
+    if (await handleTelegramTeacher(update)) return res.status(200).send('ok');
 
-      if (await handleTelegramStudentAccount(update)) return res.status(200).send('ok');
+    // Specialized compatibility handlers remain until their file/review payloads
+    // are fully moved into the canonical adapters. There is no generic legacy
+    // state-machine fallback anymore.
+    if (await handleTelegramReviewUpdate(update)) return res.status(200).send('ok');
+    if (await handleTelegramHomeworkCard(update)) return res.status(200).send('ok');
+    if (await handleStoredHomeworkFile(update)) return res.status(200).send('ok');
+    if (await handleTelegramHomeworkUpdate(update)) return res.status(200).send('ok');
+    if (await handleTelegramNotesUpload(update)) return res.status(200).send('ok');
+    if (await handleTelegramSubmissionFile(update)) return res.status(200).send('ok');
 
-      if (await handleTelegramStudentCjm(studentCjmUpdate(update))) {
-        return res.status(200).send('ok');
-      }
-
-      if (await handleTelegramTeacher(update)) {
-        return res.status(200).send('ok');
-      }
-
-      if (await handleTelegramReviewUpdate(update)) return res.status(200).send('ok');
-      if (await handleTelegramHomeworkCard(update)) return res.status(200).send('ok');
-      if (await handleStoredHomeworkFile(update)) return res.status(200).send('ok');
-      if (await handleTelegramHomeworkUpdate(update)) return res.status(200).send('ok');
-      if (await handleTelegramNotesUpload(update)) return res.status(200).send('ok');
-      if (await handleTelegramSubmissionFile(update)) return res.status(200).send('ok');
-
-      if (update.message) {
-        if (await handleTelegramSubmissionUpdate(update)) return res.status(200).send('ok');
-      }
-
-      if (update.callback_query && String(update.callback_query.data || '').startsWith('done:')) {
-        await cleanupFinalizePrompt(update);
-        if (await handleTelegramSubmissionUpdate(update)) return res.status(200).send('ok');
-      }
-    } catch (error) {
-      console.error('Telegram guarded flow failed:', error);
-      const chatId = update?.message?.chat?.id || update?.callback_query?.message?.chat?.id;
-      if (chatId) {
-        await telegram('sendMessage', {
-          chat_id: chatId,
-          text: '⚠️ не удалось обработать действие. попробуй ещё раз.',
-        }).catch(() => {});
-      }
+    if (update.message && await handleTelegramSubmissionUpdate(update)) {
       return res.status(200).send('ok');
     }
+
+    if (update.callback_query && String(update.callback_query.data || '').startsWith('done:')) {
+      await cleanupFinalizePrompt(update);
+      if (await handleTelegramSubmissionUpdate(update)) return res.status(200).send('ok');
+    }
+  } catch (error) {
+    console.error('Telegram canonical flow failed:', error);
+    const chatId = update?.message?.chat?.id || update?.callback_query?.message?.chat?.id;
+    if (chatId) {
+      await telegram('sendMessage', {
+        chat_id: chatId,
+        text: '⚠️ не удалось обработать действие. попробуй ещё раз.',
+      }).catch(() => {});
+    }
+    return res.status(200).send('ok');
   }
 
-  return telegramUiHandler(req, res);
+  // Unknown callbacks from old keyboards are intentionally inert.
+  return res.status(200).send('ok');
 }
 
 export default async function handler(req, res) {
