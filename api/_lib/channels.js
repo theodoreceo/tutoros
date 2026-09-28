@@ -14,7 +14,7 @@ export * from './channels-optimized.js';
 const telegramScreenTransitions = new AsyncLocalStorage();
 
 export async function withTelegramUiTransition(callback) {
-  return telegramScreenTransitions.run({ editTargets: new Map() }, callback);
+  return telegramScreenTransitions.run({ editTargets: new Map(), ackedCallbacks: new Set() }, callback);
 }
 
 export async function telegram(method, payload = {}) {
@@ -22,6 +22,12 @@ export async function telegram(method, payload = {}) {
   const chatKey = payload?.chat_id === undefined || payload?.chat_id === null
     ? null
     : String(payload.chat_id);
+
+  if (state && method === 'answerCallbackQuery' && payload.callback_query_id) {
+    const callbackId = String(payload.callback_query_id);
+    if (state.ackedCallbacks.has(callbackId)) return true;
+    state.ackedCallbacks.add(callbackId);
+  }
 
   if (state && method === 'deleteMessage' && chatKey && payload.message_id) {
     state.editTargets.set(chatKey, {
