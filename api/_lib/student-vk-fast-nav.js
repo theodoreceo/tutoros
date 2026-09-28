@@ -40,7 +40,7 @@ async function vk(method, params = {}) {
 const b = (text, command, color = 'secondary') => vkInlineButton(text, command, color);
 const kb = rows => vkInlineKeyboard(rows);
 const homeRows = () => [
-  [b('📚 Задания', 'cjm:hw', 'primary')],
+  [b('✅ Надо выполнить', 'cjm:hw', 'primary')],
   [b('🎓 Занятия', 'cjm:lessons')],
   [b('📊 Результаты', 'cjm:results')],
 ];
@@ -102,7 +102,7 @@ async function render(cb, text, rows) {
 
 async function renderHome(cb, student) {
   await resetSession(cb.userId);
-  return render(cb, `привет, ${student.name}!\n\nЗдесь задания, занятия и твои результаты.`, homeRows());
+  return render(cb, `привет, ${student.name}!\n\nЗдесь то, что надо выполнить, занятия и твои результаты.`, homeRows());
 }
 
 async function renderHomework(cb, student) {
@@ -139,7 +139,7 @@ async function renderHomeworkCard(cb, student, submissionId) {
   const rows = [];
   if (assignment.file_id || assignment.telegram_file_id) rows.push([b('📎 Открыть задание', `cjm:hwfile:${assignment.id}`)]);
   if (submission.status === 'assigned') rows.push([b('📤 Сдать работу', `cjm:submit:${submission.id}`, 'primary')]);
-  rows.push([b('← К заданиям', 'cjm:hw')]);
+  rows.push([b('← К списку', 'cjm:hw')]);
   let text = `${assignment.topic}\n\nстатус: ${status}`;
   if (assignment.due_date) text += `\nдедлайн: ${humanDueDate(assignment.due_date)}`;
   return render(cb, text, rows);
